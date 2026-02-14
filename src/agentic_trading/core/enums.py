@@ -118,3 +118,32 @@ class RiskAlertSeverity(str, Enum):
 class Exchange(str, Enum):
     BINANCE = "binance"
     BYBIT = "bybit"
+
+
+class ConvictionLevel(str, Enum):
+    """Trade plan conviction level."""
+
+    HIGH = "high"
+    MODERATE = "moderate"
+    LOW = "low"
+    INVALIDATED = "invalidated"
+
+
+class SetupGrade(str, Enum):
+    """Qualitative setup assessment grade."""
+
+    A_PLUS = "A+"
+    A = "A"
+    B = "B"
+    C = "C"
+    D = "D"
+    F = "F"
+
+
+class MarketStructureBias(str, Enum):
+    """Higher-timeframe market structure bias."""
+
+    BULLISH = "bullish"
+    BEARISH = "bearish"
+    NEUTRAL = "neutral"
+    UNCLEAR = "unclear"

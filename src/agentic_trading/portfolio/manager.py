@@ -18,6 +18,7 @@ from agentic_trading.core.models import Instrument
 from .sizing import (
     fixed_fractional_size,
     liquidity_adjusted_size,
+    stop_loss_based_size,
     volatility_adjusted_size,
 )
 
@@ -166,6 +167,25 @@ class PortfolioManager:
                 price=price,
                 instrument=instrument,
             )
+        elif sizing_method == "stop_loss_based":
+            entry_price = float(rc.get("entry", price))
+            stop_loss_price = float(rc.get("stop_loss", 0))
+            risk_pct_override = float(rc.get("risk_pct", risk_pct))
+            if stop_loss_price > 0 and entry_price > 0:
+                qty = stop_loss_based_size(
+                    capital=capital,
+                    risk_per_trade_pct=risk_pct_override,
+                    entry_price=entry_price,
+                    stop_loss_price=stop_loss_price,
+                    instrument=instrument,
+                )
+            else:
+                qty = fixed_fractional_size(
+                    capital=capital,
+                    fraction=risk_pct,
+                    price=price,
+                    instrument=instrument,
+                )
         elif sizing_method == "liquidity_adjusted":
             base = fixed_fractional_size(
                 capital=capital,
