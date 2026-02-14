@@ -23,13 +23,36 @@
           "source": "url",
           "format": "table",
           "root_selector": "",
-          "columns": [
-            { "selector": "timestamp", "text": "Time", "type": "timestamp" },
-            { "selector": "script_text", "text": "Narration", "type": "string" },
-            { "selector": "symbol", "text": "Symbol", "type": "string" },
-            { "selector": "action", "text": "Action", "type": "string" },
-            { "selector": "regime", "text": "Regime", "type": "string" }
-          ]
+          "columns": []
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "decision_ref": true,
+              "playback_url": true,
+              "published_avatar": true,
+              "published_text": true,
+              "script_id": true,
+              "verbosity": true
+            },
+            "indexByName": {
+              "timestamp": 0,
+              "script_text": 1,
+              "symbol": 2,
+              "action": 3,
+              "regime": 4
+            },
+            "renameByName": {
+              "timestamp": "Time",
+              "script_text": "Narration",
+              "symbol": "Symbol",
+              "action": "Action",
+              "regime": "Regime"
+            }
+          }
         }
       ],
       "fieldConfig": {
@@ -43,14 +66,13 @@
           {
             "matcher": { "id": "byName", "options": "Narration" },
             "properties": [
-              { "id": "custom.width", "value": 600 },
-              { "id": "custom.cellOptions", "value": { "type": "auto" } }
+              { "id": "custom.width", "value": 600 }
             ]
           },
           {
             "matcher": { "id": "byName", "options": "Time" },
             "properties": [
-              { "id": "custom.width", "value": 160 }
+              { "id": "custom.width", "value": 180 }
             ]
           },
           {
@@ -102,9 +124,8 @@
           "url_options": { "method": "GET" },
           "source": "url",
           "format": "table",
-          "columns": [
-            { "selector": "narration_count", "text": "Total Narrations", "type": "number" }
-          ]
+          "root_selector": "",
+          "columns": []
         }
       ],
       "fieldConfig": {
@@ -117,7 +138,16 @@
             ]
           }
         }
-      }
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "status": true },
+            "renameByName": { "narration_count": "Total Narrations" }
+          }
+        }
+      ]
     },
     {
       "title": "Disclaimer",
@@ -138,5 +168,5 @@
   "timezone": "utc",
   "title": "Live Narration",
   "uid": "narration-live",
-  "version": 1
+  "version": 2
 }
