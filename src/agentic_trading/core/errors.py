@@ -99,3 +99,20 @@ class BacktestError(TradingError):
 
 class DeterminismError(BacktestError):
     """Backtest determinism violation detected."""
+
+
+# --- Governance ---
+class GovernanceError(TradingError):
+    """Governance check failure."""
+
+
+class MaturityGateError(GovernanceError):
+    """Strategy maturity level insufficient for requested action."""
+
+
+class ExecutionTokenError(GovernanceError):
+    """Execution token invalid, expired, or revoked."""
+
+
+class GovernanceCanaryFailure(GovernanceError):
+    """Governance canary detected infrastructure failure."""

@@ -145,6 +145,58 @@ WS_RECONNECTIONS = Counter(
     ["exchange"],
 )
 
+# ---------------------------------------------------------------------------
+# Governance metrics (Soteria-inspired)
+# ---------------------------------------------------------------------------
+
+GOVERNANCE_DECISIONS = Counter(
+    "trading_governance_decisions_total",
+    "Total governance gate decisions",
+    ["strategy_id", "action"],
+)
+
+GOVERNANCE_BLOCKS = Counter(
+    "trading_governance_blocks_total",
+    "Governance blocks by reason category",
+    ["strategy_id", "reason"],
+)
+
+MATURITY_LEVEL = Gauge(
+    "trading_strategy_maturity_level",
+    "Strategy maturity level (0=L0, 4=L4)",
+    ["strategy_id"],
+)
+
+HEALTH_SCORE = Gauge(
+    "trading_strategy_health_score",
+    "Strategy health score (0.0 to 1.0)",
+    ["strategy_id"],
+)
+
+DRIFT_DEVIATION = Gauge(
+    "trading_strategy_drift_pct",
+    "Strategy drift from baseline percentage",
+    ["strategy_id", "metric"],
+)
+
+CANARY_STATUS = Gauge(
+    "trading_canary_status",
+    "Canary component health (1=healthy, 0=unhealthy)",
+    ["component"],
+)
+
+GOVERNANCE_LATENCY = Histogram(
+    "trading_governance_latency_seconds",
+    "Governance gate evaluation latency",
+    buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1],
+)
+
+ACTIVE_TOKENS = Gauge(
+    "trading_active_execution_tokens",
+    "Active execution tokens",
+    ["strategy_id"],
+)
+
 
 def start_metrics_server(port: int = 9090, mode: str = "unknown") -> None:
     """Start Prometheus metrics HTTP server in a background thread."""
@@ -218,3 +270,50 @@ def record_ws_reconnection(exchange: str) -> None:
 def record_decision_latency(seconds: float) -> None:
     """Record latency from candle to order intent."""
     DECISION_LATENCY.observe(seconds)
+
+
+# ---------------------------------------------------------------------------
+# Governance helpers
+# ---------------------------------------------------------------------------
+
+
+def record_governance_decision(strategy_id: str, action: str) -> None:
+    """Record a governance gate decision."""
+    GOVERNANCE_DECISIONS.labels(strategy_id=strategy_id, action=action).inc()
+
+
+def record_governance_block(strategy_id: str, reason: str) -> None:
+    """Record a governance block."""
+    GOVERNANCE_BLOCKS.labels(strategy_id=strategy_id, reason=reason).inc()
+
+
+def update_maturity_level(strategy_id: str, level: int) -> None:
+    """Update strategy maturity level gauge (0=L0, 4=L4)."""
+    MATURITY_LEVEL.labels(strategy_id=strategy_id).set(level)
+
+
+def update_health_score(strategy_id: str, score: float) -> None:
+    """Update strategy health score gauge."""
+    HEALTH_SCORE.labels(strategy_id=strategy_id).set(score)
+
+
+def update_drift_deviation(
+    strategy_id: str, metric: str, pct: float
+) -> None:
+    """Update drift deviation gauge for a metric."""
+    DRIFT_DEVIATION.labels(strategy_id=strategy_id, metric=metric).set(pct)
+
+
+def update_canary_status(component: str, healthy: bool) -> None:
+    """Update canary component health gauge."""
+    CANARY_STATUS.labels(component=component).set(1 if healthy else 0)
+
+
+def record_governance_latency(seconds: float) -> None:
+    """Record governance gate evaluation latency."""
+    GOVERNANCE_LATENCY.observe(seconds)
+
+
+def update_active_tokens(strategy_id: str, count: int) -> None:
+    """Update active execution tokens gauge."""
+    ACTIVE_TOKENS.labels(strategy_id=strategy_id).set(count)

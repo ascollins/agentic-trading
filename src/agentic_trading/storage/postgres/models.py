@@ -386,3 +386,55 @@ class ExperimentLog(Base):
             f"<ExperimentLog(experiment_id={self.experiment_id!r}, "
             f"name={self.name!r}, status={self.status!r})>"
         )
+
+
+# ---------------------------------------------------------------------------
+# GovernanceLog
+# ---------------------------------------------------------------------------
+
+class GovernanceLog(Base):
+    """Governance decision audit log (Soteria-inspired).
+
+    Records every governance gate decision for full traceability
+    of why trades were allowed, sized-down, or blocked.
+    """
+
+    __tablename__ = "governance_logs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=_new_uuid,
+    )
+    trace_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    strategy_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    symbol: Mapped[str] = mapped_column(String(32), nullable=False)
+    action: Mapped[str] = mapped_column(String(24), nullable=False)
+    maturity_level: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    impact_tier: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    health_score: Mapped[Decimal | None] = mapped_column(
+        Numeric(8, 4), nullable=True,
+    )
+    sizing_multiplier: Mapped[Decimal | None] = mapped_column(
+        Numeric(8, 4), nullable=True,
+    )
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    details: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    decision_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, server_default=func.now(),
+    )
+
+    __table_args__ = (
+        Index("ix_govlog_trace_id", "trace_id"),
+        Index("ix_govlog_strategy_id", "strategy_id"),
+        Index("ix_govlog_symbol", "symbol"),
+        Index("ix_govlog_decision_at", "decision_at"),
+        Index("ix_govlog_action", "action"),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<GovernanceLog(trace_id={self.trace_id!r}, "
+            f"strategy={self.strategy_id!r}, action={self.action!r})>"
+        )

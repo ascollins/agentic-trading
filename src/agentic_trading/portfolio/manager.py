@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from decimal import Decimal
-from typing import Any
+from typing import Any, Callable
 
 from agentic_trading.core.enums import Side, SignalDirection
 from agentic_trading.core.events import Signal, TargetPosition
@@ -33,10 +33,12 @@ class PortfolioManager:
         max_position_pct: float = 0.10,
         max_gross_exposure_pct: float = 1.0,
         sizing_multiplier: float = 1.0,
+        governance_sizing_fn: Callable[[str], float] | None = None,
     ) -> None:
         self._max_position_pct = max_position_pct
         self._max_gross_exposure = max_gross_exposure_pct
         self._sizing_multiplier = sizing_multiplier
+        self._governance_sizing_fn = governance_sizing_fn
         self._pending_signals: list[Signal] = []
 
     def on_signal(self, signal: Signal) -> None:
@@ -205,6 +207,11 @@ class PortfolioManager:
 
         # Apply sizing multiplier (from regime policy)
         qty = Decimal(str(float(qty) * self._sizing_multiplier))
+
+        # Apply governance sizing (maturity cap × health multiplier)
+        if self._governance_sizing_fn is not None:
+            gov_mult = self._governance_sizing_fn(best_signal.strategy_id)
+            qty = Decimal(str(float(qty) * gov_mult))
 
         if instrument:
             qty = instrument.round_qty(qty)

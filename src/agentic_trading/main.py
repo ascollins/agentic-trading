@@ -232,6 +232,50 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
         strategies = [TrendFollowingStrategy()]
         logger.info("No strategies configured, using default trend_following")
 
+    # Wire governance framework (if enabled)
+    governance_gate = None
+    governance_canary = None
+    if settings.governance.enabled:
+        from .governance.gate import GovernanceGate
+        from .governance.maturity import MaturityManager
+        from .governance.health_score import HealthTracker
+        from .governance.impact_classifier import ImpactClassifier
+        from .governance.drift_detector import DriftDetector
+        from .governance.tokens import TokenManager
+        from .governance.canary import GovernanceCanary
+
+        maturity_mgr = MaturityManager(settings.governance.maturity)
+        health_tracker = HealthTracker(settings.governance.health_score)
+        impact_clf = ImpactClassifier(settings.governance.impact_classifier)
+        drift_det = DriftDetector(settings.governance.drift_detector)
+        token_mgr = TokenManager(settings.governance.execution_tokens)
+
+        governance_gate = GovernanceGate(
+            config=settings.governance,
+            maturity=maturity_mgr,
+            health=health_tracker,
+            impact=impact_clf,
+            drift=drift_det,
+            tokens=(
+                token_mgr
+                if settings.governance.execution_tokens.require_tokens
+                else None
+            ),
+            event_bus=ctx.event_bus,
+        )
+
+        # Start canary watchdog
+        governance_canary = GovernanceCanary(
+            settings.governance.canary,
+            event_bus=ctx.event_bus,
+        )
+        await governance_canary.start_periodic(
+            settings.governance.canary.check_interval_seconds
+        )
+        logger.info(
+            "Governance framework enabled (maturity, health, canary, impact, drift)"
+        )
+
     # Paper adapter for simulated execution
     if settings.mode == Mode.PAPER:
         from .execution.adapters.paper import PaperAdapter
@@ -325,6 +369,8 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
     await stop_event.wait()
 
     # Graceful shutdown
+    if governance_canary is not None:
+        await governance_canary.stop()
     if feed_manager:
         await feed_manager.stop()
     await feature_engine.stop()

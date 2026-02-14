@@ -147,3 +147,42 @@ class MarketStructureBias(str, Enum):
     BEARISH = "bearish"
     NEUTRAL = "neutral"
     UNCLEAR = "unclear"
+
+
+class MaturityLevel(str, Enum):
+    """Strategy maturity level (Soteria-inspired governance).
+
+    L0 = shadow/log-only, L4 = full autonomy.
+    Slow promotion, fast demotion.
+    """
+
+    L0_SHADOW = "L0_shadow"
+    L1_PAPER = "L1_paper"
+    L2_GATED = "L2_gated"
+    L3_CONSTRAINED = "L3_constrained"
+    L4_AUTONOMOUS = "L4_autonomous"
+
+    @property
+    def rank(self) -> int:
+        """Numeric rank for comparisons (0–4)."""
+        return list(MaturityLevel).index(self)
+
+
+class ImpactTier(str, Enum):
+    """Trade impact classification tier."""
+
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+
+class GovernanceAction(str, Enum):
+    """Actions the governance system can take."""
+
+    ALLOW = "allow"
+    REDUCE_SIZE = "reduce_size"
+    BLOCK = "block"
+    DEMOTE = "demote"
+    PAUSE = "pause"
+    KILL = "kill"

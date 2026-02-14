@@ -111,6 +111,81 @@ class ObservabilityConfig(BaseModel):
     decision_audit: bool = True
 
 
+# --- Governance sub-configs (Soteria-inspired) ---
+
+
+class MaturityConfig(BaseModel):
+    default_level: str = "L1_paper"
+    promotion_min_trades: int = 50
+    promotion_min_win_rate: float = 0.45
+    promotion_min_profit_factor: float = 1.1
+    demotion_drawdown_pct: float = 0.10
+    demotion_loss_streak: int = 10
+    l3_sizing_cap: float = 0.25
+
+
+class HealthScoreConfig(BaseModel):
+    window_size: int = 50
+    debt_per_loss: float = 1.0
+    credit_per_win: float = 0.5
+    max_debt: float = 10.0
+    min_sizing_multiplier: float = 0.1
+    recovery_rate: float = 0.8
+
+
+class CanaryConfig(BaseModel):
+    check_interval_seconds: int = 30
+    components: list[str] = Field(
+        default_factory=lambda: ["event_bus", "redis", "kill_switch"]
+    )
+    failure_threshold: int = 3
+    action_on_failure: str = "kill"
+
+
+class ImpactClassifierConfig(BaseModel):
+    high_notional_usd: float = 50_000.0
+    critical_notional_usd: float = 200_000.0
+    concentration_threshold_pct: float = 0.15
+
+
+class DriftDetectorConfig(BaseModel):
+    baseline_window_trades: int = 200
+    deviation_threshold_pct: float = 30.0
+    pause_threshold_pct: float = 50.0
+    metrics_tracked: list[str] = Field(
+        default_factory=lambda: [
+            "win_rate",
+            "avg_rr",
+            "sharpe",
+            "profit_factor",
+        ]
+    )
+
+
+class ExecutionTokenConfig(BaseModel):
+    default_ttl_seconds: int = 300
+    max_active_tokens: int = 10
+    require_tokens: bool = False
+
+
+class GovernanceConfig(BaseModel):
+    """Master governance configuration (Soteria-inspired)."""
+
+    enabled: bool = False
+    maturity: MaturityConfig = Field(default_factory=MaturityConfig)
+    health_score: HealthScoreConfig = Field(default_factory=HealthScoreConfig)
+    canary: CanaryConfig = Field(default_factory=CanaryConfig)
+    impact_classifier: ImpactClassifierConfig = Field(
+        default_factory=ImpactClassifierConfig
+    )
+    drift_detector: DriftDetectorConfig = Field(
+        default_factory=DriftDetectorConfig
+    )
+    execution_tokens: ExecutionTokenConfig = Field(
+        default_factory=ExecutionTokenConfig
+    )
+
+
 # ---------------------------------------------------------------------------
 # Top-level settings
 # ---------------------------------------------------------------------------
@@ -137,6 +212,7 @@ class Settings(BaseSettings):
     safe_mode: SafeModeConfig = Field(default_factory=SafeModeConfig)
     backtest: BacktestConfig = Field(default_factory=BacktestConfig)
     observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
+    governance: GovernanceConfig = Field(default_factory=GovernanceConfig)
 
     # Infrastructure
     redis_url: str = "redis://localhost:6379/0"

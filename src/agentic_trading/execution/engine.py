@@ -11,7 +11,9 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from agentic_trading.core.enums import OrderStatus
+from decimal import Decimal
+
+from agentic_trading.core.enums import GovernanceAction, OrderStatus
 from agentic_trading.core.errors import (
     DuplicateOrderError,
     ExchangeError,
@@ -76,6 +78,7 @@ class ExecutionEngine:
         kill_switch: Any = None,
         portfolio_state_provider: Any = None,
         max_retries: int = 3,
+        governance_gate: Any = None,
     ) -> None:
         self._adapter = adapter
         self._event_bus = event_bus
@@ -84,6 +87,7 @@ class ExecutionEngine:
         self._kill_switch = kill_switch
         self._portfolio_state_provider = portfolio_state_provider
         self._order_manager = OrderManager(max_retries=max_retries)
+        self._governance_gate = governance_gate
         self._running: bool = False
 
     # ------------------------------------------------------------------
@@ -183,6 +187,63 @@ class ExecutionEngine:
 
         # Register the intent as PENDING
         self._order_manager.register_intent(intent)
+
+        # 2.5 Governance gate (if enabled)
+        if self._governance_gate is not None:
+            gov_decision = await self._governance_gate.evaluate(
+                strategy_id=intent.strategy_id,
+                symbol=intent.symbol,
+                notional_usd=float(intent.qty * (intent.price or Decimal("0"))),
+                portfolio_pct=0.0,
+                is_reduce_only=intent.reduce_only,
+                leverage=intent.leverage or 1,
+                existing_positions=0,
+                trace_id=intent.trace_id,
+            )
+            if gov_decision.action in (
+                GovernanceAction.BLOCK,
+                GovernanceAction.PAUSE,
+                GovernanceAction.KILL,
+            ):
+                logger.warning(
+                    "Order rejected by governance: %s (strategy=%s symbol=%s)",
+                    gov_decision.reason,
+                    intent.strategy_id,
+                    intent.symbol,
+                )
+                self._order_manager.update_order(
+                    OrderUpdate(
+                        order_id="",
+                        client_order_id=intent.dedupe_key,
+                        symbol=intent.symbol,
+                        exchange=intent.exchange,
+                        status=OrderStatus.REJECTED,
+                        trace_id=intent.trace_id,
+                    )
+                )
+                ack = OrderAck(
+                    order_id="",
+                    client_order_id=intent.dedupe_key,
+                    symbol=intent.symbol,
+                    exchange=intent.exchange,
+                    status=OrderStatus.REJECTED,
+                    message=f"Governance: {gov_decision.reason}",
+                    trace_id=intent.trace_id,
+                )
+                await self._publish_ack(ack)
+                return ack
+            elif gov_decision.action == GovernanceAction.REDUCE_SIZE:
+                # Apply governance sizing reduction
+                new_qty = Decimal(
+                    str(float(intent.qty) * gov_decision.sizing_multiplier)
+                )
+                intent = intent.model_copy(update={"qty": new_qty})
+                logger.info(
+                    "Governance reduced sizing: %s → %s (mult=%.2f)",
+                    intent.dedupe_key,
+                    new_qty,
+                    gov_decision.sizing_multiplier,
+                )
 
         # 3. Pre-trade risk check
         portfolio_state = self._get_portfolio_state()

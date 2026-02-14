@@ -16,6 +16,9 @@ from pydantic import BaseModel, Field
 from .enums import (
     CircuitBreakerType,
     Exchange,
+    GovernanceAction,
+    ImpactTier,
+    MaturityLevel,
     OrderStatus,
     OrderType,
     RiskAlertSeverity,
@@ -320,3 +323,87 @@ class ReconciliationResult(BaseEvent):
     positions_synced: int = 0
     balances_synced: int = 0
     repairs_applied: int = 0
+
+
+# ===========================================================================
+# Topic: governance
+# ===========================================================================
+
+class GovernanceDecision(BaseEvent):
+    """Result of a governance gate check."""
+
+    source_module: str = "governance"
+    strategy_id: str
+    symbol: str
+    action: GovernanceAction
+    reason: str = ""
+    sizing_multiplier: float = 1.0
+    maturity_level: MaturityLevel = MaturityLevel.L0_SHADOW
+    impact_tier: ImpactTier = ImpactTier.LOW
+    health_score: float = 1.0
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
+class MaturityTransition(BaseEvent):
+    """Strategy maturity level change."""
+
+    source_module: str = "governance.maturity"
+    strategy_id: str
+    from_level: MaturityLevel
+    to_level: MaturityLevel
+    reason: str = ""
+    metrics_snapshot: dict[str, float] = Field(default_factory=dict)
+
+
+class HealthScoreUpdate(BaseEvent):
+    """Strategy health score change."""
+
+    source_module: str = "governance.health_score"
+    strategy_id: str
+    score: float
+    debt: float = 0.0
+    credit: float = 0.0
+    sizing_multiplier: float = 1.0
+    window_trades: int = 0
+
+
+class CanaryAlert(BaseEvent):
+    """Governance canary (safety watchdog) alert."""
+
+    source_module: str = "governance.canary"
+    component: str
+    healthy: bool
+    message: str = ""
+    action_taken: GovernanceAction = GovernanceAction.ALLOW
+
+
+class DriftAlert(BaseEvent):
+    """Live-vs-backtest drift detection alert."""
+
+    source_module: str = "governance.drift"
+    strategy_id: str
+    metric_name: str
+    baseline_value: float = 0.0
+    live_value: float = 0.0
+    deviation_pct: float = 0.0
+    action_taken: GovernanceAction = GovernanceAction.ALLOW
+
+
+class TokenEvent(BaseEvent):
+    """Execution token lifecycle event."""
+
+    source_module: str = "governance.tokens"
+    token_id: str
+    strategy_id: str
+    action: str = ""  # "issued", "used", "expired", "revoked"
+    scope: str = ""
+    ttl_seconds: int = 0
+
+
+class GovernanceCanaryCheck(BaseEvent):
+    """Periodic canary health-check result."""
+
+    source_module: str = "governance.canary"
+    all_healthy: bool
+    components_checked: int = 0
+    failed_components: list[str] = Field(default_factory=list)
