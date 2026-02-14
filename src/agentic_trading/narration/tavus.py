@@ -117,9 +117,15 @@ class TavusAdapterHttp(TavusAdapter):
         """Create a Tavus conversation session with the avatar reading the script."""
         session = await self._get_session()
 
+        # Build conversational context with optional metadata
+        conv_context = script_text
+        if context:
+            ctx_parts = [f"{k}: {v}" for k, v in context.items()]
+            conv_context = f"{script_text}\n\nContext: {'; '.join(ctx_parts)}"
+
         payload = {
             "replica_id": self._replica_id,
-            "conversational_context": script_text,
+            "conversational_context": conv_context,
             "custom_greeting": script_text,
             "properties": {
                 "max_call_duration": 120,
@@ -127,8 +133,6 @@ class TavusAdapterHttp(TavusAdapter):
                 "language": "english",
             },
         }
-        if context:
-            payload["properties"]["metadata"] = context
 
         last_error = None
         for attempt in range(1, self._max_retries + 1):
