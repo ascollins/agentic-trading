@@ -483,6 +483,18 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
             logger.warning("Failed to start narration server", exc_info=True)
             narration_runner = None
 
+        # Seed narration store with sample data so dashboards aren't empty
+        # while waiting for the first strategy signal
+        try:
+            from .narration.standalone import _seed_store
+            _seed_store(narration_store, narration_service)
+            logger.info(
+                "Narration store seeded with %d sample items",
+                narration_store.count,
+            )
+        except Exception:
+            logger.debug("Narration seed failed (non-critical)", exc_info=True)
+
     # Paper adapter for simulated execution
     if settings.mode == Mode.PAPER:
         from .execution.adapters.paper import PaperAdapter
