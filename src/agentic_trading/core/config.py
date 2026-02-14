@@ -187,6 +187,21 @@ class GovernanceConfig(BaseModel):
     )
 
 
+# --- Narration sub-config ---
+
+
+class NarrationConfig(BaseModel):
+    """Avatar narration configuration."""
+
+    enabled: bool = False
+    server_port: int = 8099
+    verbosity: str = "normal"  # quiet / normal / detailed
+    heartbeat_seconds: float = 60.0
+    dedupe_window_seconds: float = 30.0
+    max_stored_items: int = 200
+    tavus_mock: bool = True  # Use mock Tavus adapter by default
+
+
 # ---------------------------------------------------------------------------
 # Top-level settings
 # ---------------------------------------------------------------------------
@@ -214,6 +229,7 @@ class Settings(BaseSettings):
     backtest: BacktestConfig = Field(default_factory=BacktestConfig)
     observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
     governance: GovernanceConfig = Field(default_factory=GovernanceConfig)
+    narration: NarrationConfig = Field(default_factory=NarrationConfig)
 
     # Infrastructure
     redis_url: str = "redis://localhost:6379/0"

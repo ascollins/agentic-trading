@@ -1,0 +1,142 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "panels": [
+    {
+      "title": "Live Narration Stream",
+      "description": "Real-time plain-English commentary on platform decisions. NOT financial advice.",
+      "type": "table",
+      "gridPos": { "h": 14, "w": 18, "x": 0, "y": 0 },
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "narration-json"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "type": "json",
+          "url": "http://trading:8099/narration/latest?limit=20",
+          "url_options": { "method": "GET" },
+          "source": "url",
+          "format": "table",
+          "root_selector": "",
+          "columns": [
+            { "selector": "timestamp", "text": "Time", "type": "timestamp" },
+            { "selector": "script_text", "text": "Narration", "type": "string" },
+            { "selector": "symbol", "text": "Symbol", "type": "string" },
+            { "selector": "action", "text": "Action", "type": "string" },
+            { "selector": "regime", "text": "Regime", "type": "string" }
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": { "type": "auto" }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Narration" },
+            "properties": [
+              { "id": "custom.width", "value": 600 },
+              { "id": "custom.cellOptions", "value": { "type": "auto" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Time" },
+            "properties": [
+              { "id": "custom.width", "value": 160 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Action" },
+            "properties": [
+              { "id": "custom.width", "value": 100 },
+              {
+                "id": "mappings",
+                "value": [
+                  { "type": "value", "options": { "ENTER": { "text": "ENTER", "color": "green" } } },
+                  { "type": "value", "options": { "EXIT": { "text": "EXIT", "color": "red" } } },
+                  { "type": "value", "options": { "HOLD": { "text": "HOLD", "color": "blue" } } },
+                  { "type": "value", "options": { "NO_TRADE": { "text": "NO TRADE", "color": "orange" } } }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [{ "displayName": "Time", "desc": true }],
+        "footer": { "show": false }
+      }
+    },
+    {
+      "title": "Watch Avatar Briefing",
+      "description": "Click to watch the AI avatar read the latest narration",
+      "type": "text",
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 0 },
+      "options": {
+        "mode": "html",
+        "content": "<div style=\"text-align:center;padding:20px;\">\n<a href=\"http://localhost:8099/avatar/watch\" target=\"_blank\" style=\"display:inline-block;background:#00d4aa;color:#1a1a2e;padding:16px 32px;border-radius:12px;text-decoration:none;font-weight:bold;font-size:1.1rem;\">&#9654; Watch Now</a>\n<p style=\"color:#888;margin-top:12px;font-size:0.8rem;\">Opens the avatar narration page</p>\n</div>"
+      }
+    },
+    {
+      "title": "Narration Status",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 6 },
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "narration-json"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "type": "json",
+          "url": "http://trading:8099/narration/health",
+          "url_options": { "method": "GET" },
+          "source": "url",
+          "format": "table",
+          "columns": [
+            { "selector": "narration_count", "text": "Total Narrations", "type": "number" }
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "orange", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Disclaimer",
+      "type": "text",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 10 },
+      "options": {
+        "mode": "markdown",
+        "content": "**Disclaimer**: This is an automated system behavior description. It is NOT financial advice. All narration is grounded in actual platform state and decisions. Trade at your own risk."
+      }
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "tags": ["narration", "avatar"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "utc",
+  "title": "Live Narration",
+  "uid": "narration-live",
+  "version": 1
+}

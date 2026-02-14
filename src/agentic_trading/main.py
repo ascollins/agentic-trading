@@ -430,6 +430,59 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
         "(rolling, confidence, MC, overtrading, edge, mistakes, session, correlation, replay)"
     )
 
+    # Wire Avatar Narration (if enabled)
+    narration_service = None
+    narration_store = None
+    narration_runner = None
+    if settings.narration.enabled:
+        from .narration.service import NarrationService, Verbosity as NarrVerbosity
+        from .narration.store import NarrationStore as NarrStore
+        from .narration.schema import (
+            DecisionExplanation,
+            ConsideredSetup,
+            RiskSummary,
+            PositionSnapshot,
+        )
+        from .narration.server import start_narration_server
+
+        _verb_map = {
+            "quiet": NarrVerbosity.QUIET,
+            "normal": NarrVerbosity.NORMAL,
+            "detailed": NarrVerbosity.DETAILED,
+        }
+        narration_service = NarrationService(
+            verbosity=_verb_map.get(
+                settings.narration.verbosity, NarrVerbosity.NORMAL
+            ),
+            heartbeat_seconds=settings.narration.heartbeat_seconds,
+            dedupe_window_seconds=settings.narration.dedupe_window_seconds,
+        )
+        narration_store = NarrStore(max_items=settings.narration.max_stored_items)
+
+        if settings.narration.tavus_mock:
+            from .narration.tavus import MockTavusAdapter
+            tavus_adapter = MockTavusAdapter(
+                base_url=f"http://localhost:{settings.narration.server_port}"
+            )
+        else:
+            from .narration.tavus import TavusAdapterHttp
+            tavus_adapter = TavusAdapterHttp()
+
+        try:
+            narration_runner = await start_narration_server(
+                store=narration_store,
+                tavus=tavus_adapter,
+                port=settings.narration.server_port,
+            )
+            logger.info(
+                "Narration server started on port %d (mock_tavus=%s)",
+                settings.narration.server_port,
+                settings.narration.tavus_mock,
+            )
+        except Exception:
+            logger.warning("Failed to start narration server", exc_info=True)
+            narration_runner = None
+
     # Paper adapter for simulated execution
     if settings.mode == Mode.PAPER:
         from .execution.adapters.paper import PaperAdapter
@@ -501,6 +554,69 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
                 except Exception:
                     pass
 
+                # Feed narration service
+                if narration_service is not None and narration_store is not None:
+                    try:
+                        from .narration.schema import (
+                            DecisionExplanation,
+                            RiskSummary,
+                            PositionSnapshot,
+                        )
+
+                        action = "NO_TRADE" if sig.direction.value == "flat" else "ENTER"
+                        regime_str = ""
+                        if ctx.regime:
+                            regime_str = getattr(ctx.regime, "regime", "unknown")
+                            if hasattr(regime_str, "value"):
+                                regime_str = regime_str.value
+
+                        pos_snap = PositionSnapshot()
+                        if ctx.portfolio_state:
+                            pos_snap = PositionSnapshot(
+                                open_positions=len(ctx.portfolio_state.positions),
+                                gross_exposure_usd=float(ctx.portfolio_state.gross_exposure),
+                                net_exposure_usd=float(ctx.portfolio_state.net_exposure),
+                            )
+
+                        risk_sum = RiskSummary(
+                            health_score=1.0,
+                            maturity_level="",
+                        )
+                        if governance_gate is not None:
+                            try:
+                                risk_sum.governance_action = "active"
+                            except Exception:
+                                pass
+
+                        explanation = DecisionExplanation(
+                            symbol=sig.symbol,
+                            timeframe=event.timeframe.value if hasattr(event.timeframe, "value") else str(event.timeframe),
+                            market_summary=f"{sig.symbol} is currently being analysed.",
+                            active_strategy=sig.strategy_id,
+                            active_regime=regime_str,
+                            action=action,
+                            reasons=[sig.rationale] if sig.rationale else [],
+                            reason_confidences=[sig.confidence],
+                            why_not=(
+                                [sig.rationale or "No clear setup"] if action == "NO_TRADE" else []
+                            ),
+                            risk=risk_sum,
+                            position=pos_snap,
+                            trace_id=sig.trace_id,
+                            signal_id=sig.event_id,
+                        )
+
+                        item = narration_service.generate(explanation)
+                        if item is not None:
+                            item.metadata = {
+                                "action": action,
+                                "symbol": sig.symbol,
+                                "regime": regime_str,
+                            }
+                            narration_store.add(item)
+                    except Exception:
+                        logger.debug("Narration generation failed", exc_info=True)
+
     await ctx.event_bus.subscribe("feature.vector", "strategy_runner", on_feature_vector)
 
     # Start live market data feeds if exchange configs are available
@@ -540,6 +656,9 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
     await stop_event.wait()
 
     # Graceful shutdown
+    if narration_runner is not None:
+        await narration_runner.cleanup()
+        logger.info("Narration server stopped")
     if governance_canary is not None:
         await governance_canary.stop()
     if feed_manager:
