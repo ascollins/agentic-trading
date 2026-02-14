@@ -469,3 +469,85 @@ def update_journal_monte_carlo(
     """Update Monte Carlo and Kelly metrics."""
     JOURNAL_RUIN_PROBABILITY.labels(strategy_id=strategy_id).set(ruin_prob)
     JOURNAL_KELLY_FRACTION.labels(strategy_id=strategy_id).set(kelly)
+
+
+# ---------------------------------------------------------------------------
+# Tier 3 — Behavioral & Pattern metrics
+# ---------------------------------------------------------------------------
+
+JOURNAL_MISTAKES_TOTAL = Counter(
+    "trading_journal_mistakes_total",
+    "Total mistakes detected per type",
+    ["strategy_id", "mistake_type"],
+)
+
+JOURNAL_MISTAKE_PNL_IMPACT = Gauge(
+    "trading_journal_mistake_pnl_impact",
+    "Total PnL impact of mistakes per strategy",
+    ["strategy_id"],
+)
+
+JOURNAL_SESSION_WIN_RATE = Gauge(
+    "trading_journal_session_win_rate",
+    "Win rate by trading session",
+    ["strategy_id", "session"],
+)
+
+JOURNAL_SESSION_PNL = Gauge(
+    "trading_journal_session_pnl",
+    "Total PnL by trading session",
+    ["strategy_id", "session"],
+)
+
+JOURNAL_CORRELATION = Gauge(
+    "trading_journal_strategy_correlation",
+    "Cross-strategy return correlation",
+    ["strategy_a", "strategy_b"],
+)
+
+JOURNAL_BEST_HOUR = Gauge(
+    "trading_journal_best_hour",
+    "Best performing hour of day (UTC)",
+    ["strategy_id"],
+)
+
+
+def record_journal_mistake(strategy_id: str, mistake_type: str) -> None:
+    """Record a detected mistake."""
+    JOURNAL_MISTAKES_TOTAL.labels(
+        strategy_id=strategy_id, mistake_type=mistake_type
+    ).inc()
+
+
+def update_journal_mistake_impact(strategy_id: str, total_impact: float) -> None:
+    """Update total PnL impact of mistakes."""
+    JOURNAL_MISTAKE_PNL_IMPACT.labels(strategy_id=strategy_id).set(total_impact)
+
+
+def update_journal_session_metrics(
+    strategy_id: str, session_data: dict
+) -> None:
+    """Update session-level win rates and PnL from session analysis report."""
+    for session_name, stats in session_data.items():
+        if isinstance(stats, dict) and stats.get("trades", 0) > 0:
+            JOURNAL_SESSION_WIN_RATE.labels(
+                strategy_id=strategy_id, session=session_name
+            ).set(stats.get("win_rate", 0.0))
+            JOURNAL_SESSION_PNL.labels(
+                strategy_id=strategy_id, session=session_name
+            ).set(stats.get("total_pnl", 0.0))
+
+
+def update_journal_correlation(strategy_a: str, strategy_b: str, r: float) -> None:
+    """Update cross-strategy correlation gauge."""
+    JOURNAL_CORRELATION.labels(
+        strategy_a=strategy_a, strategy_b=strategy_b
+    ).set(r)
+
+
+def update_journal_best_session(
+    strategy_id: str, best_session: str | None, best_hour: int | None,
+) -> None:
+    """Update best-performing session and hour gauges."""
+    if best_hour is not None:
+        JOURNAL_BEST_HOUR.labels(strategy_id=strategy_id).set(best_hour)

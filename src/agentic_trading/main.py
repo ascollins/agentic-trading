@@ -211,6 +211,11 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
             update_journal_overtrading,
             update_journal_edge,
             update_journal_monte_carlo,
+            record_journal_mistake,
+            update_journal_mistake_impact,
+            update_journal_session_metrics,
+            update_journal_correlation,
+            update_journal_best_session,
         )
     except Exception:
         pass
@@ -288,7 +293,7 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
             "Governance framework enabled (maturity, health, canary, impact, drift)"
         )
 
-    # Wire Trade Journal & Analytics (Edgewonk-inspired)
+    # Wire Trade Journal & Analytics (Edgewonk-inspired, Tiers 1-3)
     from .journal import (
         TradeJournal,
         RollingTracker,
@@ -296,6 +301,10 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
         MonteCarloProjector,
         OvertradingDetector,
         CoinFlipBaseline,
+        MistakeDetector,
+        SessionAnalyser,
+        CorrelationMatrix,
+        TradeReplayer,
     )
 
     rolling_tracker = RollingTracker(window_size=100)
@@ -303,6 +312,12 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
     monte_carlo = MonteCarloProjector(n_simulations=1000, seed=42)
     overtrading_det = OvertradingDetector(lookback=50, threshold_z=2.0)
     coin_flip = CoinFlipBaseline(n_simulations=10_000, seed=42)
+
+    # Tier 3 components
+    mistake_detector = MistakeDetector()
+    session_analyser = SessionAnalyser()
+    correlation_matrix = CorrelationMatrix()
+    trade_replayer = TradeReplayer()
 
     def _on_trade_closed(trade):
         """Post-close callback: feed all analytics components + emit metrics."""
@@ -312,20 +327,17 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
             r = trade.r_multiple
             won = trade.outcome.value == "win"
 
-            # Feed rolling tracker
+            # Feed Tier 2 analytics
             rolling_tracker.add_trade(trade)
-
-            # Feed confidence calibrator
             confidence_cal.record(sid, trade.signal_confidence, won, r)
-
-            # Feed Monte Carlo
             monte_carlo.add_trade(sid, pnl, r)
-
-            # Feed overtrading detector
             overtrading_det.record_trade(sid, trade.opened_at)
-
-            # Feed coin-flip baseline
             coin_flip.add_trade(sid, pnl, r)
+
+            # Feed Tier 3 analytics
+            detected_mistakes = mistake_detector.analyse(trade)
+            session_analyser.add_trade(trade)
+            correlation_matrix.add_trade(trade)
 
             # Emit Prometheus metrics
             try:
@@ -366,6 +378,34 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
                         proj.get("ruin_probability", 0.0),
                         kelly,
                     )
+
+                # Tier 3 metrics — mistakes
+                for m in detected_mistakes:
+                    record_journal_mistake(sid, m.mistake_type)
+                mistake_report = mistake_detector.report(sid)
+                update_journal_mistake_impact(
+                    sid, mistake_report.get("total_pnl_impact", 0.0)
+                )
+
+                # Tier 3 metrics — session analysis
+                session_report = session_analyser.report(sid)
+                if session_report.get("total_trades", 0) > 0:
+                    update_journal_session_metrics(
+                        sid, session_report.get("by_session", {})
+                    )
+                    update_journal_best_session(
+                        sid,
+                        session_report.get("best_session"),
+                        session_report.get("best_hour"),
+                    )
+
+                # Tier 3 metrics — correlation (periodic, not every trade)
+                corr_report = correlation_matrix.report()
+                for pair_key, r_val in corr_report.get("strategy_correlation", {}).items():
+                    parts = pair_key.split("|")
+                    if len(parts) == 2:
+                        update_journal_correlation(parts[0], parts[1], r_val)
+
             except Exception:
                 logger.debug("Journal metrics emission failed", exc_info=True)
 
@@ -385,7 +425,10 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
         drift_detector=drift_detector_ref,
         on_trade_closed=_on_trade_closed,
     )
-    logger.info("Trade Journal & Analytics wired (rolling, confidence, MC, overtrading, edge)")
+    logger.info(
+        "Trade Journal & Analytics wired — Tiers 1-3 "
+        "(rolling, confidence, MC, overtrading, edge, mistakes, session, correlation, replay)"
+    )
 
     # Paper adapter for simulated execution
     if settings.mode == Mode.PAPER:
