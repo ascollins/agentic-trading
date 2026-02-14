@@ -146,10 +146,75 @@ WS_RECONNECTIONS = Counter(
 )
 
 
-def start_metrics_server(port: int = 9090) -> None:
+def start_metrics_server(port: int = 9090, mode: str = "unknown") -> None:
     """Start Prometheus metrics HTTP server in a background thread."""
     SYSTEM_INFO.info({
         "version": "0.1.0",
-        "mode": "unknown",  # Set at startup
+        "mode": mode,
     })
     start_http_server(port)
+
+
+# ---------------------------------------------------------------------------
+# Convenience helpers for emitting metrics from the trading pipeline
+# ---------------------------------------------------------------------------
+
+
+def record_signal(strategy_id: str, symbol: str, direction: str) -> None:
+    """Record a strategy signal emission."""
+    SIGNALS_TOTAL.labels(strategy_id=strategy_id, symbol=symbol, direction=direction).inc()
+
+
+def record_fill(symbol: str, side: str, qty: float = 0.0, price: float = 0.0) -> None:
+    """Record an order fill."""
+    FILLS_TOTAL.labels(symbol=symbol, side=side).inc()
+
+
+def record_order(symbol: str, side: str, order_type: str, status: str) -> None:
+    """Record an order submission."""
+    ORDERS_TOTAL.labels(symbol=symbol, side=side, order_type=order_type, status=status).inc()
+
+
+def update_equity(value: float) -> None:
+    """Update the portfolio equity gauge."""
+    EQUITY.set(value)
+
+
+def update_drawdown(pct: float) -> None:
+    """Update the drawdown percentage gauge."""
+    DRAWDOWN.set(pct)
+
+
+def update_position(symbol: str, side: str, size: float) -> None:
+    """Update position size gauge for a symbol."""
+    POSITION_SIZE.labels(symbol=symbol, side=side).set(size)
+
+
+def update_daily_pnl(value: float) -> None:
+    """Update the daily PnL gauge."""
+    DAILY_PNL.set(value)
+
+
+def update_kill_switch(active: bool) -> None:
+    """Update the kill switch gauge."""
+    KILL_SWITCH_ACTIVE.set(1 if active else 0)
+
+
+def record_candle_processed(symbol: str, timeframe: str) -> None:
+    """Record a candle being processed."""
+    CANDLES_PROCESSED.labels(symbol=symbol, timeframe=timeframe).inc()
+
+
+def update_data_staleness(symbol: str, seconds: float) -> None:
+    """Update data staleness gauge."""
+    DATA_STALENESS.labels(symbol=symbol).set(seconds)
+
+
+def record_ws_reconnection(exchange: str) -> None:
+    """Record a WebSocket reconnection."""
+    WS_RECONNECTIONS.labels(exchange=exchange).inc()
+
+
+def record_decision_latency(seconds: float) -> None:
+    """Record latency from candle to order intent."""
+    DECISION_LATENCY.observe(seconds)

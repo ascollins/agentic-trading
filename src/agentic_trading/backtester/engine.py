@@ -10,6 +10,7 @@ import hashlib
 import json
 import logging
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
@@ -34,6 +35,17 @@ from .results import BacktestResult, compute_metrics
 from .slippage import create_slippage_model
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class _SimPosition:
+    """Tracks a single simulated position in the backtest."""
+
+    symbol: str
+    side: str  # "long" or "short"
+    qty: float
+    entry_price: float
+    entry_time: datetime | None = None
 
 
 class BacktestEngine:
@@ -83,7 +95,7 @@ class BacktestEngine:
         # State
         self._equity = initial_capital
         self._cash = initial_capital
-        self._positions: dict[str, dict] = {}  # symbol → {qty, entry_price, side}
+        self._sim_positions: dict[str, _SimPosition] = {}  # symbol → position
         self._equity_curve: list[float] = [initial_capital]
         self._trade_returns: list[float] = []
         self._total_fees = 0.0
@@ -196,34 +208,119 @@ class BacktestEngine:
         return FeatureVector(symbol=symbol, timeframe=candle.timeframe, features={})
 
     def _process_signal(self, signal: Signal, candle: Candle) -> None:
-        """Process a strategy signal: check risk, simulate fill."""
-        if signal.direction.value == "flat":
+        """Process a strategy signal with position-aware logic.
+
+        Rules:
+        - FLAT signal → close existing position
+        - Same direction as existing position → skip (already positioned)
+        - Opposite direction → close existing, then open new
+        - No existing position → open new
+        """
+        symbol = signal.symbol
+        direction = signal.direction.value  # "long", "short", or "flat"
+        existing = self._sim_positions.get(symbol)
+
+        if direction == "flat":
+            if existing:
+                self._close_position(existing, candle)
             return
 
-        # Create order intent
+        # Already positioned in the same direction → skip
+        if existing and existing.side == direction:
+            return
+
+        # Opposite direction → close first
+        if existing and existing.side != direction:
+            self._close_position(existing, candle)
+
+        # Open new position
+        self._open_position(signal, candle, direction)
+
+    def _open_position(self, signal: Signal, candle: Candle, direction: str) -> None:
+        """Open a new position via simulated fill."""
+        qty = self._compute_qty(signal, candle)
+        if qty <= 0:
+            return
+
+        side = Side.BUY if direction == "long" else Side.SELL
+
         intent = OrderIntent(
             dedupe_key=f"{signal.strategy_id}:{signal.symbol}:{signal.event_id}",
             strategy_id=signal.strategy_id,
             symbol=signal.symbol,
-            exchange=Exchange.BINANCE,  # Backtest default
-            side=Side.BUY if signal.direction.value == "long" else Side.SELL,
+            exchange=Exchange.BINANCE,
+            side=side,
             order_type=OrderType.MARKET,
-            qty=Decimal(str(self._compute_qty(signal, candle))),
+            qty=Decimal(str(qty)),
         )
 
-        if float(intent.qty) <= 0:
-            return
-
-        # Simulate fill
-        fills = self._fill_sim.simulate_fill(
-            intent, candle, self._clock.now()
-        )
+        fills = self._fill_sim.simulate_fill(intent, candle, self._clock.now())
 
         for fill in fills:
-            self._apply_fill(fill, signal)
+            fill_price = float(fill.price)
+            fill_qty = float(fill.qty)
+            fee = float(fill.fee)
+
+            self._total_fees += fee
+            self._cash -= fee
+
+            # Cash accounting: buying costs cash, selling (short) adds cash
+            if side == Side.BUY:
+                self._cash -= fill_price * fill_qty
+            else:
+                self._cash += fill_price * fill_qty
+
+            self._sim_positions[signal.symbol] = _SimPosition(
+                symbol=signal.symbol,
+                side=direction,
+                qty=fill_qty,
+                entry_price=fill_price,
+                entry_time=self._clock.now(),
+            )
+
+    def _close_position(self, pos: _SimPosition, candle: Candle) -> None:
+        """Close an existing position and record trade return."""
+        close_side = Side.SELL if pos.side == "long" else Side.BUY
+
+        intent = OrderIntent(
+            dedupe_key=f"close:{pos.symbol}:{uuid.uuid4()}",
+            strategy_id="close",
+            symbol=pos.symbol,
+            exchange=Exchange.BINANCE,
+            side=close_side,
+            order_type=OrderType.MARKET,
+            qty=Decimal(str(pos.qty)),
+        )
+
+        fills = self._fill_sim.simulate_fill(intent, candle, self._clock.now())
+
+        for fill in fills:
+            fill_price = float(fill.price)
+            fill_qty = float(fill.qty)
+            fee = float(fill.fee)
+
+            self._total_fees += fee
+            self._cash -= fee
+
+            # Cash accounting
+            if close_side == Side.SELL:
+                self._cash += fill_price * fill_qty
+            else:
+                self._cash -= fill_price * fill_qty
+
+            # Record trade PnL
+            if pos.entry_price > 0:
+                if pos.side == "long":
+                    trade_ret = (fill_price - pos.entry_price) / pos.entry_price
+                else:
+                    trade_ret = (pos.entry_price - fill_price) / pos.entry_price
+                self._trade_returns.append(trade_ret)
+
+        # Remove position
+        self._sim_positions.pop(pos.symbol, None)
 
     def _compute_qty(self, signal: Signal, candle: Candle) -> float:
-        """Compute order quantity from signal."""
+        """Compute order quantity with cash constraint."""
         rc = signal.risk_constraints
         atr = rc.get("atr", candle.high - candle.low)
         price = candle.close
@@ -239,54 +336,21 @@ class BacktestEngine:
         # Scale by confidence
         qty *= signal.confidence
 
+        # Cash constraint: can't spend more than available cash
+        max_qty = max(0, self._cash * 0.95) / price  # Keep 5% cash buffer
+        qty = min(qty, max_qty)
+
         return qty
-
-    def _apply_fill(self, fill: Any, signal: Signal) -> None:
-        """Apply a fill to the portfolio state."""
-        symbol = fill.symbol
-        price = float(fill.price)
-        qty = float(fill.qty)
-        fee = float(fill.fee)
-        is_buy = fill.side == Side.BUY
-
-        self._total_fees += fee
-        self._cash -= fee
-
-        if symbol not in self._positions:
-            self._positions[symbol] = {"qty": 0.0, "entry_price": 0.0, "cost_basis": 0.0}
-
-        pos = self._positions[symbol]
-
-        if is_buy:
-            # Add to position
-            new_qty = pos["qty"] + qty
-            if new_qty != 0:
-                pos["entry_price"] = (
-                    pos["entry_price"] * pos["qty"] + price * qty
-                ) / new_qty
-            pos["qty"] = new_qty
-            self._cash -= price * qty
-        else:
-            # Reduce or reverse position
-            if pos["qty"] > 0:
-                # Closing long
-                pnl = (price - pos["entry_price"]) * min(qty, pos["qty"])
-                self._trade_returns.append(pnl / (pos["entry_price"] * min(qty, pos["qty"])) if pos["entry_price"] > 0 else 0)
-                self._cash += price * qty
-            pos["qty"] -= qty
-            if pos["qty"] < 0:
-                pos["entry_price"] = price
-            elif pos["qty"] == 0:
-                pos["entry_price"] = 0.0
 
     def _apply_funding(self, symbol: str, mark_price: float, period: int) -> None:
         """Apply funding payment if position exists."""
         if not self._funding_model:
             return
-        pos = self._positions.get(symbol)
-        if pos and pos["qty"] != 0:
+        pos = self._sim_positions.get(symbol)
+        if pos:
+            signed_qty = pos.qty if pos.side == "long" else -pos.qty
             payment = self._funding_model.compute_funding_payment(
-                symbol, pos["qty"], mark_price, period
+                symbol, signed_qty, mark_price, period
             )
             self._cash += float(payment)
             self._total_funding += float(payment)
@@ -294,10 +358,11 @@ class BacktestEngine:
     def _update_equity(self, candle: Candle) -> None:
         """Update equity curve with current mark-to-market."""
         unrealized = 0.0
-        for symbol, pos in self._positions.items():
-            if pos["qty"] != 0:
-                # Use latest candle close as mark price
-                unrealized += pos["qty"] * (candle.close - pos["entry_price"])
+        for symbol, pos in self._sim_positions.items():
+            if pos.side == "long":
+                unrealized += pos.qty * (candle.close - pos.entry_price)
+            else:
+                unrealized += pos.qty * (pos.entry_price - candle.close)
 
         self._equity = self._cash + unrealized
         self._equity_curve.append(self._equity)
@@ -305,17 +370,16 @@ class BacktestEngine:
     def _get_portfolio_state(self) -> PortfolioState:
         """Build portfolio state from current positions."""
         positions = {}
-        for symbol, pos in self._positions.items():
-            if pos["qty"] != 0:
-                from agentic_trading.core.enums import MarginMode, PositionSide
+        for symbol, pos in self._sim_positions.items():
+            from agentic_trading.core.enums import MarginMode, PositionSide
 
-                positions[symbol] = Position(
-                    symbol=symbol,
-                    exchange=Exchange.BINANCE,
-                    side=PositionSide.LONG if pos["qty"] > 0 else PositionSide.SHORT,
-                    qty=Decimal(str(abs(pos["qty"]))),
-                    entry_price=Decimal(str(pos["entry_price"])),
-                )
+            positions[symbol] = Position(
+                symbol=symbol,
+                exchange=Exchange.BINANCE,
+                side=PositionSide.LONG if pos.side == "long" else PositionSide.SHORT,
+                qty=Decimal(str(abs(pos.qty))),
+                entry_price=Decimal(str(pos.entry_price)),
+            )
 
         balances = {
             "USDT": Balance(
