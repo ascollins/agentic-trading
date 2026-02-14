@@ -36,6 +36,7 @@ BANNED_JARGON = frozenset({
     "orderbook imbalance", "order book imbalance", "bollinger",
     "stochastic", "ichimoku", "fibonacci", "ema crossover",
     "adx", "obv", "vwap", "keltner", "donchian",
+    "ema", "sma", "dema", "tema",
 })
 
 # Word limits per verbosity level
@@ -333,17 +334,37 @@ class NarrationService:
     @staticmethod
     def _scrub_jargon(text: str) -> str:
         """Remove banned jargon terms from the narration."""
+        import re
+
+        # Strip INDICATOR=NUMBER patterns first (e.g. "ADX=27.3", "ATR=0.0045")
+        # This prevents the term replacement from producing "technical signal=27.3"
+        text = re.sub(
+            r'\b[A-Za-z_]{2,}\d*\s*=\s*[\d.]+',
+            'technical signal',
+            text,
+        )
+
+        # Strip INDICATOR_NUMBER comparison patterns (e.g. "EMA12 > EMA26")
+        text = re.sub(
+            r'\b[A-Za-z]{2,}\d+\s*[<>=]+\s*[A-Za-z]{2,}\d+',
+            'technical signal',
+            text,
+        )
+
         lower = text.lower()
         for term in BANNED_JARGON:
             if term in lower:
-                # Replace the jargon (case-insensitive) with a generic substitute
-                import re
                 text = re.sub(
                     re.escape(term),
                     "technical signal",
                     text,
                     flags=re.IGNORECASE,
                 )
+                lower = text.lower()
+
+        # Collapse repeated "technical" before "signal"
+        text = re.sub(r'(technical\s+)+signal', 'technical signal', text)
+
         return text
 
     @staticmethod

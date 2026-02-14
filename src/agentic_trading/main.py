@@ -497,29 +497,100 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
         except Exception:
             logger.debug("Narration seed failed (non-critical)", exc_info=True)
 
-    # Paper adapter for simulated execution
+    # ---------------------------------------------------------------
+    # Exchange adapter + Execution pipeline
+    # ---------------------------------------------------------------
+    from .risk.manager import RiskManager
+    from .execution.engine import ExecutionEngine
+    from .portfolio.manager import PortfolioManager
+    from .portfolio.intent_converter import build_order_intents
+    from .core.events import FillEvent, OrderAck
+
+    # Determine exchange for routing
+    active_exchange = Exchange.BINANCE
+    if settings.exchanges:
+        active_exchange = settings.exchanges[0].name
+
+    adapter = None  # will be set below
+
     if settings.mode == Mode.PAPER:
         from .execution.adapters.paper import PaperAdapter
 
-        # Use the first configured exchange, fallback to BINANCE
-        paper_exchange = Exchange.BINANCE
-        if settings.exchanges:
-            paper_exchange = settings.exchanges[0].name
-
         adapter = PaperAdapter(
-            exchange=paper_exchange,
+            exchange=active_exchange,
             initial_balances={"USDT": Decimal("100000")},
         )
-        logger.info("Paper adapter ready with 100,000 USDT on %s", paper_exchange.value)
+        logger.info("Paper adapter ready with 100,000 USDT on %s", active_exchange.value)
 
-        # Set initial portfolio equity metric
         try:
             update_equity(100_000.0)
         except Exception:
             pass
 
-    # Wire feature vectors to strategy signals
+    elif settings.mode == Mode.LIVE:
+        from .execution.adapters.ccxt_adapter import CCXTAdapter
+
+        if not settings.exchanges:
+            logger.error("Live mode requires at least one exchange config")
+            return
+        exc_cfg = settings.exchanges[0]
+        adapter = CCXTAdapter(
+            exchange_name=exc_cfg.name.value,
+            api_key=exc_cfg.api_key,
+            api_secret=exc_cfg.api_secret,
+            sandbox=exc_cfg.testnet,
+            default_type="swap",
+        )
+        logger.info(
+            "Live adapter ready: %s (testnet=%s)",
+            exc_cfg.name.value, exc_cfg.testnet,
+        )
+
+    # Risk manager
+    risk_manager = RiskManager(
+        config=settings.risk,
+        event_bus=ctx.event_bus,
+        instruments=ctx.instruments,
+    )
+
+    # Portfolio manager
+    gov_sizing_fn = None
+    if governance_gate is not None:
+        try:
+            gov_sizing_fn = governance_gate.get_sizing_multiplier
+        except AttributeError:
+            pass
+    portfolio_manager = PortfolioManager(
+        max_position_pct=settings.risk.max_single_position_pct,
+        governance_sizing_fn=gov_sizing_fn,
+    )
+
+    # Execution engine
+    execution_engine = ExecutionEngine(
+        adapter=adapter,
+        event_bus=ctx.event_bus,
+        risk_manager=risk_manager,
+        kill_switch=risk_manager.kill_switch.is_active,
+        portfolio_state_provider=lambda: ctx.portfolio_state,
+        governance_gate=governance_gate,
+    )
+    await execution_engine.start()
+
+    # Signal cache — maps trace_id → Signal for fill-time narration
+    _signal_cache: dict[str, Any] = {}
+    _SIGNAL_CACHE_MAX = 500
+
+    # Capital for sizing (paper = 100k, live = from adapter later)
+    _capital = 100_000.0
+
+    logger.info(
+        "Execution pipeline wired: %s adapter → RiskManager → ExecutionEngine",
+        settings.mode.value,
+    )
+
+    # Wire feature vectors to strategy signals → execution pipeline
     from .core.events import FeatureVector
+    from .narration.humanizer import humanize_rationale
 
     async def on_feature_vector(event):
         if not isinstance(event, FeatureVector):
@@ -530,6 +601,12 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
             record_candle_processed(event.symbol, event.timeframe.value if hasattr(event.timeframe, 'value') else str(event.timeframe))
         except Exception:
             pass
+
+        # Update paper adapter with latest market price
+        if settings.mode == Mode.PAPER and adapter is not None:
+            close_price = event.features.get("close")
+            if close_price and hasattr(adapter, "set_market_price"):
+                adapter.set_market_price(event.symbol, Decimal(str(close_price)))
 
         candle_buffer = feature_engine.get_buffer(event.symbol, event.timeframe)
         if not candle_buffer:
@@ -568,7 +645,28 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
                 except Exception:
                     pass
 
-                # Feed narration service
+                # Cache signal for fill-time narration lookup
+                _signal_cache[sig.trace_id] = sig
+                if len(_signal_cache) > _SIGNAL_CACHE_MAX:
+                    # Evict oldest entries
+                    excess = len(_signal_cache) - _SIGNAL_CACHE_MAX
+                    for _k in list(_signal_cache)[:excess]:
+                        _signal_cache.pop(_k, None)
+
+                # Feed portfolio manager → execution pipeline
+                portfolio_manager.on_signal(sig)
+                targets = portfolio_manager.generate_targets(ctx, _capital)
+                if targets:
+                    intents = build_order_intents(
+                        targets,
+                        exchange=active_exchange,
+                        timestamp=ctx.clock.now(),
+                    )
+                    for intent in intents:
+                        await ctx.event_bus.publish("execution", intent)
+
+                # Narration: for NO_TRADE/HOLD narrate immediately;
+                # for directional signals, narrate on confirmed fill (see on_fill below)
                 if narration_service is not None and narration_store is not None:
                     try:
                         from .narration.schema import (
@@ -577,7 +675,12 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
                             PositionSnapshot,
                         )
 
-                        action = "NO_TRADE" if sig.direction.value == "flat" else "ENTER"
+                        # Only narrate at signal-time for non-execution actions
+                        if sig.direction.value == "flat":
+                            action = "NO_TRADE"
+                        else:
+                            action = "HOLD"  # Will narrate ENTER on fill
+
                         regime_str = ""
                         if ctx.regime:
                             regime_str = getattr(ctx.regime, "regime", "unknown")
@@ -602,6 +705,10 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
                             except Exception:
                                 pass
 
+                        reasons = humanize_rationale(
+                            sig.rationale, sig.features_used,
+                        ) if sig.rationale else []
+
                         explanation = DecisionExplanation(
                             symbol=sig.symbol,
                             timeframe=event.timeframe.value if hasattr(event.timeframe, "value") else str(event.timeframe),
@@ -609,10 +716,10 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
                             active_strategy=sig.strategy_id,
                             active_regime=regime_str,
                             action=action,
-                            reasons=[sig.rationale] if sig.rationale else [],
+                            reasons=reasons,
                             reason_confidences=[sig.confidence],
                             why_not=(
-                                [sig.rationale or "No clear setup"] if action == "NO_TRADE" else []
+                                reasons if action == "NO_TRADE" else []
                             ),
                             risk=risk_sum,
                             position=pos_snap,
@@ -632,6 +739,112 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
                         logger.debug("Narration generation failed", exc_info=True)
 
     await ctx.event_bus.subscribe("feature.vector", "strategy_runner", on_feature_vector)
+
+    # ---------------------------------------------------------------
+    # Fill handler: journal + fill-time narration
+    # ---------------------------------------------------------------
+
+    async def on_execution_event(event):
+        """Handle fills from the execution engine → journal + narration."""
+        if not isinstance(event, FillEvent):
+            return
+
+        trace_id = event.trace_id
+        cached_sig = _signal_cache.get(trace_id)
+
+        strategy_id = cached_sig.strategy_id if cached_sig else "unknown"
+        direction = "long"
+        if cached_sig:
+            direction = cached_sig.direction.value
+        elif event.side.value == "sell":
+            direction = "short"
+
+        # Open trade in journal (idempotent — returns existing if already open)
+        journal.open_trade(
+            trace_id=trace_id,
+            strategy_id=strategy_id,
+            symbol=event.symbol,
+            direction=direction,
+            exchange=event.exchange.value if hasattr(event.exchange, "value") else str(event.exchange),
+            signal_confidence=cached_sig.confidence if cached_sig else 0.0,
+            signal_rationale=cached_sig.rationale if cached_sig else "",
+        )
+
+        # Record entry fill
+        journal.record_entry_fill(
+            trace_id=trace_id,
+            fill_id=event.fill_id,
+            order_id=event.order_id,
+            side=event.side.value if hasattr(event.side, "value") else str(event.side),
+            price=event.price,
+            qty=event.qty,
+            fee=event.fee,
+            fee_currency=event.fee_currency,
+            is_maker=event.is_maker,
+            timestamp=event.timestamp,
+        )
+
+        # Update journal counts metric
+        try:
+            update_journal_counts(
+                journal.open_trade_count, journal.closed_trade_count,
+            )
+        except Exception:
+            pass
+
+        logger.info(
+            "Fill recorded: %s %s %s qty=%s price=%s (trace=%s)",
+            strategy_id, event.side.value if hasattr(event.side, "value") else event.side,
+            event.symbol, event.qty, event.price, trace_id[:8],
+        )
+
+        # Narrate the confirmed fill
+        if narration_service is not None and narration_store is not None and cached_sig:
+            try:
+                from .narration.schema import (
+                    DecisionExplanation,
+                    RiskSummary,
+                    PositionSnapshot,
+                )
+
+                regime_str = ""
+                if ctx.regime:
+                    regime_str = getattr(ctx.regime, "regime", "unknown")
+                    if hasattr(regime_str, "value"):
+                        regime_str = regime_str.value
+
+                reasons = humanize_rationale(
+                    cached_sig.rationale, cached_sig.features_used,
+                ) if cached_sig.rationale else ["Trade conditions met"]
+
+                explanation = DecisionExplanation(
+                    symbol=event.symbol,
+                    timeframe="",
+                    market_summary=f"Position entered on {event.symbol} at {event.price}.",
+                    active_strategy=strategy_id,
+                    active_regime=regime_str,
+                    action="ENTER",
+                    reasons=reasons,
+                    reason_confidences=[cached_sig.confidence],
+                    risk=RiskSummary(health_score=1.0),
+                    position=PositionSnapshot(
+                        open_positions=journal.open_trade_count,
+                    ),
+                    trace_id=trace_id,
+                )
+
+                item = narration_service.generate(explanation, force=True)
+                if item is not None:
+                    item.metadata = {
+                        "action": "ENTER",
+                        "symbol": event.symbol,
+                        "regime": regime_str,
+                    }
+                    narration_store.add(item, explanation=explanation)
+            except Exception:
+                logger.debug("Fill narration failed", exc_info=True)
+
+    await ctx.event_bus.subscribe("execution", "fill_handler", on_execution_event)
 
     # Start live market data feeds if exchange configs are available
     symbols = settings.symbols.symbols or ["BTC/USDT"]
@@ -670,6 +883,12 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
     await stop_event.wait()
 
     # Graceful shutdown
+    await execution_engine.stop()
+    if adapter is not None and hasattr(adapter, "close"):
+        try:
+            await adapter.close()
+        except Exception:
+            pass
     if narration_runner is not None:
         await narration_runner.cleanup()
         logger.info("Narration server stopped")
