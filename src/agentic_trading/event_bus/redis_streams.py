@@ -94,8 +94,29 @@ class RedisStreamsBus:
         group: str,
         handler: Callable[[BaseEvent], Coroutine[Any, Any, None]],
     ) -> None:
-        """Register a handler. Must be called before start()."""
+        """Register a handler.
+
+        Can be called before or after start().  If the bus is already
+        running the consumer group is created and the consume loop is
+        launched immediately.
+        """
         self._subscriptions.append((topic, group, handler))
+
+        # Late subscription — bus already running, spin up consumer now.
+        if self._running and self._redis is not None:
+            try:
+                await self._redis.xgroup_create(
+                    topic, group, id="0", mkstream=True
+                )
+            except aioredis.ResponseError as e:
+                if "BUSYGROUP" not in str(e):
+                    raise
+
+            task = asyncio.create_task(
+                self._consume_loop(topic, group, handler),
+                name=f"consumer-{topic}-{group}",
+            )
+            self._tasks.append(task)
 
     async def _consume_loop(
         self,

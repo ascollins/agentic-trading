@@ -106,7 +106,7 @@ class FeatureVector(BaseEvent):
     source_module: str = "features"
     symbol: str
     timeframe: Timeframe
-    features: dict[str, float] = Field(default_factory=dict)
+    features: dict[str, float | None] = Field(default_factory=dict)
 
 
 class NewsEvent(BaseEvent):
