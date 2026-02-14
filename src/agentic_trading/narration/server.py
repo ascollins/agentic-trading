@@ -17,7 +17,9 @@ from typing import Any
 
 from aiohttp import web
 
+from .presenter import BloombergPresenter
 from .schema import NarrationItem
+from .service import NarrationService
 from .store import NarrationStore
 from .tavus import TavusAdapter
 
@@ -32,11 +34,13 @@ _DISCLAIMER = (
 def create_narration_app(
     store: NarrationStore,
     tavus: TavusAdapter,
+    service: NarrationService | None = None,
 ) -> web.Application:
     """Create the aiohttp web application for narration endpoints."""
     app = web.Application()
     app["store"] = store
     app["tavus"] = tavus
+    app["service"] = service
 
     app.router.add_get("/narration/latest", handle_narration_latest)
     app.router.add_get("/narration/health", handle_health)
@@ -92,9 +96,12 @@ async def handle_avatar_briefing(request: web.Request) -> web.Response:
     """POST /avatar/briefing — generate avatar session from latest narration.
 
     Returns JSON with playback_url, script_text, session_id.
+    When a NarrationService with a Bloomberg Presenter is available, the
+    Tavus conversational context includes the full presenter persona prompt.
     """
     store: NarrationStore = request.app["store"]
     tavus: TavusAdapter = request.app["tavus"]
+    service: NarrationService | None = request.app.get("service")
 
     latest = store.latest_one()
     if latest is None:
@@ -102,14 +109,19 @@ async def handle_avatar_briefing(request: web.Request) -> web.Response:
             {"error": "No narration available yet"}, status=404
         )
 
+    # Build context — include presenter persona when available
+    context: dict[str, str] = {
+        "script_id": latest.script_id,
+        "timestamp": latest.timestamp.isoformat(),
+        "decision_ref": latest.decision_ref,
+    }
+    if service is not None:
+        context["presenter_persona"] = service.presenter.system_prompt
+
     # Create Tavus session
     session = await tavus.create_briefing(
         latest.script_text,
-        context={
-            "script_id": latest.script_id,
-            "timestamp": latest.timestamp.isoformat(),
-            "decision_ref": latest.decision_ref,
-        },
+        context=context,
     )
 
     # Update store with playback info
@@ -272,12 +284,13 @@ async def start_narration_server(
     tavus: TavusAdapter,
     host: str = "0.0.0.0",
     port: int = 8099,
+    service: NarrationService | None = None,
 ) -> web.AppRunner:
     """Start the narration HTTP server.
 
     Returns the runner for lifecycle management (call runner.cleanup() to stop).
     """
-    app = create_narration_app(store, tavus)
+    app = create_narration_app(store, tavus, service=service)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, host, port)

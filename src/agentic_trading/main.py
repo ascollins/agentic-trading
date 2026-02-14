@@ -449,6 +449,7 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
             "quiet": NarrVerbosity.QUIET,
             "normal": NarrVerbosity.NORMAL,
             "detailed": NarrVerbosity.DETAILED,
+            "presenter": NarrVerbosity.PRESENTER,
         }
         narration_service = NarrationService(
             verbosity=_verb_map.get(
@@ -473,6 +474,7 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
                 store=narration_store,
                 tavus=tavus_adapter,
                 port=settings.narration.server_port,
+                service=narration_service,
             )
             logger.info(
                 "Narration server started on port %d (mock_tavus=%s)",

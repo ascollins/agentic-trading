@@ -3,6 +3,7 @@
 Responsibilities:
   - Generate desk-style narration from platform state
   - Enforce verbosity limits (QUIET <= 30w, NORMAL <= 70w, DETAILED <= 130w)
+  - PRESENTER mode: Bloomberg Crypto Presenter broadcast-quality scripts
   - Ban technical jargon (RSI, MACD, ATR, Sharpe, etc.)
   - Deduplicate: only narrate meaningful changes
   - Throttle: configurable heartbeat interval for quiet periods
@@ -16,6 +17,7 @@ import time
 from enum import Enum
 from typing import Any
 
+from .presenter import BloombergPresenter, OutputFormat
 from .schema import DecisionExplanation, NarrationItem
 
 logger = logging.getLogger(__name__)
@@ -25,6 +27,7 @@ class Verbosity(str, Enum):
     QUIET = "quiet"        # <= 30 words
     NORMAL = "normal"      # <= 70 words
     DETAILED = "detailed"  # <= 130 words
+    PRESENTER = "presenter"  # Bloomberg presenter (no word cap, own structure)
 
 
 # Jargon that must never appear in narration output
@@ -57,6 +60,11 @@ class NarrationService:
         Interval between heartbeat narrations when nothing meaningful changes.
     dedupe_window_seconds:
         Minimum time between identical narrations (by content hash).
+    presenter:
+        Optional BloombergPresenter instance. Auto-created when verbosity
+        is ``PRESENTER`` and no presenter is supplied.
+    presenter_format:
+        Default output format for the Bloomberg presenter (LIVE_HIT or PACKAGE).
     """
 
     def __init__(
@@ -64,16 +72,31 @@ class NarrationService:
         verbosity: Verbosity = Verbosity.NORMAL,
         heartbeat_seconds: float = 60.0,
         dedupe_window_seconds: float = 30.0,
+        presenter: BloombergPresenter | None = None,
+        presenter_format: OutputFormat = OutputFormat.LIVE_HIT,
     ) -> None:
         self._verbosity = verbosity
         self._heartbeat_seconds = heartbeat_seconds
         self._dedupe_window_seconds = dedupe_window_seconds
+        self._presenter_format = presenter_format
+
+        # Bloomberg Presenter (lazy-initialised if needed)
+        self._presenter = presenter
 
         # Deduplication state
         self._last_hash: str = ""
         self._last_hash_time: float = 0.0
         self._last_narration_time: float = 0.0
         self._narration_count: int = 0
+
+    @property
+    def presenter(self) -> BloombergPresenter:
+        """Return the Bloomberg presenter, creating one if needed."""
+        if self._presenter is None:
+            self._presenter = BloombergPresenter(
+                default_format=self._presenter_format,
+            )
+        return self._presenter
 
     @property
     def narration_count(self) -> int:
@@ -111,14 +134,21 @@ class NarrationService:
             if (now - self._last_narration_time) < self._heartbeat_seconds:
                 return None
 
-        # Build the script
-        script, sources = self._build_script(explanation, v)
-
-        # Enforce word limit
-        script = self._enforce_word_limit(script, WORD_LIMITS[v])
-
-        # Enforce jargon ban
-        script = self._scrub_jargon(script)
+        # Build the script — PRESENTER mode uses the Bloomberg presenter
+        if v == Verbosity.PRESENTER:
+            script = self.presenter.build_script(explanation)
+            sources = [
+                "market_summary", "active_strategy", "active_regime",
+                "action", "reasons", "risk", "position",
+            ]
+            # Presenter handles its own structure; still scrub jargon
+            script = self._scrub_jargon(script)
+        else:
+            script, sources = self._build_script(explanation, v)
+            # Enforce word limit
+            script = self._enforce_word_limit(script, WORD_LIMITS[v])
+            # Enforce jargon ban
+            script = self._scrub_jargon(script)
 
         # Build stable script_id
         script_id = hashlib.sha256(

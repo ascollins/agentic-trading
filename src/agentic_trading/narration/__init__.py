@@ -8,18 +8,21 @@ All narration is grounded in DecisionExplanation schemas — the avatar
 never invents reasons beyond what the platform actually computed.
 """
 
+from .presenter import BloombergPresenter, OutputFormat
 from .schema import DecisionExplanation, NarrationItem
 from .service import NarrationService, Verbosity
 from .store import NarrationStore
 from .tavus import TavusAdapter, TavusAdapterHttp, MockTavusAdapter
 
 __all__ = [
+    "BloombergPresenter",
     "DecisionExplanation",
+    "MockTavusAdapter",
     "NarrationItem",
     "NarrationService",
-    "Verbosity",
     "NarrationStore",
+    "OutputFormat",
     "TavusAdapter",
     "TavusAdapterHttp",
-    "MockTavusAdapter",
+    "Verbosity",
 ]

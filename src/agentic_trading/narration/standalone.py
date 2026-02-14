@@ -145,11 +145,12 @@ async def run_standalone(
         logger.info("Using mock Tavus adapter")
         tavus = MockTavusAdapter(base_url=f"http://localhost:{port}")
 
-    # Start server
+    # Start server (pass service so the avatar briefing uses the presenter persona)
     runner = await start_narration_server(
         store=store,
         tavus=tavus,
         port=port,
+        service=service,
     )
 
     logger.info("=" * 60)

@@ -195,7 +195,7 @@ class NarrationConfig(BaseModel):
 
     enabled: bool = False
     server_port: int = 8099
-    verbosity: str = "normal"  # quiet / normal / detailed
+    verbosity: str = "normal"  # quiet / normal / detailed / presenter
     heartbeat_seconds: float = 60.0
     dedupe_window_seconds: float = 30.0
     max_stored_items: int = 200
