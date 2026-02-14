@@ -67,6 +67,16 @@ async def run(
     # 7. Start event bus
     await event_bus.start()
 
+    # 7.5 Start Prometheus metrics server (all modes)
+    try:
+        from .observability.metrics import start_metrics_server
+
+        metrics_port = settings.observability.metrics_port
+        start_metrics_server(port=metrics_port, mode=settings.mode.value)
+        logger.info("Prometheus metrics server started on port %d", metrics_port)
+    except Exception:
+        logger.warning("Failed to start metrics server", exc_info=True)
+
     # 8. Route to mode-specific loop
     try:
         if settings.mode == Mode.BACKTEST:
@@ -188,20 +198,22 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
 
     logger.info("Starting %s trading loop", settings.mode.value)
 
-    # Start Prometheus metrics server
+    # Import metrics helpers (server already started in run())
     try:
         from .observability.metrics import (
-            start_metrics_server,
             record_signal,
             record_candle_processed,
             update_equity,
+            record_journal_trade,
+            update_journal_rolling_metrics,
+            update_journal_counts,
+            update_journal_confidence,
+            update_journal_overtrading,
+            update_journal_edge,
+            update_journal_monte_carlo,
         )
-
-        metrics_port = settings.observability.metrics_port
-        start_metrics_server(port=metrics_port, mode=settings.mode.value)
-        logger.info("Prometheus metrics server started on port %d", metrics_port)
     except Exception:
-        logger.warning("Failed to start metrics server", exc_info=True)
+        pass
 
     # Set up graceful shutdown
     stop_event = asyncio.Event()
@@ -276,15 +288,125 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
             "Governance framework enabled (maturity, health, canary, impact, drift)"
         )
 
+    # Wire Trade Journal & Analytics (Edgewonk-inspired)
+    from .journal import (
+        TradeJournal,
+        RollingTracker,
+        ConfidenceCalibrator,
+        MonteCarloProjector,
+        OvertradingDetector,
+        CoinFlipBaseline,
+    )
+
+    rolling_tracker = RollingTracker(window_size=100)
+    confidence_cal = ConfidenceCalibrator(n_buckets=5)
+    monte_carlo = MonteCarloProjector(n_simulations=1000, seed=42)
+    overtrading_det = OvertradingDetector(lookback=50, threshold_z=2.0)
+    coin_flip = CoinFlipBaseline(n_simulations=10_000, seed=42)
+
+    def _on_trade_closed(trade):
+        """Post-close callback: feed all analytics components + emit metrics."""
+        try:
+            sid = trade.strategy_id
+            pnl = float(trade.net_pnl)
+            r = trade.r_multiple
+            won = trade.outcome.value == "win"
+
+            # Feed rolling tracker
+            rolling_tracker.add_trade(trade)
+
+            # Feed confidence calibrator
+            confidence_cal.record(sid, trade.signal_confidence, won, r)
+
+            # Feed Monte Carlo
+            monte_carlo.add_trade(sid, pnl, r)
+
+            # Feed overtrading detector
+            overtrading_det.record_trade(sid, trade.opened_at)
+
+            # Feed coin-flip baseline
+            coin_flip.add_trade(sid, pnl, r)
+
+            # Emit Prometheus metrics
+            try:
+                record_journal_trade(sid, trade.outcome.value)
+
+                # Rolling metrics
+                snap = rolling_tracker.snapshot(sid)
+                if snap:
+                    update_journal_rolling_metrics(sid, snap)
+
+                # Journal counts
+                update_journal_counts(
+                    journal.open_trade_count, journal.closed_trade_count
+                )
+
+                # Confidence calibration
+                report = confidence_cal.report(sid)
+                if report["total_observations"] > 0:
+                    update_journal_confidence(sid, report["brier_score"])
+
+                # Overtrading
+                update_journal_overtrading(
+                    sid, overtrading_det.is_overtrading(sid)
+                )
+
+                # Edge test (only when enough data)
+                if len(coin_flip._data.get(sid, coin_flip._data[sid]).pnl_series) >= 20:
+                    edge = coin_flip.evaluate(sid)
+                    update_journal_edge(sid, edge.get("p_value_bootstrap", 1.0))
+
+                # Monte Carlo (only when enough data)
+                mc_data = monte_carlo._data.get(sid)
+                if mc_data and len(mc_data.pnl_series) >= 20:
+                    proj = monte_carlo.project(sid, initial_equity=100_000.0)
+                    kelly = monte_carlo.kelly_fraction(sid)
+                    update_journal_monte_carlo(
+                        sid,
+                        proj.get("ruin_probability", 0.0),
+                        kelly,
+                    )
+            except Exception:
+                logger.debug("Journal metrics emission failed", exc_info=True)
+
+        except Exception:
+            logger.warning("Journal on_trade_closed callback failed", exc_info=True)
+
+    # Create journal with governance integration
+    health_tracker_ref = None
+    drift_detector_ref = None
+    if settings.governance.enabled:
+        health_tracker_ref = health_tracker
+        drift_detector_ref = drift_det
+
+    journal = TradeJournal(
+        max_closed_trades=10_000,
+        health_tracker=health_tracker_ref,
+        drift_detector=drift_detector_ref,
+        on_trade_closed=_on_trade_closed,
+    )
+    logger.info("Trade Journal & Analytics wired (rolling, confidence, MC, overtrading, edge)")
+
     # Paper adapter for simulated execution
     if settings.mode == Mode.PAPER:
         from .execution.adapters.paper import PaperAdapter
 
+        # Use the first configured exchange, fallback to BINANCE
+        paper_exchange = Exchange.BINANCE
+        if settings.exchanges:
+            paper_exchange = settings.exchanges[0].name
+
         adapter = PaperAdapter(
-            exchange=Exchange.BINANCE,
+            exchange=paper_exchange,
             initial_balances={"USDT": Decimal("100000")},
         )
-        logger.info("Paper adapter ready with 100,000 USDT")
+        logger.info("Paper adapter ready with 100,000 USDT on %s", paper_exchange.value)
+
+        # Set initial portfolio equity metric
+        try:
+            update_equity(100_000.0)
+        except Exception:
+            pass
 
     # Wire feature vectors to strategy signals
     from .core.events import FeatureVector
@@ -292,6 +414,12 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
     async def on_feature_vector(event):
         if not isinstance(event, FeatureVector):
             return
+
+        # Track candle processing metrics
+        try:
+            record_candle_processed(event.symbol, event.timeframe.value if hasattr(event.timeframe, 'value') else str(event.timeframe))
+        except Exception:
+            pass
 
         candle_buffer = feature_engine.get_buffer(event.symbol, event.timeframe)
         if not candle_buffer:

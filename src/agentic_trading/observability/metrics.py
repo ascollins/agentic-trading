@@ -317,3 +317,155 @@ def record_governance_latency(seconds: float) -> None:
 def update_active_tokens(strategy_id: str, count: int) -> None:
     """Update active execution tokens gauge."""
     ACTIVE_TOKENS.labels(strategy_id=strategy_id).set(count)
+
+
+# ---------------------------------------------------------------------------
+# Journal & analytics metrics (Edgewonk-inspired)
+# ---------------------------------------------------------------------------
+
+JOURNAL_TRADES_TOTAL = Counter(
+    "trading_journal_trades_total",
+    "Total trades tracked by journal",
+    ["strategy_id", "outcome"],
+)
+
+JOURNAL_WIN_RATE = Gauge(
+    "trading_journal_win_rate",
+    "Rolling win rate per strategy",
+    ["strategy_id"],
+)
+
+JOURNAL_PROFIT_FACTOR = Gauge(
+    "trading_journal_profit_factor",
+    "Rolling profit factor per strategy",
+    ["strategy_id"],
+)
+
+JOURNAL_EXPECTANCY = Gauge(
+    "trading_journal_expectancy",
+    "Rolling expectancy (avg PnL per trade)",
+    ["strategy_id"],
+)
+
+JOURNAL_AVG_R = Gauge(
+    "trading_journal_avg_r_multiple",
+    "Average R-multiple per strategy",
+    ["strategy_id"],
+)
+
+JOURNAL_SHARPE = Gauge(
+    "trading_journal_sharpe",
+    "Trade-level Sharpe ratio per strategy",
+    ["strategy_id"],
+)
+
+JOURNAL_MANAGEMENT_EFF = Gauge(
+    "trading_journal_management_efficiency",
+    "Average management efficiency (actual/MFE)",
+    ["strategy_id"],
+)
+
+JOURNAL_MAX_DRAWDOWN = Gauge(
+    "trading_journal_max_drawdown",
+    "Rolling window max drawdown",
+    ["strategy_id"],
+)
+
+JOURNAL_CONFIDENCE_BRIER = Gauge(
+    "trading_journal_confidence_brier",
+    "Confidence calibration Brier score (lower=better)",
+    ["strategy_id"],
+)
+
+JOURNAL_OVERTRADING = Gauge(
+    "trading_journal_overtrading",
+    "Overtrading status (1=overtrading, 0=normal)",
+    ["strategy_id"],
+)
+
+JOURNAL_EDGE_PVALUE = Gauge(
+    "trading_journal_edge_pvalue",
+    "Statistical edge p-value (lower=stronger edge)",
+    ["strategy_id"],
+)
+
+JOURNAL_RUIN_PROBABILITY = Gauge(
+    "trading_journal_ruin_probability",
+    "Monte Carlo probability of ruin",
+    ["strategy_id"],
+)
+
+JOURNAL_KELLY_FRACTION = Gauge(
+    "trading_journal_kelly_fraction",
+    "Optimal Kelly fraction",
+    ["strategy_id"],
+)
+
+JOURNAL_OPEN_TRADES = Gauge(
+    "trading_journal_open_trades",
+    "Currently open trades",
+)
+
+JOURNAL_CLOSED_TRADES = Gauge(
+    "trading_journal_closed_trades",
+    "Total closed trades in journal",
+)
+
+
+# ---------------------------------------------------------------------------
+# Journal convenience helpers
+# ---------------------------------------------------------------------------
+
+
+def record_journal_trade(strategy_id: str, outcome: str) -> None:
+    """Record a trade closure in the journal."""
+    JOURNAL_TRADES_TOTAL.labels(strategy_id=strategy_id, outcome=outcome).inc()
+
+
+def update_journal_rolling_metrics(strategy_id: str, metrics: dict) -> None:
+    """Update rolling journal metrics from a snapshot dict."""
+    if "win_rate" in metrics:
+        JOURNAL_WIN_RATE.labels(strategy_id=strategy_id).set(metrics["win_rate"])
+    if "profit_factor" in metrics and metrics["profit_factor"] != float("inf"):
+        JOURNAL_PROFIT_FACTOR.labels(strategy_id=strategy_id).set(metrics["profit_factor"])
+    if "expectancy" in metrics:
+        JOURNAL_EXPECTANCY.labels(strategy_id=strategy_id).set(metrics["expectancy"])
+    if "avg_r" in metrics:
+        JOURNAL_AVG_R.labels(strategy_id=strategy_id).set(metrics["avg_r"])
+    if "sharpe" in metrics:
+        JOURNAL_SHARPE.labels(strategy_id=strategy_id).set(metrics["sharpe"])
+    if "avg_management_efficiency" in metrics:
+        JOURNAL_MANAGEMENT_EFF.labels(strategy_id=strategy_id).set(
+            metrics["avg_management_efficiency"]
+        )
+    if "max_drawdown" in metrics:
+        JOURNAL_MAX_DRAWDOWN.labels(strategy_id=strategy_id).set(metrics["max_drawdown"])
+
+
+def update_journal_counts(open_count: int, closed_count: int) -> None:
+    """Update open/closed trade count gauges."""
+    JOURNAL_OPEN_TRADES.set(open_count)
+    JOURNAL_CLOSED_TRADES.set(closed_count)
+
+
+def update_journal_confidence(strategy_id: str, brier_score: float) -> None:
+    """Update confidence calibration Brier score."""
+    JOURNAL_CONFIDENCE_BRIER.labels(strategy_id=strategy_id).set(brier_score)
+
+
+def update_journal_overtrading(strategy_id: str, is_overtrading: bool) -> None:
+    """Update overtrading status gauge."""
+    JOURNAL_OVERTRADING.labels(strategy_id=strategy_id).set(1 if is_overtrading else 0)
+
+
+def update_journal_edge(strategy_id: str, p_value: float) -> None:
+    """Update statistical edge p-value."""
+    JOURNAL_EDGE_PVALUE.labels(strategy_id=strategy_id).set(p_value)
+
+
+def update_journal_monte_carlo(
+    strategy_id: str, ruin_prob: float, kelly: float
+) -> None:
+    """Update Monte Carlo and Kelly metrics."""
+    JOURNAL_RUIN_PROBABILITY.labels(strategy_id=strategy_id).set(ruin_prob)
+    JOURNAL_KELLY_FRACTION.labels(strategy_id=strategy_id).set(kelly)

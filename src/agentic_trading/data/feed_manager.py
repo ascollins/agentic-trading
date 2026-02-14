@@ -68,7 +68,10 @@ def _build_ccxt_exchange(config: ExchangeConfig) -> Any:
         }
     )
 
-    if config.testnet:
+    # Bybit demo trading: uses production URL with virtual funds
+    if config.demo:
+        exchange.enable_demo_trading(True)
+    elif config.testnet:
         exchange.set_sandbox_mode(True)
 
     return exchange
@@ -142,10 +145,11 @@ class FeedManager:
             try:
                 exchange = _build_ccxt_exchange(config)
                 self._exchanges[config.name] = exchange
+                mode_label = "demo" if config.demo else ("testnet" if config.testnet else "live")
                 logger.info(
-                    "Initialized CCXT Pro exchange: %s (testnet=%s)",
+                    "Initialized CCXT Pro exchange: %s (mode=%s)",
                     config.name.value,
-                    config.testnet,
+                    mode_label,
                 )
             except Exception:
                 logger.exception(
@@ -226,7 +230,26 @@ class FeedManager:
                     continue
 
                 # Reset error counter on success.
-                consecutive_errors = 0
+                if consecutive_errors > 0:
+                    consecutive_errors = 0
+
+                # Log first data receipt and periodic updates
+                update_count = getattr(self, '_update_counts', {})
+                key = f"{exchange_name.value}:{symbol}"
+                update_count[key] = update_count.get(key, 0) + 1
+                self._update_counts = update_count
+                if update_count[key] == 1:
+                    logger.info(
+                        "First OHLCV data received: %s %s (%d entries, ts=%s)",
+                        exchange_name.value, symbol, len(ohlcv_list),
+                        ohlcv_list[-1][0] if ohlcv_list else "?",
+                    )
+                elif update_count[key] % 60 == 0:
+                    logger.info(
+                        "OHLCV heartbeat: %s %s (%d updates, last_ts=%s)",
+                        exchange_name.value, symbol, update_count[key],
+                        ohlcv_list[-1][0] if ohlcv_list else "?",
+                    )
 
                 await self._process_ohlcv_update(
                     exchange_name, symbol, ohlcv_list, state_key
@@ -340,7 +363,7 @@ class FeedManager:
         # Forward to CandleBuilder for higher-timeframe aggregation.
         await self._candle_builder.process(candle)
 
-        logger.debug(
+        logger.info(
             "Emitted closed candle: %s %s %s @ %s  O=%.2f H=%.2f L=%.2f C=%.2f V=%.4f",
             exchange_name.value,
             symbol,

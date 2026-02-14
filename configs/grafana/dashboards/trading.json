@@ -11,7 +11,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
       "targets": [
         {
-          "expr": "trading_portfolio_equity",
+          "expr": "trading_equity",
           "legendFormat": "equity",
           "refId": "A"
         }
@@ -21,21 +21,9 @@
       }
     },
     {
-      "title": "Open Positions",
-      "type": "stat",
-      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
-      "targets": [
-        {
-          "expr": "trading_open_positions",
-          "legendFormat": "positions",
-          "refId": "A"
-        }
-      ]
-    },
-    {
       "title": "Daily PnL",
       "type": "stat",
-      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
       "targets": [
         {
           "expr": "trading_daily_pnl",
@@ -48,9 +36,9 @@
       }
     },
     {
-      "title": "Kill Switch Active",
+      "title": "Kill Switch",
       "type": "stat",
-      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 4 },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
       "targets": [
         {
           "expr": "trading_kill_switch_active",
@@ -67,16 +55,38 @@
       }
     },
     {
-      "title": "Active Circuit Breakers",
+      "title": "Gross Exposure",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 4 },
+      "targets": [
+        {
+          "expr": "trading_gross_exposure",
+          "legendFormat": "exposure",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "currencyUSD" }
+      }
+    },
+    {
+      "title": "System Mode",
       "type": "stat",
       "gridPos": { "h": 4, "w": 6, "x": 18, "y": 4 },
       "targets": [
         {
-          "expr": "trading_circuit_breakers_active",
-          "legendFormat": "breakers",
+          "expr": "trading_system_info",
+          "legendFormat": "{{mode}}",
           "refId": "A"
         }
-      ]
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "1": { "text": "RUNNING", "color": "green" } } }
+          ]
+        }
+      }
     },
     {
       "title": "Signals per Strategy",
@@ -94,16 +104,19 @@
       }
     },
     {
-      "title": "Order Fill Rate",
+      "title": "Candles Processed",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
       "targets": [
         {
-          "expr": "rate(trading_fills_total[5m])",
-          "legendFormat": "{{side}}",
+          "expr": "rate(trading_candles_processed_total[5m])",
+          "legendFormat": "{{symbol}}",
           "refId": "A"
         }
-      ]
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "ops" }
+      }
     },
     {
       "title": "Drawdown %",
@@ -133,69 +146,17 @@
       }
     },
     {
-      "title": "Gross/Net Exposure",
+      "title": "Decision Latency (p95 / p99)",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 8, "x": 8, "y": 16 },
       "targets": [
         {
-          "expr": "trading_gross_exposure",
-          "legendFormat": "gross",
-          "refId": "A"
-        },
-        {
-          "expr": "trading_net_exposure",
-          "legendFormat": "net",
-          "refId": "B"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": { "unit": "currencyUSD" }
-      }
-    },
-    {
-      "title": "Fees Accumulated",
-      "type": "timeseries",
-      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 16 },
-      "targets": [
-        {
-          "expr": "trading_total_fees",
-          "legendFormat": "fees",
-          "refId": "A"
-        },
-        {
-          "expr": "trading_total_funding",
-          "legendFormat": "funding",
-          "refId": "B"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": { "unit": "currencyUSD" }
-      }
-    },
-    {
-      "title": "Reconciliation Status",
-      "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
-      "targets": [
-        {
-          "expr": "trading_reconciliation_drift",
-          "legendFormat": "{{symbol}}",
-          "refId": "A"
-        }
-      ]
-    },
-    {
-      "title": "Event Bus Latency",
-      "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
-      "targets": [
-        {
-          "expr": "histogram_quantile(0.95, rate(trading_event_latency_seconds_bucket[5m]))",
+          "expr": "histogram_quantile(0.95, rate(trading_decision_latency_seconds_bucket[5m]))",
           "legendFormat": "p95",
           "refId": "A"
         },
         {
-          "expr": "histogram_quantile(0.99, rate(trading_event_latency_seconds_bucket[5m]))",
+          "expr": "histogram_quantile(0.99, rate(trading_decision_latency_seconds_bucket[5m]))",
           "legendFormat": "p99",
           "refId": "B"
         }
@@ -203,12 +164,475 @@
       "fieldConfig": {
         "defaults": { "unit": "s" }
       }
+    },
+    {
+      "title": "Order Latency (p95 / p99)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 16 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(trading_order_latency_seconds_bucket[5m]))",
+          "legendFormat": "p95",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.99, rate(trading_order_latency_seconds_bucket[5m]))",
+          "legendFormat": "p99",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "s" }
+      }
+    },
+    {
+      "title": "--- GOVERNANCE ---",
+      "type": "text",
+      "gridPos": { "h": 2, "w": 24, "x": 0, "y": 24 },
+      "options": { "content": "## Governance Framework (Soteria)", "mode": "markdown" }
+    },
+    {
+      "title": "Governance Decisions",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 26 },
+      "targets": [
+        {
+          "expr": "rate(trading_governance_decisions_total[5m])",
+          "legendFormat": "{{action}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "ops" }
+      }
+    },
+    {
+      "title": "Governance Blocks",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 26 },
+      "targets": [
+        {
+          "expr": "rate(trading_governance_blocks_total[5m])",
+          "legendFormat": "{{reason}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "ops" }
+      }
+    },
+    {
+      "title": "Strategy Health Scores",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 34 },
+      "targets": [
+        {
+          "expr": "trading_health_score",
+          "legendFormat": "{{strategy}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Drift Deviation %",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 34 },
+      "targets": [
+        {
+          "expr": "trading_drift_deviation",
+          "legendFormat": "{{strategy}} / {{metric}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "percentunit" }
+      }
+    },
+    {
+      "title": "Active Execution Tokens",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 4, "x": 16, "y": 34 },
+      "targets": [
+        {
+          "expr": "trading_active_tokens",
+          "legendFormat": "tokens",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Canary Status",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 4, "x": 20, "y": 34 },
+      "targets": [
+        {
+          "expr": "trading_canary_status",
+          "legendFormat": "canary",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "1": { "text": "HEALTHY", "color": "green" }, "0": { "text": "FAILING", "color": "red" } } }
+          ]
+        }
+      }
+    },
+    {
+      "title": "Governance Gate Latency",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 42 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(trading_governance_latency_seconds_bucket[5m]))",
+          "legendFormat": "p95",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.99, rate(trading_governance_latency_seconds_bucket[5m]))",
+          "legendFormat": "p99",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "s" }
+      }
+    },
+    {
+      "title": "Maturity Levels",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 42 },
+      "targets": [
+        {
+          "expr": "trading_maturity_level",
+          "legendFormat": "{{strategy}} = {{level}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "--- TRADE JOURNAL & ANALYTICS ---",
+      "type": "text",
+      "gridPos": { "h": 2, "w": 24, "x": 0, "y": 50 },
+      "options": { "content": "## Trade Journal (Edgewonk-inspired)", "mode": "markdown" }
+    },
+    {
+      "title": "Win Rate (Rolling)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 52 },
+      "targets": [
+        {
+          "expr": "trading_journal_win_rate",
+          "legendFormat": "{{strategy_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "steps": [
+              { "value": 0, "color": "red" },
+              { "value": 0.40, "color": "yellow" },
+              { "value": 0.50, "color": "green" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Profit Factor (Rolling)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 52 },
+      "targets": [
+        {
+          "expr": "trading_journal_profit_factor",
+          "legendFormat": "{{strategy_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "value": 0, "color": "red" },
+              { "value": 1.0, "color": "yellow" },
+              { "value": 1.5, "color": "green" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Avg R-Multiple",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 52 },
+      "targets": [
+        {
+          "expr": "trading_journal_avg_r_multiple",
+          "legendFormat": "{{strategy_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "value": -1, "color": "red" },
+              { "value": 0, "color": "yellow" },
+              { "value": 0.5, "color": "green" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Expectancy ($/trade)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 60 },
+      "targets": [
+        {
+          "expr": "trading_journal_expectancy",
+          "legendFormat": "{{strategy_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "thresholds": {
+            "steps": [
+              { "value": -100, "color": "red" },
+              { "value": 0, "color": "green" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Sharpe (Trade-level)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 60 },
+      "targets": [
+        {
+          "expr": "trading_journal_sharpe",
+          "legendFormat": "{{strategy_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "value": -1, "color": "red" },
+              { "value": 0, "color": "yellow" },
+              { "value": 1.0, "color": "green" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Management Efficiency",
+      "type": "gauge",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 60 },
+      "targets": [
+        {
+          "expr": "trading_journal_management_efficiency",
+          "legendFormat": "{{strategy_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "steps": [
+              { "value": 0, "color": "red" },
+              { "value": 0.4, "color": "yellow" },
+              { "value": 0.7, "color": "green" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Open / Closed Trades",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 60 },
+      "targets": [
+        {
+          "expr": "trading_journal_open_trades",
+          "legendFormat": "open",
+          "refId": "A"
+        },
+        {
+          "expr": "trading_journal_closed_trades",
+          "legendFormat": "closed",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "title": "Rolling Max Drawdown",
+      "type": "gauge",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 64 },
+      "targets": [
+        {
+          "expr": "trading_journal_max_drawdown",
+          "legendFormat": "{{strategy_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "thresholds": {
+            "steps": [
+              { "value": 0, "color": "green" },
+              { "value": 1000, "color": "yellow" },
+              { "value": 5000, "color": "red" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Confidence Calibration (Brier Score)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 64 },
+      "targets": [
+        {
+          "expr": "trading_journal_confidence_brier",
+          "legendFormat": "{{strategy_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "value": 0, "color": "green" },
+              { "value": 0.15, "color": "yellow" },
+              { "value": 0.25, "color": "red" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Statistical Edge (p-value)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 64 },
+      "targets": [
+        {
+          "expr": "trading_journal_edge_pvalue",
+          "legendFormat": "{{strategy_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "value": 0, "color": "green" },
+              { "value": 0.05, "color": "yellow" },
+              { "value": 0.25, "color": "red" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Overtrading Alert",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 72 },
+      "targets": [
+        {
+          "expr": "trading_journal_overtrading",
+          "legendFormat": "{{strategy_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "NORMAL", "color": "green" }, "1": { "text": "OVERTRADING", "color": "red" } } }
+          ]
+        }
+      }
+    },
+    {
+      "title": "Probability of Ruin (MC)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 72 },
+      "targets": [
+        {
+          "expr": "trading_journal_ruin_probability",
+          "legendFormat": "{{strategy_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "steps": [
+              { "value": 0, "color": "green" },
+              { "value": 0.05, "color": "yellow" },
+              { "value": 0.15, "color": "red" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Kelly Fraction",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 72 },
+      "targets": [
+        {
+          "expr": "trading_journal_kelly_fraction",
+          "legendFormat": "{{strategy_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "steps": [
+              { "value": 0, "color": "red" },
+              { "value": 0.05, "color": "yellow" },
+              { "value": 0.15, "color": "green" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Trades per Strategy",
+      "type": "timeseries",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 72 },
+      "targets": [
+        {
+          "expr": "trading_journal_trades_total",
+          "legendFormat": "{{strategy_id}} ({{outcome}})",
+          "refId": "A"
+        }
+      ]
     }
   ],
   "schemaVersion": 39,
   "tags": ["trading"],
   "templating": { "list": [] },
   "time": { "from": "now-1h", "to": "now" },
+  "refresh": "10s",
   "title": "Agentic Trading",
   "uid": "agentic-trading-main"
 }

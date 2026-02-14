@@ -27,4 +27,4 @@ USER trader
 
 # Default command
 ENTRYPOINT ["python", "-m", "agentic_trading.cli"]
-CMD ["backtest", "--config", "configs/backtest.toml"]
+CMD ["paper", "--config", "configs/paper.toml"]

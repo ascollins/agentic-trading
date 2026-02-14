@@ -26,6 +26,7 @@ class ExchangeConfig(BaseModel):
     api_key_env: str = ""  # Name of env var holding the API key
     secret_env: str = ""  # Name of env var holding the secret
     testnet: bool = True
+    demo: bool = False  # Bybit demo trading (production URL, virtual funds)
     rate_limit: int = 1200  # ms between requests
     timeout: int = 30000  # ms
 

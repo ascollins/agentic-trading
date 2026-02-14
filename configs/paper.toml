@@ -1,25 +1,22 @@
 # ===================================================================
-# Paper trading configuration
+# Paper trading configuration — Bybit Demo Account
 # ===================================================================
 
 mode = "paper"
 
 [[exchanges]]
-name = "binance"
-api_key_env = "TRADING_BINANCE_API_KEY"
-secret_env = "TRADING_BINANCE_SECRET"
-testnet = true
-rate_limit = 1200
-
-[[exchanges]]
 name = "bybit"
 api_key_env = "TRADING_BYBIT_API_KEY"
 secret_env = "TRADING_BYBIT_SECRET"
-testnet = true
+testnet = false
+demo = true
 rate_limit = 1200
 
 [risk]
 reconciliation_interval_seconds = 30
+max_daily_loss_pct = 0.05
+max_drawdown_pct = 0.15
+max_portfolio_leverage = 3.0
 
 [observability]
 log_level = "INFO"
