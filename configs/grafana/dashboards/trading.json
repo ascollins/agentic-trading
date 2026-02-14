@@ -1,0 +1,214 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "panels": [
+    {
+      "title": "Portfolio Equity",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "trading_portfolio_equity",
+          "legendFormat": "equity",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "currencyUSD" }
+      }
+    },
+    {
+      "title": "Open Positions",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "trading_open_positions",
+          "legendFormat": "positions",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Daily PnL",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "targets": [
+        {
+          "expr": "trading_daily_pnl",
+          "legendFormat": "pnl",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "currencyUSD" }
+      }
+    },
+    {
+      "title": "Kill Switch Active",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 4 },
+      "targets": [
+        {
+          "expr": "trading_kill_switch_active",
+          "legendFormat": "kill_switch",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "OFF", "color": "green" }, "1": { "text": "ACTIVE", "color": "red" } } }
+          ]
+        }
+      }
+    },
+    {
+      "title": "Active Circuit Breakers",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 4 },
+      "targets": [
+        {
+          "expr": "trading_circuit_breakers_active",
+          "legendFormat": "breakers",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Signals per Strategy",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "rate(trading_signals_total[5m])",
+          "legendFormat": "{{strategy}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "ops" }
+      }
+    },
+    {
+      "title": "Order Fill Rate",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "expr": "rate(trading_fills_total[5m])",
+          "legendFormat": "{{side}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Drawdown %",
+      "type": "gauge",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 16 },
+      "targets": [
+        {
+          "expr": "trading_drawdown_pct",
+          "legendFormat": "drawdown",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 0.3,
+          "thresholds": {
+            "steps": [
+              { "value": 0, "color": "green" },
+              { "value": 0.05, "color": "yellow" },
+              { "value": 0.10, "color": "orange" },
+              { "value": 0.15, "color": "red" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Gross/Net Exposure",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 16 },
+      "targets": [
+        {
+          "expr": "trading_gross_exposure",
+          "legendFormat": "gross",
+          "refId": "A"
+        },
+        {
+          "expr": "trading_net_exposure",
+          "legendFormat": "net",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "currencyUSD" }
+      }
+    },
+    {
+      "title": "Fees Accumulated",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 16 },
+      "targets": [
+        {
+          "expr": "trading_total_fees",
+          "legendFormat": "fees",
+          "refId": "A"
+        },
+        {
+          "expr": "trading_total_funding",
+          "legendFormat": "funding",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "currencyUSD" }
+      }
+    },
+    {
+      "title": "Reconciliation Status",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "targets": [
+        {
+          "expr": "trading_reconciliation_drift",
+          "legendFormat": "{{symbol}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Event Bus Latency",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(trading_event_latency_seconds_bucket[5m]))",
+          "legendFormat": "p95",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.99, rate(trading_event_latency_seconds_bucket[5m]))",
+          "legendFormat": "p99",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "s" }
+      }
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["trading"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "title": "Agentic Trading",
+  "uid": "agentic-trading-main"
+}

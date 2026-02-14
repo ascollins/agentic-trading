@@ -1,0 +1,27 @@
+# ===================================================================
+# Paper trading configuration
+# ===================================================================
+
+mode = "paper"
+
+[[exchanges]]
+name = "binance"
+api_key_env = "TRADING_BINANCE_API_KEY"
+secret_env = "TRADING_BINANCE_SECRET"
+testnet = true
+rate_limit = 1200
+
+[[exchanges]]
+name = "bybit"
+api_key_env = "TRADING_BYBIT_API_KEY"
+secret_env = "TRADING_BYBIT_SECRET"
+testnet = true
+rate_limit = 1200
+
+[risk]
+reconciliation_interval_seconds = 30
+
+[observability]
+log_level = "INFO"
+log_format = "json"
+decision_audit = true

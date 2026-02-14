@@ -1,0 +1,46 @@
+# ===================================================================
+# Default configuration - base settings for all modes
+# ===================================================================
+
+mode = "backtest"
+read_only = false
+
+[symbols]
+symbols = ["BTC/USDT", "ETH/USDT"]
+max_symbols = 200
+
+[symbols.filters]
+min_daily_volume_usd = 1_000_000
+max_spread_bps = 50.0
+min_notional_usd = 10.0
+allowed_quotes = ["USDT", "USDC"]
+
+[regime]
+hysteresis_count = 3
+max_switches_per_day = 4
+cooldown_minutes = 60
+hmm_lookback_days = 30
+
+[risk]
+max_portfolio_leverage = 3.0
+max_single_position_pct = 0.10
+max_correlated_exposure_pct = 0.25
+max_daily_loss_pct = 0.05
+max_drawdown_pct = 0.15
+var_confidence = 0.95
+var_lookback_days = 30
+circuit_breaker_cooldown_seconds = 300
+reconciliation_interval_seconds = 30
+kill_switch_cancel_all = true
+
+[safe_mode]
+enabled = false
+max_symbols = 5
+max_leverage = 2
+position_size_multiplier = 0.5
+
+[observability]
+log_level = "INFO"
+log_format = "json"
+metrics_port = 9090
+decision_audit = true

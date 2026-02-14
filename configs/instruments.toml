@@ -1,0 +1,39 @@
+# ===================================================================
+# Symbol universe configuration
+# ===================================================================
+# Define which instruments to trade and their filters.
+# Exchange metadata (tick/step sizes) is fetched dynamically from CCXT.
+# ===================================================================
+
+[filters]
+min_daily_volume_usd = 1_000_000
+max_spread_bps = 50.0
+min_notional_usd = 10.0
+allowed_quotes = ["USDT", "USDC"]
+
+# Explicit whitelist (overrides dynamic filtering)
+[whitelist]
+spot = [
+    "BTC/USDT",
+    "ETH/USDT",
+    "SOL/USDT",
+    "BNB/USDT",
+    "XRP/USDT",
+    "ADA/USDT",
+    "AVAX/USDT",
+    "DOGE/USDT",
+    "LINK/USDT",
+    "DOT/USDT",
+]
+
+perp = [
+    "BTC/USDT:USDT",
+    "ETH/USDT:USDT",
+    "SOL/USDT:USDT",
+    "BNB/USDT:USDT",
+    "XRP/USDT:USDT",
+]
+
+# Blacklist (never trade, regardless of filters)
+[blacklist]
+symbols = []

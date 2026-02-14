@@ -1,0 +1,42 @@
+# ===================================================================
+# Live trading configuration
+# ===================================================================
+# WARNING: This mode trades with REAL money.
+# Requires: I_UNDERSTAND_LIVE_TRADING=true env var AND --live CLI flag
+# ===================================================================
+
+mode = "live"
+
+[[exchanges]]
+name = "binance"
+api_key_env = "TRADING_BINANCE_API_KEY"
+secret_env = "TRADING_BINANCE_SECRET"
+testnet = false
+rate_limit = 1200
+
+[[exchanges]]
+name = "bybit"
+api_key_env = "TRADING_BYBIT_API_KEY"
+secret_env = "TRADING_BYBIT_SECRET"
+testnet = false
+rate_limit = 1200
+
+# Conservative risk for live
+[risk]
+max_portfolio_leverage = 2.0
+max_single_position_pct = 0.05
+max_daily_loss_pct = 0.03
+max_drawdown_pct = 0.10
+reconciliation_interval_seconds = 15
+
+# Safe mode recommended for initial live deployment
+[safe_mode]
+enabled = true
+max_symbols = 3
+max_leverage = 2
+position_size_multiplier = 0.25
+
+[observability]
+log_level = "INFO"
+log_format = "json"
+decision_audit = true

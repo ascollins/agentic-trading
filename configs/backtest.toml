@@ -1,0 +1,24 @@
+# ===================================================================
+# Backtest mode configuration
+# ===================================================================
+
+mode = "backtest"
+
+[backtest]
+start_date = "2024-01-01"
+end_date = "2024-06-30"
+initial_capital = 100_000.0
+slippage_model = "volatility_based"
+slippage_bps = 5.0
+fee_maker = 0.0002
+fee_taker = 0.0004
+funding_enabled = true
+partial_fills = true
+latency_ms = 50
+random_seed = 42
+data_dir = "data/historical"
+
+[observability]
+log_level = "INFO"
+log_format = "console"
+decision_audit = true
