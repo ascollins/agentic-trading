@@ -83,7 +83,16 @@ class IStrategy(Protocol):
 
 @runtime_checkable
 class IExchangeAdapter(Protocol):
-    """Unified exchange interface. Implemented by CCXT, paper, and backtest adapters."""
+    """Unified exchange interface. Implemented by CCXT, paper, and backtest adapters.
+
+    Core methods (required by all adapters):
+        submit_order, cancel_order, cancel_all_orders, get_open_orders,
+        get_positions, get_balances, get_instrument, get_funding_rate
+
+    V5-enhanced methods (optional, raise NotImplementedError if unsupported):
+        amend_order, batch_submit_orders, set_leverage, set_position_mode,
+        set_trading_stop, get_closed_pnl
+    """
 
     async def submit_order(self, intent: OrderIntent) -> OrderAck: ...
 
@@ -100,6 +109,43 @@ class IExchangeAdapter(Protocol):
     async def get_instrument(self, symbol: str) -> Instrument: ...
 
     async def get_funding_rate(self, symbol: str) -> Decimal: ...
+
+    # ---- V5-enhanced methods (Bybit V5 / modern exchange capabilities) ----
+
+    async def amend_order(
+        self,
+        order_id: str,
+        symbol: str,
+        *,
+        qty: Decimal | None = None,
+        price: Decimal | None = None,
+        stop_price: Decimal | None = None,
+    ) -> OrderAck: ...
+
+    async def batch_submit_orders(
+        self, intents: list[OrderIntent]
+    ) -> list[OrderAck]: ...
+
+    async def set_leverage(
+        self, symbol: str, leverage: int
+    ) -> dict[str, Any]: ...
+
+    async def set_position_mode(
+        self, symbol: str, mode: str
+    ) -> dict[str, Any]: ...
+
+    async def set_trading_stop(
+        self,
+        symbol: str,
+        *,
+        take_profit: Decimal | None = None,
+        stop_loss: Decimal | None = None,
+        trailing_stop: Decimal | None = None,
+    ) -> dict[str, Any]: ...
+
+    async def get_closed_pnl(
+        self, symbol: str, *, limit: int = 50
+    ) -> list[dict[str, Any]]: ...
 
 
 # ---------------------------------------------------------------------------

@@ -73,6 +73,7 @@ class TestTimeInForce:
             TimeInForce.IOC,
             TimeInForce.FOK,
             TimeInForce.GTD,
+            TimeInForce.POST_ONLY,
         }
 
 

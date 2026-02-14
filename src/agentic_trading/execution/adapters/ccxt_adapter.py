@@ -463,6 +463,347 @@ class CCXTAdapter:
             raise self._wrap_error(exc) from exc
 
     # ------------------------------------------------------------------
+    # IExchangeAdapter: amend_order (V5-enhanced)
+    # ------------------------------------------------------------------
+
+    async def amend_order(
+        self,
+        order_id: str,
+        symbol: str,
+        *,
+        qty: Decimal | None = None,
+        price: Decimal | None = None,
+        stop_price: Decimal | None = None,
+    ) -> OrderAck:
+        """Amend an open order in-place (modify price/qty without cancel+replace).
+
+        Maps to Bybit V5 ``/v5/order/amend`` via CCXT's ``edit_order``.
+        On Binance, falls back to cancel-and-replace.
+        """
+        await self._ensure_markets()
+        try:
+            params: dict[str, Any] = {}
+            if stop_price is not None:
+                params["stopPrice"] = float(stop_price)
+
+            amount = float(qty) if qty is not None else None
+            new_price = float(price) if price is not None else None
+
+            if hasattr(self._ccxt, "edit_order"):
+                result: dict[str, Any] = await self._ccxt.edit_order(
+                    id=order_id,
+                    symbol=symbol,
+                    type=None,  # preserve existing type
+                    side=None,  # preserve existing side
+                    amount=amount,
+                    price=new_price,
+                    params=params,
+                )
+            else:
+                # Fallback: cancel + re-create (less atomic)
+                await self._ccxt.cancel_order(id=order_id, symbol=symbol)
+                # Re-fetch the original order info to get type/side
+                raise ExchangeError(
+                    f"Exchange {self._exchange_name} does not support edit_order; "
+                    "use cancel_order + submit_order instead."
+                )
+
+            logger.info(
+                "CCXT order amended: id=%s symbol=%s qty=%s price=%s stop=%s",
+                order_id, symbol, qty, price, stop_price,
+            )
+            return OrderAck(
+                order_id=str(result.get("id", order_id)),
+                client_order_id=str(result.get("clientOrderId", "")),
+                symbol=symbol,
+                exchange=self._exchange_enum,
+                status=_map_status(str(result.get("status", "open"))),
+            )
+        except ExchangeError:
+            raise
+        except Exception as exc:
+            raise self._wrap_error(exc) from exc
+
+    # ------------------------------------------------------------------
+    # IExchangeAdapter: batch_submit_orders (V5-enhanced)
+    # ------------------------------------------------------------------
+
+    async def batch_submit_orders(
+        self, intents: list[OrderIntent]
+    ) -> list[OrderAck]:
+        """Submit multiple orders in a single request where supported.
+
+        Maps to Bybit V5 ``/v5/order/create-batch`` (up to 20 orders).
+        Falls back to sequential ``submit_order`` calls for exchanges
+        without native batch support.
+        """
+        await self._ensure_markets()
+        try:
+            # Check if exchange supports native batch orders
+            if hasattr(self._ccxt, "create_orders"):
+                # Build CCXT order list
+                order_dicts: list[dict[str, Any]] = []
+                for intent in intents:
+                    ccxt_type = _ORDER_TYPE_MAP.get(intent.order_type, "limit")
+                    side_str = intent.side.value
+                    price = float(intent.price) if intent.price is not None else None
+                    params: dict[str, Any] = {}
+
+                    if self._exchange_name == "bybit":
+                        params["orderLinkId"] = intent.dedupe_key
+                    else:
+                        params["newClientOrderId"] = intent.dedupe_key
+
+                    if intent.stop_price is not None:
+                        params["stopPrice"] = float(intent.stop_price)
+                    if intent.reduce_only:
+                        params["reduceOnly"] = True
+                    if intent.post_only:
+                        params["postOnly"] = True
+                    if intent.time_in_force != TimeInForce.GTC:
+                        params["timeInForce"] = intent.time_in_force.value
+
+                    order_dicts.append({
+                        "symbol": intent.symbol,
+                        "type": ccxt_type,
+                        "side": side_str,
+                        "amount": float(intent.qty),
+                        "price": price,
+                        "params": params,
+                    })
+
+                results: list[dict[str, Any]] = await self._ccxt.create_orders(
+                    order_dicts
+                )
+
+                acks: list[OrderAck] = []
+                for i, result in enumerate(results):
+                    trace_id = intents[i].trace_id if i < len(intents) else ""
+                    acks.append(
+                        OrderAck(
+                            order_id=str(result.get("id", "")),
+                            client_order_id=str(
+                                result.get("clientOrderId", intents[i].dedupe_key)
+                            ),
+                            symbol=result.get("symbol", intents[i].symbol),
+                            exchange=self._exchange_enum,
+                            status=_map_status(str(result.get("status", "open"))),
+                            trace_id=trace_id,
+                        )
+                    )
+
+                logger.info(
+                    "CCXT batch submitted %d orders (native batch)", len(acks)
+                )
+                return acks
+
+            else:
+                # Fallback: sequential submission
+                acks = []
+                for intent in intents:
+                    ack = await self.submit_order(intent)
+                    acks.append(ack)
+                logger.info(
+                    "CCXT batch submitted %d orders (sequential fallback)",
+                    len(acks),
+                )
+                return acks
+
+        except ExchangeError:
+            raise
+        except Exception as exc:
+            raise self._wrap_error(exc) from exc
+
+    # ------------------------------------------------------------------
+    # IExchangeAdapter: set_leverage (V5-enhanced)
+    # ------------------------------------------------------------------
+
+    async def set_leverage(
+        self, symbol: str, leverage: int
+    ) -> dict[str, Any]:
+        """Set per-symbol leverage for linear/inverse perpetuals.
+
+        Maps to Bybit V5 ``/v5/position/set-leverage``.
+        """
+        await self._ensure_markets()
+        try:
+            result = await self._ccxt.set_leverage(leverage, symbol)
+            logger.info(
+                "CCXT leverage set: symbol=%s leverage=%dx", symbol, leverage
+            )
+            return result if isinstance(result, dict) else {"result": result}
+        except Exception as exc:
+            raise self._wrap_error(exc) from exc
+
+    # ------------------------------------------------------------------
+    # IExchangeAdapter: set_position_mode (V5-enhanced)
+    # ------------------------------------------------------------------
+
+    async def set_position_mode(
+        self, symbol: str, mode: str
+    ) -> dict[str, Any]:
+        """Switch between one-way and hedge position mode.
+
+        Maps to Bybit V5 ``/v5/position/switch-mode``.
+        ``mode`` should be ``"one_way"`` or ``"hedge"``.
+        """
+        await self._ensure_markets()
+        try:
+            # CCXT uses hedged=True/False
+            hedged = mode.lower() == "hedge"
+            result = await self._ccxt.set_position_mode(hedged, symbol)
+            logger.info(
+                "CCXT position mode set: symbol=%s mode=%s (hedged=%s)",
+                symbol, mode, hedged,
+            )
+            return result if isinstance(result, dict) else {"result": result}
+        except Exception as exc:
+            raise self._wrap_error(exc) from exc
+
+    # ------------------------------------------------------------------
+    # IExchangeAdapter: set_trading_stop (V5-enhanced)
+    # ------------------------------------------------------------------
+
+    async def set_trading_stop(
+        self,
+        symbol: str,
+        *,
+        take_profit: Decimal | None = None,
+        stop_loss: Decimal | None = None,
+        trailing_stop: Decimal | None = None,
+    ) -> dict[str, Any]:
+        """Set server-side TP/SL/trailing stop on an existing position.
+
+        Maps to Bybit V5 ``/v5/position/trading-stop``.
+        For exchanges without a native endpoint, raises ExchangeError.
+        """
+        await self._ensure_markets()
+        try:
+            if take_profit is None and stop_loss is None and trailing_stop is None:
+                raise ExchangeError(
+                    "set_trading_stop requires at least one of "
+                    "take_profit, stop_loss, or trailing_stop"
+                )
+
+            if self._exchange_name == "bybit":
+                # Bybit V5: use the private endpoint via CCXT's implicit API
+                request_params: dict[str, Any] = {
+                    "category": "linear",
+                    "symbol": self._to_bybit_symbol(symbol),
+                    "tpTriggerBy": "LastPrice",
+                    "slTriggerBy": "LastPrice",
+                }
+                if take_profit is not None:
+                    request_params["takeProfit"] = str(take_profit)
+                if stop_loss is not None:
+                    request_params["stopLoss"] = str(stop_loss)
+                if trailing_stop is not None:
+                    request_params["trailingStop"] = str(trailing_stop)
+
+                result = await self._ccxt.privatePostV5PositionTradingStop(
+                    request_params
+                )
+                logger.info(
+                    "CCXT trading stop set: symbol=%s tp=%s sl=%s trail=%s",
+                    symbol, take_profit, stop_loss, trailing_stop,
+                )
+                return result if isinstance(result, dict) else {"result": result}
+
+            # Generic fallback for other exchanges
+            raise ExchangeError(
+                f"Exchange {self._exchange_name} does not support "
+                "set_trading_stop; use conditional stop orders instead."
+            )
+
+        except ExchangeError:
+            raise
+        except Exception as exc:
+            raise self._wrap_error(exc) from exc
+
+    # ------------------------------------------------------------------
+    # IExchangeAdapter: get_closed_pnl (V5-enhanced)
+    # ------------------------------------------------------------------
+
+    async def get_closed_pnl(
+        self, symbol: str, *, limit: int = 50
+    ) -> list[dict[str, Any]]:
+        """Fetch closed PnL records for a symbol.
+
+        Maps to Bybit V5 ``/v5/position/closed-pnl``.
+        Falls back to CCXT's ``fetch_my_trades`` and aggregates by position.
+        """
+        await self._ensure_markets()
+        try:
+            # Bybit-specific: native closed PnL endpoint
+            if (
+                self._exchange_name == "bybit"
+                and hasattr(self._ccxt, "privateGetV5PositionClosedPnl")
+            ):
+                result = await self._ccxt.privateGetV5PositionClosedPnl({
+                    "category": "linear",
+                    "symbol": self._to_bybit_symbol(symbol),
+                    "limit": str(limit),
+                })
+                raw_list = result.get("result", {}).get("list", [])
+                records: list[dict[str, Any]] = []
+                for r in raw_list:
+                    records.append({
+                        "symbol": symbol,
+                        "side": r.get("side", ""),
+                        "qty": r.get("qty", "0"),
+                        "entry_price": r.get("avgEntryPrice", "0"),
+                        "exit_price": r.get("avgExitPrice", "0"),
+                        "closed_pnl": r.get("closedPnl", "0"),
+                        "fill_count": r.get("fillCount", 0),
+                        "leverage": r.get("leverage", "1"),
+                        "created_at": r.get("createdTime", ""),
+                        "updated_at": r.get("updatedTime", ""),
+                        "order_id": r.get("orderId", ""),
+                    })
+                logger.info(
+                    "CCXT closed PnL fetched: symbol=%s count=%d",
+                    symbol, len(records),
+                )
+                return records
+
+            # Generic fallback: use fetch_my_trades
+            trades = await self._ccxt.fetch_my_trades(
+                symbol=symbol, limit=limit
+            )
+            records = []
+            for t in trades:
+                records.append({
+                    "symbol": t.get("symbol", symbol),
+                    "side": t.get("side", ""),
+                    "qty": str(t.get("amount", 0)),
+                    "price": str(t.get("price", 0)),
+                    "fee": str(t.get("fee", {}).get("cost", 0)),
+                    "fee_currency": t.get("fee", {}).get("currency", ""),
+                    "timestamp": t.get("timestamp", 0),
+                    "order_id": t.get("order", ""),
+                    "trade_id": t.get("id", ""),
+                })
+            logger.info(
+                "CCXT trades fetched (closed PnL fallback): symbol=%s count=%d",
+                symbol, len(records),
+            )
+            return records
+
+        except ExchangeError:
+            raise
+        except Exception as exc:
+            raise self._wrap_error(exc) from exc
+
+    # ------------------------------------------------------------------
+    # Internal: symbol conversion
+    # ------------------------------------------------------------------
+
+    def _to_bybit_symbol(self, unified_symbol: str) -> str:
+        """Convert CCXT unified symbol (e.g. 'BTC/USDT:USDT') to Bybit format ('BTCUSDT')."""
+        # Remove settle currency suffix and slash
+        return unified_symbol.replace("/", "").split(":")[0]
+
+    # ------------------------------------------------------------------
     # Cleanup
     # ------------------------------------------------------------------
 

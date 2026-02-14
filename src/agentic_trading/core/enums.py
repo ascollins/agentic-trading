@@ -38,6 +38,14 @@ class TimeInForce(str, Enum):
     IOC = "IOC"  # Immediate Or Cancel
     FOK = "FOK"  # Fill Or Kill
     GTD = "GTD"  # Good Till Date
+    POST_ONLY = "PostOnly"  # Bybit V5: maker-only, rejected if would take
+
+
+class PositionMode(str, Enum):
+    """Bybit V5 position mode."""
+
+    ONE_WAY = "one_way"     # positionIdx=0
+    HEDGE = "hedge"         # positionIdx=1 (buy) / 2 (sell)
 
 
 class PositionSide(str, Enum):
