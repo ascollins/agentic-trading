@@ -627,7 +627,7 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
                                 "symbol": sig.symbol,
                                 "regime": regime_str,
                             }
-                            narration_store.add(item)
+                            narration_store.add(item, explanation=explanation)
                     except Exception:
                         logger.debug("Narration generation failed", exc_info=True)
 

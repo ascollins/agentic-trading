@@ -95,9 +95,10 @@ async def handle_health(request: web.Request) -> web.Response:
 async def handle_avatar_briefing(request: web.Request) -> web.Response:
     """POST /avatar/briefing — generate avatar session from latest narration.
 
-    Returns JSON with playback_url, script_text, session_id.
-    When a NarrationService with a Bloomberg Presenter is available, the
-    Tavus conversational context includes the full presenter persona prompt.
+    When a NarrationService + DecisionExplanation are available, the avatar
+    receives the Bloomberg Presenter script as its greeting and the full
+    persona + data block as conversational context — so it delivers a
+    proper broadcast-quality briefing instead of reading raw text.
     """
     store: NarrationStore = request.app["store"]
     tavus: TavusAdapter = request.app["tavus"]
@@ -109,20 +110,29 @@ async def handle_avatar_briefing(request: web.Request) -> web.Response:
             {"error": "No narration available yet"}, status=404
         )
 
-    # Build context — include presenter persona when available
-    context: dict[str, str] = {
-        "script_id": latest.script_id,
-        "timestamp": latest.timestamp.isoformat(),
-        "decision_ref": latest.decision_ref,
-    }
-    if service is not None:
-        context["presenter_persona"] = service.presenter.system_prompt
+    # Try to get the original DecisionExplanation for presenter formatting
+    explanation = store.get_explanation(latest.script_id)
 
-    # Create Tavus session
-    session = await tavus.create_briefing(
-        latest.script_text,
-        context=context,
-    )
+    if service is not None and explanation is not None:
+        # Full presenter mode: build Bloomberg-style greeting + persona context
+        presenter = service.presenter
+        greeting = presenter.build_script(explanation)
+        conv_context = presenter.build_tavus_context(explanation)
+
+        session = await tavus.create_briefing(
+            greeting,
+            conversational_context=conv_context,
+        )
+    else:
+        # Fallback: send raw script text (legacy behaviour)
+        session = await tavus.create_briefing(
+            latest.script_text,
+            context={
+                "script_id": latest.script_id,
+                "timestamp": latest.timestamp.isoformat(),
+                "decision_ref": latest.decision_ref,
+            },
+        )
 
     # Update store with playback info
     latest.playback_url = session.playback_url
@@ -131,7 +141,7 @@ async def handle_avatar_briefing(request: web.Request) -> web.Response:
 
     return web.json_response({
         "script_id": latest.script_id,
-        "script_text": latest.script_text,
+        "script_text": session.script_text,
         "playback_url": session.playback_url,
         "session_id": session.session_id,
         "status": session.status,
@@ -139,14 +149,30 @@ async def handle_avatar_briefing(request: web.Request) -> web.Response:
 
 
 async def handle_avatar_watch(request: web.Request) -> web.Response:
-    """GET /avatar/watch — HTML page for avatar playback."""
+    """GET /avatar/watch — HTML page for avatar playback.
+
+    When a presenter + explanation are available, shows the Bloomberg-
+    formatted script instead of the raw narration text.
+    """
     store: NarrationStore = request.app["store"]
+    service: NarrationService | None = request.app.get("service")
     latest = store.latest_one()
 
-    script_text = latest.script_text if latest else "No narration available yet."
-    playback_url = latest.playback_url if latest else ""
-    session_id = latest.tavus_session_id if latest else ""
-    timestamp = latest.timestamp.isoformat() if latest else ""
+    if latest is None:
+        script_text = "No narration available yet."
+        playback_url = ""
+        session_id = ""
+        timestamp = ""
+    else:
+        # Use presenter script when explanation is available
+        explanation = store.get_explanation(latest.script_id)
+        if service is not None and explanation is not None:
+            script_text = service.presenter.build_script(explanation)
+        else:
+            script_text = latest.script_text
+        playback_url = latest.playback_url
+        session_id = latest.tavus_session_id
+        timestamp = latest.timestamp.isoformat()
 
     html = _avatar_watch_html(
         script_text=script_text,

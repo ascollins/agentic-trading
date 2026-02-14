@@ -117,7 +117,7 @@ def _seed_store(store: NarrationStore, service: NarrationService) -> None:
                 "symbol": exp.symbol,
                 "regime": exp.active_regime,
             }
-            store.add(item)
+            store.add(item, explanation=exp)
 
     logger.info("Seeded narration store with %d sample items", store.count)
 

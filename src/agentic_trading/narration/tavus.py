@@ -48,9 +48,26 @@ class TavusAdapter(ABC):
 
     @abstractmethod
     async def create_briefing(
-        self, script_text: str, *, context: dict[str, Any] | None = None
+        self,
+        script_text: str,
+        *,
+        context: dict[str, Any] | None = None,
+        conversational_context: str | None = None,
     ) -> TavusSession:
-        """Create a new avatar briefing session from the given script."""
+        """Create a new avatar briefing session.
+
+        Parameters
+        ----------
+        script_text:
+            The text the avatar speaks as its opening greeting.
+        context:
+            Legacy key-value metadata (appended to conv context if no
+            ``conversational_context`` is provided).
+        conversational_context:
+            Full conversational context string (e.g. persona + data block).
+            When provided, this is sent as-is to Tavus and ``context``
+            key-values are ignored.
+        """
         ...
 
     @abstractmethod
@@ -112,16 +129,30 @@ class TavusAdapterHttp(TavusAdapter):
         return self._session
 
     async def create_briefing(
-        self, script_text: str, *, context: dict[str, Any] | None = None
+        self,
+        script_text: str,
+        *,
+        context: dict[str, Any] | None = None,
+        conversational_context: str | None = None,
     ) -> TavusSession:
-        """Create a Tavus conversation session with the avatar reading the script."""
+        """Create a Tavus conversation session.
+
+        ``script_text`` becomes ``custom_greeting`` — the first thing the
+        avatar says.  ``conversational_context`` (when provided) gives
+        the avatar its persona and background data so it can go beyond
+        reading text verbatim.
+        """
         session = await self._get_session()
 
-        # Build conversational context with optional metadata
-        conv_context = script_text
-        if context:
-            ctx_parts = [f"{k}: {v}" for k, v in context.items()]
-            conv_context = f"{script_text}\n\nContext: {'; '.join(ctx_parts)}"
+        # Build conversational context
+        if conversational_context is not None:
+            conv_context = conversational_context
+        else:
+            # Legacy fallback — append key-value context to script
+            conv_context = script_text
+            if context:
+                ctx_parts = [f"{k}: {v}" for k, v in context.items()]
+                conv_context = f"{script_text}\n\nContext: {'; '.join(ctx_parts)}"
 
         payload = {
             "replica_id": self._replica_id,
@@ -223,7 +254,11 @@ class MockTavusAdapter(TavusAdapter):
         self.sessions: dict[str, TavusSession] = {}
 
     async def create_briefing(
-        self, script_text: str, *, context: dict[str, Any] | None = None
+        self,
+        script_text: str,
+        *,
+        context: dict[str, Any] | None = None,
+        conversational_context: str | None = None,
     ) -> TavusSession:
         session_id = f"mock-{uuid.uuid4().hex[:8]}"
         playback_url = f"{self._base_url}/mock-avatar/{session_id}"
