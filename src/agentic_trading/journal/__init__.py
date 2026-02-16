@@ -40,6 +40,14 @@ from .session_analysis import SessionAnalyser
 from .correlation import CorrelationMatrix
 from .replay import TradeReplayer
 from .export import TradeExporter
+from .quality_scorecard import (
+    QualityScorecard,
+    QualityReport,
+    PortfolioQualityReport,
+    MetricGrade,
+    Grade,
+    StrategyType,
+)
 
 __all__ = [
     "TradeRecord",
@@ -57,4 +65,10 @@ __all__ = [
     "CorrelationMatrix",
     "TradeReplayer",
     "TradeExporter",
+    "QualityScorecard",
+    "QualityReport",
+    "PortfolioQualityReport",
+    "MetricGrade",
+    "Grade",
+    "StrategyType",
 ]

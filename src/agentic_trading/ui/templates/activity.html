@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% set active_tab = "activity" %}
+{% block title %}Activity{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h2>Activity</h2>
+  <div class="breadcrumb">Activity / Timeline</div>
+</div>
+
+<div class="card">
+  <!-- Filters -->
+  <div class="timeline-filters">
+    <button class="filter-btn {{ 'active' if filter_type == 'all' else '' }}"
+            hx-get="/partials/activity/timeline?type=all"
+            hx-target="#timeline-content"
+            hx-swap="innerHTML">
+      All
+    </button>
+    <button class="filter-btn {{ 'active' if filter_type == 'trades' else '' }}"
+            hx-get="/partials/activity/timeline?type=trades"
+            hx-target="#timeline-content"
+            hx-swap="innerHTML">
+      Trades
+    </button>
+    <button class="filter-btn {{ 'active' if filter_type == 'approvals' else '' }}"
+            hx-get="/partials/activity/timeline?type=approvals"
+            hx-target="#timeline-content"
+            hx-swap="innerHTML">
+      Approvals
+    </button>
+    <button class="filter-btn {{ 'active' if filter_type == 'incidents' else '' }}"
+            hx-get="/partials/activity/timeline?type=incidents"
+            hx-target="#timeline-content"
+            hx-swap="innerHTML">
+      Incidents
+    </button>
+  </div>
+
+  <!-- Timeline content (HTMX polling) -->
+  <div id="timeline-content"
+       hx-get="/partials/activity/timeline?type={{ filter_type | default('all') }}"
+       hx-trigger="every 10s"
+       hx-swap="innerHTML">
+    {% include "partials/activity_timeline.html" %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Update active filter button on click
+  document.addEventListener('click', function(e) {
+    if (e.target.matches('.filter-btn')) {
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      e.target.classList.add('active');
+    }
+  });
+</script>
+{% endblock %}

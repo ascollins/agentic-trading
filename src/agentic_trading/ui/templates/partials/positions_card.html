@@ -1,0 +1,42 @@
+<div class="card">
+  <div class="card-label">Open Positions</div>
+  {% if positions %}
+    <table class="positions-table">
+      <thead>
+        <tr>
+          <th>Symbol</th>
+          <th>Side</th>
+          <th>Qty</th>
+          <th>Entry</th>
+          <th>Mark</th>
+          <th>P&amp;L</th>
+          <th>Strategy</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for pos in positions %}
+        <tr>
+          <td>{{ pos.symbol }}</td>
+          <td class="{{ 'side-long' if pos.side == 'LONG' else 'side-short' }}">
+            {{ pos.side }}
+          </td>
+          <td>{{ pos.qty }}</td>
+          <td>${{ pos.entry_price }}</td>
+          <td>${{ pos.mark_price }}</td>
+          <td class="{{ 'side-long' if pos.pnl_positive else 'side-short' }}">
+            {{ pos.unrealized_pnl }}
+          </td>
+          <td style="color: var(--text-secondary); font-family: inherit;">
+            {{ pos.strategy }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="empty-state">
+      <div class="empty-message">No open positions</div>
+      <div class="empty-detail">Strategies are monitoring the market</div>
+    </div>
+  {% endif %}
+</div>

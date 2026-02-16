@@ -10,8 +10,10 @@ from decimal import Decimal
 from typing import Any, Callable, Coroutine, Protocol, runtime_checkable
 
 from .clock import IClock
-from .enums import Side
+from .enums import AgentType, Side
 from .events import (
+    AgentCapabilities,
+    AgentHealthReport,
     BaseEvent,
     FeatureVector,
     OrderAck,
@@ -42,6 +44,37 @@ class IEventBus(Protocol):
 
     async def start(self) -> None: ...
     async def stop(self) -> None: ...
+
+
+# ---------------------------------------------------------------------------
+# Agent
+# ---------------------------------------------------------------------------
+
+@runtime_checkable
+class IAgent(Protocol):
+    """Autonomous agent with lifecycle management.
+
+    Agents are the primary operators in the institutional architecture.
+    Each agent has a unique identity, a type, lifecycle (start/stop),
+    health reporting, and capability declarations.
+    """
+
+    @property
+    def agent_id(self) -> str: ...
+
+    @property
+    def agent_type(self) -> AgentType: ...
+
+    @property
+    def is_running(self) -> bool: ...
+
+    async def start(self) -> None: ...
+
+    async def stop(self) -> None: ...
+
+    def health_check(self) -> AgentHealthReport: ...
+
+    def capabilities(self) -> AgentCapabilities: ...
 
 
 # ---------------------------------------------------------------------------

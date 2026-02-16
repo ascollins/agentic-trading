@@ -23,12 +23,17 @@ from agentic_trading.core.models import Candle
 from .indicators import (
     compute_adx,
     compute_atr,
+    compute_bbw,
     compute_bollinger_bands,
     compute_donchian,
     compute_ema,
+    compute_keltner,
     compute_macd,
+    compute_obv,
+    compute_roc,
     compute_rsi,
     compute_sma,
+    compute_stochastic,
     compute_vwap,
 )
 
@@ -82,6 +87,25 @@ class FeatureEngine:
         self._macd_slow: int = cfg.get("macd_slow", 26)
         self._macd_signal: int = cfg.get("macd_signal", 9)
         self._donchian_period: int = cfg.get("donchian_period", 20)
+        self._stoch_k: int = cfg.get("stoch_k_period", 14)
+        self._stoch_d: int = cfg.get("stoch_d_period", 3)
+        self._keltner_ema: int = cfg.get("keltner_ema_period", 20)
+        self._keltner_atr: int = cfg.get("keltner_atr_period", 14)
+        self._keltner_mult: float = cfg.get("keltner_atr_multiplier", 1.5)
+
+        # Optional SMC feature computation
+        self._smc_enabled: bool = cfg.get("smc_enabled", True)
+        self._smc_computer = None
+        if self._smc_enabled:
+            try:
+                from agentic_trading.features.smc import SMCFeatureComputer
+                self._smc_computer = SMCFeatureComputer(
+                    swing_lookback=cfg.get("smc_swing_lookback", 5),
+                    displacement_mult=cfg.get("smc_displacement_mult", 2.0),
+                    min_candles=cfg.get("smc_min_candles", 50),
+                )
+            except ImportError:
+                logger.debug("SMC module not available, skipping SMC features")
 
     # ------------------------------------------------------------------
     # Event bus lifecycle
@@ -248,6 +272,57 @@ class FeatureEngine:
         vwap = compute_vwap(highs, lows, closes, volumes)
         features["vwap"] = _safe_last(vwap)
 
+        # ----- Stochastic Oscillator -----
+        stoch_k, stoch_d = compute_stochastic(
+            highs, lows, closes, self._stoch_k, self._stoch_d
+        )
+        features["stoch_k"] = _safe_last(stoch_k)
+        features["stoch_d"] = _safe_last(stoch_d)
+        # Previous values for crossover detection
+        if len(stoch_k) >= 2:
+            features["stoch_k_prev"] = _safe_last(stoch_k[:-1])
+            features["stoch_d_prev"] = _safe_last(stoch_d[:-1])
+
+        # ----- On-Balance Volume (OBV) -----
+        obv = compute_obv(closes, volumes)
+        features["obv"] = float(obv[-1]) if len(obv) > 0 else float("nan")
+        if len(obv) >= 21:
+            obv_ema = compute_ema(obv, 20)
+            features["obv_ema_20"] = _safe_last(obv_ema)
+
+        # ----- Keltner Channel -----
+        kc_upper, kc_middle, kc_lower = compute_keltner(
+            highs, lows, closes,
+            self._keltner_ema, self._keltner_atr, self._keltner_mult,
+        )
+        features["keltner_upper"] = _safe_last(kc_upper)
+        features["keltner_middle"] = _safe_last(kc_middle)
+        features["keltner_lower"] = _safe_last(kc_lower)
+
+        # ----- Bollinger Band Width (for squeeze detection) -----
+        bbw = compute_bbw(closes, self._bb_period, self._bb_std)
+        features["bbw"] = _safe_last(bbw)
+        # BBW percentile over lookback (120 bars for squeeze detection)
+        bbw_lookback = 120
+        if len(closes) >= bbw_lookback:
+            bbw_window = bbw[-bbw_lookback:]
+            valid_bbw = bbw_window[~np.isnan(bbw_window)]
+            if len(valid_bbw) > 0:
+                current_bbw = _safe_last(bbw)
+                if not np.isnan(current_bbw):
+                    features["bbw_percentile"] = float(
+                        np.sum(valid_bbw <= current_bbw) / len(valid_bbw)
+                    )
+
+        # ----- Rate of Change -----
+        roc_12 = compute_roc(closes, 12)
+        features["roc_12"] = _safe_last(roc_12)
+
+        # ----- MACD previous values for crossover detection -----
+        if len(macd_line) >= 2:
+            features["macd_prev"] = _safe_last(macd_line[:-1])
+            features["macd_signal_prev"] = _safe_last(signal_line[:-1])
+
         # ----- Derived / composite features -----
         # Price vs. key MAs
         for p in self._ema_periods:
@@ -273,12 +348,60 @@ class FeatureEngine:
         else:
             features["return_20"] = float("nan")
 
+        # Longer returns for momentum scoring
+        if len(closes) >= 63:
+            features["return_60"] = (closes[-1] / closes[-63]) - 1.0
+        else:
+            features["return_60"] = float("nan")
+
+        if len(closes) >= 126:
+            features["return_120"] = (closes[-1] / closes[-126]) - 1.0
+        else:
+            features["return_120"] = float("nan")
+
+        if len(closes) >= 252:
+            features["return_250"] = (closes[-1] / closes[-252]) - 1.0
+        else:
+            features["return_250"] = float("nan")
+
         # Realised volatility (20 bar)
         if len(closes) >= 21:
             log_returns = np.diff(np.log(closes[-21:]))
             features["realised_vol_20"] = float(np.std(log_returns, ddof=1))
         else:
             features["realised_vol_20"] = float("nan")
+
+        # ----- Volume ratio: current volume vs 20-period average -----
+        if len(volumes) >= 20:
+            avg_vol = float(np.mean(volumes[-20:]))
+            if avg_vol > 0:
+                features["volume_ratio"] = float(volumes[-1]) / avg_vol
+            else:
+                features["volume_ratio"] = 1.0
+        else:
+            features["volume_ratio"] = 1.0
+
+        # ----- Shorthand aliases for strategy compatibility -----
+        # Strategies use clean names (e.g. "rsi"), engine outputs
+        # period-suffixed names (e.g. "rsi_14").
+        _alias_map = {
+            f"rsi_{self._rsi_period}": "rsi",
+            f"adx_{self._adx_period}": "adx",
+            f"atr_{self._atr_period}": "atr",
+            f"donchian_upper_{self._donchian_period}": "donchian_upper",
+            f"donchian_lower_{self._donchian_period}": "donchian_lower",
+        }
+        for long_key, short_key in _alias_map.items():
+            if long_key in features and short_key not in features:
+                features[short_key] = features[long_key]
+
+        # ----- SMC features (swing points, order blocks, FVGs, BOS/CHoCH) -----
+        if self._smc_computer is not None and len(candles) >= 50:
+            try:
+                smc_features = self._smc_computer.compute(candles)
+                features.update(smc_features)
+            except Exception as e:
+                logger.debug("SMC feature computation failed: %s", e)
 
         return FeatureVector(
             symbol=symbol,

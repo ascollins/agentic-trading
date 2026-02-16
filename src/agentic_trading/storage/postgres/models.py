@@ -97,7 +97,11 @@ class OrderRecord(Base):
 
     # Relationships
     fills: Mapped[list[FillRecord]] = relationship(
-        "FillRecord", back_populates="order", lazy="selectin",
+        "FillRecord",
+        back_populates="order",
+        foreign_keys="[FillRecord.order_id]",
+        primaryjoin="OrderRecord.order_id == FillRecord.order_id",
+        lazy="selectin",
     )
 
     __table_args__ = (

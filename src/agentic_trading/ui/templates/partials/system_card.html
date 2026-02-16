@@ -1,0 +1,33 @@
+<div class="card">
+  <div class="card-label">System Status</div>
+  {% if system %}
+    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+      <span class="status-dot {{ 'healthy' if system.all_healthy else 'warning' }}"></span>
+      <span style="font-weight: 600; font-size: 1.125rem;">
+        {% if system.all_healthy %}
+          All Healthy
+        {% else %}
+          Degraded
+        {% endif %}
+      </span>
+    </div>
+
+    <div class="system-stats">
+      <div class="system-stat">
+        <strong>{{ system.agents_healthy }}/{{ system.agents_total }}</strong> agents
+      </div>
+      <div class="system-stat">
+        Last candle: <strong>{{ system.last_candle_seconds }}s</strong> ago
+      </div>
+      {% if system.dlq_count > 0 %}
+      <div class="system-stat" style="color: var(--color-warning);">
+        DLQ: <strong>{{ system.dlq_count }}</strong>
+      </div>
+      {% endif %}
+    </div>
+  {% else %}
+    <div class="empty-state">
+      <div class="empty-message">System status unavailable</div>
+    </div>
+  {% endif %}
+</div>

@@ -7,15 +7,14 @@ Optionally auto-repairs local state to match the exchange source of truth.
 
 from __future__ import annotations
 
-import asyncio
 import logging
-from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
 
-from agentic_trading.core.enums import Exchange, OrderStatus
-from agentic_trading.core.errors import ExchangeError, ReconciliationError
-from agentic_trading.core.events import ReconciliationResult
+from agentic_trading.agents.base import BaseAgent
+from agentic_trading.core.enums import AgentType, Exchange, OrderStatus
+from agentic_trading.core.errors import ExchangeError
+from agentic_trading.core.events import AgentCapabilities, ReconciliationResult
 from agentic_trading.core.interfaces import IEventBus, IExchangeAdapter
 from agentic_trading.core.models import Balance, Order, Position
 
@@ -34,7 +33,7 @@ POSITION_MISMATCH = "position_mismatch"
 BALANCE_MISMATCH = "balance_mismatch"
 
 
-class ReconciliationLoop:
+class ReconciliationLoop(BaseAgent):
     """Periodic reconciliation between local state and exchange state.
 
     Runs an asyncio background loop every ``interval_seconds`` that:
@@ -79,12 +78,14 @@ class ReconciliationLoop:
         auto_repair: bool = True,
         local_positions: dict[str, Position] | None = None,
         local_balances: dict[str, Balance] | None = None,
+        *,
+        agent_id: str | None = None,
     ) -> None:
+        super().__init__(agent_id=agent_id, interval=interval_seconds)
         self._adapter = adapter
         self._event_bus = event_bus
         self._order_manager = order_manager
         self._exchange = exchange
-        self._interval = interval_seconds
         self._auto_repair = auto_repair
         self._local_positions: dict[str, Position] = (
             local_positions if local_positions is not None else {}
@@ -92,57 +93,36 @@ class ReconciliationLoop:
         self._local_balances: dict[str, Balance] = (
             local_balances if local_balances is not None else {}
         )
-        self._task: asyncio.Task[None] | None = None
-        self._running: bool = False
 
     # ------------------------------------------------------------------
-    # Lifecycle
+    # IAgent
     # ------------------------------------------------------------------
 
-    async def start(self) -> None:
-        """Start the background reconciliation loop."""
-        if self._running:
-            logger.warning("ReconciliationLoop is already running")
-            return
-        self._running = True
-        self._task = asyncio.create_task(
-            self._run_loop(), name="reconciliation-loop"
+    @property
+    def agent_type(self) -> AgentType:
+        return AgentType.RECONCILIATION
+
+    def capabilities(self) -> AgentCapabilities:
+        return AgentCapabilities(
+            subscribes_to=[],
+            publishes_to=["execution"],
+            description="Periodic reconciliation between local and exchange state",
         )
+
+    async def _on_start(self) -> None:
         logger.info(
             "ReconciliationLoop started (interval=%ss, auto_repair=%s)",
             self._interval,
             self._auto_repair,
         )
 
-    async def stop(self) -> None:
-        """Stop the background reconciliation loop."""
-        self._running = False
-        if self._task is not None:
-            self._task.cancel()
-            try:
-                await self._task
-            except asyncio.CancelledError:
-                pass
-            self._task = None
-        logger.info("ReconciliationLoop stopped")
-
     # ------------------------------------------------------------------
-    # Main loop
+    # BaseAgent periodic work
     # ------------------------------------------------------------------
 
-    async def _run_loop(self) -> None:
-        """Internal loop that runs reconciliation on a timer."""
-        while self._running:
-            try:
-                await self.reconcile()
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                logger.exception("Reconciliation cycle failed")
-            try:
-                await asyncio.sleep(self._interval)
-            except asyncio.CancelledError:
-                raise
+    async def _work(self) -> None:
+        """Run a single reconciliation pass."""
+        await self.reconcile()
 
     # ------------------------------------------------------------------
     # Single reconciliation pass
@@ -153,6 +133,9 @@ class ReconciliationLoop:
 
         Returns the ``ReconciliationResult`` event that was published.
         """
+        import time as _time_mod
+
+        _recon_t0 = _time_mod.monotonic()
         discrepancies: list[dict[str, Any]] = []
         orders_synced = 0
         positions_synced = 0
@@ -244,6 +227,14 @@ class ReconciliationLoop:
             )
         else:
             logger.debug("Reconciliation clean (no discrepancies)")
+
+        # Emit reconciliation latency metric
+        try:
+            from agentic_trading.observability.metrics import RECONCILIATION_LATENCY
+            _recon_elapsed = _time_mod.monotonic() - _recon_t0
+            RECONCILIATION_LATENCY.observe(_recon_elapsed)
+        except Exception:
+            pass
 
         await self._event_bus.publish("execution", result)
         return result
@@ -480,10 +471,6 @@ class ReconciliationLoop:
     # ------------------------------------------------------------------
     # Accessors
     # ------------------------------------------------------------------
-
-    @property
-    def is_running(self) -> bool:
-        return self._running
 
     @property
     def local_positions(self) -> dict[str, Position]:

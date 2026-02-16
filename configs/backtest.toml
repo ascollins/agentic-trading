@@ -18,6 +18,169 @@ latency_ms = 50
 random_seed = 42
 data_dir = "data/historical"
 
+[symbols]
+symbols = [
+    "BTC/USDT",
+    "ETH/USDT",
+]
+
+# ===================================================================
+# ORIGINAL STRATEGIES
+# ===================================================================
+
+[[strategies]]
+strategy_id = "trend_following"
+enabled = true
+
+[strategies.params]
+fast_ema = 12
+slow_ema = 26
+adx_threshold = 25           # Require stronger trend confirmation
+atr_multiplier = 2.5         # Wider stops for crypto volatility
+min_confidence = 0.5         # Higher bar for entries
+signal_cooldown_minutes = 240 # 4h cooldown — avoid overtrading on 1m candles
+
+[[strategies]]
+strategy_id = "mean_reversion"
+enabled = true
+
+[strategies.params]
+bb_period = 20
+bb_std = 2.5                  # Wider bands = more extreme signals only
+rsi_oversold = 20             # Very oversold only
+rsi_overbought = 80           # Very overbought only
+require_range_regime = false   # Regime detector not active in backtest
+mean_reversion_score_threshold = 0.5
+min_confidence = 0.4
+signal_cooldown_minutes = 240
+
+[[strategies]]
+strategy_id = "breakout"
+enabled = true
+
+[strategies.params]
+donchian_period = 20
+volume_confirmation_multiplier = 1.5  # Require stronger volume
+min_confidence = 0.4
+signal_cooldown_minutes = 240
+
+[[strategies]]
+strategy_id = "funding_arb"
+enabled = false               # Disabled: no funding data in historical backtest
+
+[strategies.params]
+funding_threshold = 0.0001
+position_size_pct = 0.05
+signal_cooldown_minutes = 240
+
+# ===================================================================
+# CMT PLAYBOOK STRATEGIES
+# ===================================================================
+
+[[strategies]]
+strategy_id = "multi_tf_ma"
+enabled = true
+
+[strategies.params]
+fast_ema = 50
+slow_ema = 200
+pullback_ema = 21
+adx_entry = 20
+adx_exit = 15
+min_confidence = 0.4
+signal_cooldown_minutes = 240
+
+[[strategies]]
+strategy_id = "rsi_divergence"
+enabled = true
+
+[strategies.params]
+rsi_oversold = 35
+rsi_overbought = 65
+lookback = 50
+divergence_bars = 5
+min_confidence = 0.4
+signal_cooldown_minutes = 240
+
+[[strategies]]
+strategy_id = "stochastic_macd"
+enabled = true
+
+[strategies.params]
+confluence_window = 3
+volume_gate = 1.2
+stoch_oversold = 20
+stoch_overbought = 80
+min_confidence = 0.4
+signal_cooldown_minutes = 240
+
+[[strategies]]
+strategy_id = "bb_squeeze"
+enabled = true
+
+[strategies.params]
+squeeze_percentile = 10
+bb_period = 20
+keltner_ema = 20
+keltner_mult = 1.5
+min_confidence = 0.4
+signal_cooldown_minutes = 240
+
+[[strategies]]
+strategy_id = "mean_reversion_enhanced"
+enabled = true
+
+[strategies.params]
+bb_period = 20
+bb_std = 2.0
+time_stop_bars = 10
+atr_stop_multiplier = 2.0
+min_confidence = 0.4
+signal_cooldown_minutes = 240
+
+[[strategies]]
+strategy_id = "supply_demand"
+enabled = true
+
+[strategies.params]
+min_zone_score = 0.4
+require_bos = true
+min_confidence = 0.4
+signal_cooldown_minutes = 240
+
+[[strategies]]
+strategy_id = "fibonacci_confluence"
+enabled = true
+
+[strategies.params]
+lookback = 100
+min_swing_pct = 0.02
+cluster_width = 0.005
+min_levels_in_cluster = 3
+min_confidence = 0.4
+signal_cooldown_minutes = 240
+
+[[strategies]]
+strategy_id = "obv_divergence"
+enabled = true
+
+[strategies.params]
+lookback = 50
+divergence_bars = 5
+min_confidence = 0.4
+signal_cooldown_minutes = 240
+
+# ===================================================================
+# RISK MANAGEMENT
+# ===================================================================
+
+# Conservative risk for backtest
+[risk]
+max_portfolio_leverage = 3.0
+max_single_position_pct = 0.10
+max_daily_loss_pct = 0.05
+max_drawdown_pct = 0.15
+
 [observability]
 log_level = "INFO"
 log_format = "console"

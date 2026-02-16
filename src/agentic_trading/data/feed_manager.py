@@ -231,6 +231,12 @@ class FeedManager:
 
                 # Reset error counter on success.
                 if consecutive_errors > 0:
+                    # Recovering from errors = reconnection event
+                    try:
+                        from agentic_trading.observability.metrics import record_ws_reconnection
+                        record_ws_reconnection(exchange_name.value)
+                    except Exception:
+                        pass
                     consecutive_errors = 0
 
                 # Log first data receipt and periodic updates

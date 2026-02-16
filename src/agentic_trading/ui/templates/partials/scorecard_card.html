@@ -1,0 +1,53 @@
+<div class="card">
+  <div class="card-label">Daily Effectiveness</div>
+  {% if scorecard %}
+    {% set total = scorecard.total | default(0) %}
+    {% set score_class = "score-good" if total >= 7 else ("score-ok" if total >= 4 else "score-bad") %}
+    {% set bar_class = "good" if total >= 7 else ("ok" if total >= 4 else "bad") %}
+
+    <div class="scorecard-total">
+      <span class="score-big {{ score_class }}">{{ "%.1f" | format(total) }}</span>
+      <span class="score-max">/ 10</span>
+    </div>
+
+    <div class="progress-bar">
+      <div class="progress-fill {{ bar_class }}" style="width: {{ total * 10 }}%"></div>
+    </div>
+
+    <div class="scorecard-subscores">
+      {% set edge = scorecard.edge_quality | default(0) %}
+      {% set exec = scorecard.execution_quality | default(0) %}
+      {% set risk = scorecard.risk_discipline | default(0) %}
+      {% set ops = scorecard.operational_integrity | default(0) %}
+
+      <div class="subscore">
+        <div class="subscore-value {{ 'score-good' if edge >= 7 else ('score-ok' if edge >= 4 else 'score-bad') }}">
+          {{ "%.1f" | format(edge) }}
+        </div>
+        <div class="subscore-label">Edge</div>
+      </div>
+      <div class="subscore">
+        <div class="subscore-value {{ 'score-good' if exec >= 7 else ('score-ok' if exec >= 4 else 'score-bad') }}">
+          {{ "%.1f" | format(exec) }}
+        </div>
+        <div class="subscore-label">Execution</div>
+      </div>
+      <div class="subscore">
+        <div class="subscore-value {{ 'score-good' if risk >= 7 else ('score-ok' if risk >= 4 else 'score-bad') }}">
+          {{ "%.1f" | format(risk) }}
+        </div>
+        <div class="subscore-label">Risk</div>
+      </div>
+      <div class="subscore">
+        <div class="subscore-value {{ 'score-good' if ops >= 7 else ('score-ok' if ops >= 4 else 'score-bad') }}">
+          {{ "%.1f" | format(ops) }}
+        </div>
+        <div class="subscore-label">Ops</div>
+      </div>
+    </div>
+  {% else %}
+    <div class="empty-state">
+      <div class="empty-message">Scorecard not available</div>
+    </div>
+  {% endif %}
+</div>

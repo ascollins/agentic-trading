@@ -476,3 +476,245 @@ def compute_vwap(
 
     vwap = np.where(cum_vol > 0, cum_tp_vol / cum_vol, np.nan)
     return vwap
+
+
+# ===================================================================
+# Stochastic Oscillator
+# ===================================================================
+
+def compute_stochastic(
+    high: np.ndarray,
+    low: np.ndarray,
+    close: np.ndarray,
+    k_period: int = 14,
+    d_period: int = 3,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Stochastic Oscillator (%K and %D).
+
+    Args:
+        high: 1-D array of high prices.
+        low: 1-D array of low prices.
+        close: 1-D array of close prices.
+        k_period: Lookback period for %K (typically 14).
+        d_period: Smoothing period for %D (typically 3).
+
+    Returns:
+        Tuple of (%K, %D) arrays, each same length as *close*.
+    """
+    high = _ensure_float64(high)
+    low = _ensure_float64(low)
+    close = _ensure_float64(close)
+    n = len(close)
+
+    if _HAS_TULIPY:
+        try:
+            result = ti.stoch(high, low, close, k_period, k_period, d_period)
+            k_line = _pad_front(result[0], n)
+            d_line = _pad_front(result[1], n)
+            return k_line, d_line
+        except Exception:
+            pass  # Fall through to numpy implementation
+
+    k_line = np.full(n, np.nan)
+    if n < k_period:
+        return k_line, np.full(n, np.nan)
+
+    for i in range(k_period - 1, n):
+        highest = np.max(high[i - k_period + 1: i + 1])
+        lowest = np.min(low[i - k_period + 1: i + 1])
+        range_ = highest - lowest
+        if range_ == 0:
+            k_line[i] = 50.0
+        else:
+            k_line[i] = 100.0 * (close[i] - lowest) / range_
+
+    # %D is SMA of %K
+    d_line = np.full(n, np.nan)
+    valid_k = ~np.isnan(k_line)
+    valid_indices = np.where(valid_k)[0]
+    if len(valid_indices) >= d_period:
+        for i in range(d_period - 1, len(valid_indices)):
+            idx = valid_indices[i]
+            window_indices = valid_indices[i - d_period + 1: i + 1]
+            d_line[idx] = np.mean(k_line[window_indices])
+
+    return k_line, d_line
+
+
+# ===================================================================
+# On-Balance Volume (OBV)
+# ===================================================================
+
+def compute_obv(close: np.ndarray, volume: np.ndarray) -> np.ndarray:
+    """On-Balance Volume.
+
+    Args:
+        close: 1-D array of close prices.
+        volume: 1-D array of volume.
+
+    Returns:
+        Array of same length as *close* with cumulative OBV values.
+    """
+    close = _ensure_float64(close)
+    volume = _ensure_float64(volume)
+    n = len(close)
+
+    obv = np.zeros(n)
+    for i in range(1, n):
+        if close[i] > close[i - 1]:
+            obv[i] = obv[i - 1] + volume[i]
+        elif close[i] < close[i - 1]:
+            obv[i] = obv[i - 1] - volume[i]
+        else:
+            obv[i] = obv[i - 1]
+
+    return obv
+
+
+# ===================================================================
+# Keltner Channel
+# ===================================================================
+
+def compute_keltner(
+    high: np.ndarray,
+    low: np.ndarray,
+    close: np.ndarray,
+    ema_period: int = 20,
+    atr_period: int = 14,
+    atr_multiplier: float = 1.5,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Keltner Channel (upper, middle, lower).
+
+    Args:
+        high: 1-D array of high prices.
+        low: 1-D array of low prices.
+        close: 1-D array of close prices.
+        ema_period: Period for centre EMA (typically 20).
+        atr_period: Period for ATR width (typically 14).
+        atr_multiplier: Multiple of ATR for channel width (typically 1.5).
+
+    Returns:
+        Tuple of (upper, middle, lower) arrays, each same length as *close*.
+    """
+    middle = compute_ema(close, ema_period)
+    atr = compute_atr(high, low, close, atr_period)
+
+    upper = middle + atr_multiplier * atr
+    lower = middle - atr_multiplier * atr
+
+    return upper, middle, lower
+
+
+# ===================================================================
+# Bollinger Band Width
+# ===================================================================
+
+def compute_bbw(
+    close: np.ndarray,
+    period: int = 20,
+    std: float = 2.0,
+) -> np.ndarray:
+    """Bollinger Band Width (normalised).
+
+    BBW = (upper - lower) / middle
+
+    Used for squeeze detection. Low BBW = consolidation / potential breakout.
+
+    Args:
+        close: 1-D array of close prices.
+        period: BB lookback period.
+        std: Number of standard deviations.
+
+    Returns:
+        Array of same length as *close* with BBW values.
+    """
+    upper, middle, lower = compute_bollinger_bands(close, period, std)
+    n = len(close)
+    bbw = np.full(n, np.nan)
+
+    valid = ~np.isnan(middle) & (middle != 0)
+    bbw[valid] = (upper[valid] - lower[valid]) / middle[valid]
+
+    return bbw
+
+
+# ===================================================================
+# Fibonacci Levels
+# ===================================================================
+
+def compute_fibonacci_levels(
+    swing_high: float,
+    swing_low: float,
+) -> dict[str, float]:
+    """Compute standard Fibonacci retracement levels.
+
+    Args:
+        swing_high: Recent swing high price.
+        swing_low: Recent swing low price.
+
+    Returns:
+        Dict mapping level name to price.
+    """
+    diff = swing_high - swing_low
+    return {
+        "fib_0": swing_high,
+        "fib_236": swing_high - 0.236 * diff,
+        "fib_382": swing_high - 0.382 * diff,
+        "fib_500": swing_high - 0.500 * diff,
+        "fib_618": swing_high - 0.618 * diff,
+        "fib_786": swing_high - 0.786 * diff,
+        "fib_1000": swing_low,
+    }
+
+
+def compute_fibonacci_extensions(
+    swing_high: float,
+    swing_low: float,
+    retracement_point: float,
+) -> dict[str, float]:
+    """Compute Fibonacci extension levels from a retracement.
+
+    Args:
+        swing_high: Swing high price of the initial move.
+        swing_low: Swing low price of the initial move.
+        retracement_point: Price where the retracement ended.
+
+    Returns:
+        Dict mapping extension level name to price.
+    """
+    diff = swing_high - swing_low
+    return {
+        "ext_1000": retracement_point + diff,
+        "ext_1272": retracement_point + 1.272 * diff,
+        "ext_1618": retracement_point + 1.618 * diff,
+        "ext_2000": retracement_point + 2.0 * diff,
+        "ext_2618": retracement_point + 2.618 * diff,
+    }
+
+
+# ===================================================================
+# Rate of Change (ROC)
+# ===================================================================
+
+def compute_roc(close: np.ndarray, period: int) -> np.ndarray:
+    """Rate of Change: (close - close[n]) / close[n] * 100.
+
+    Args:
+        close: 1-D array of close prices.
+        period: Lookback period.
+
+    Returns:
+        Array of same length as *close* with leading NaN padding.
+    """
+    close = _ensure_float64(close)
+    n = len(close)
+    roc = np.full(n, np.nan)
+
+    if n <= period:
+        return roc
+
+    for i in range(period, n):
+        if close[i - period] != 0:
+            roc[i] = ((close[i] - close[i - period]) / close[i - period]) * 100.0
+
+    return roc

@@ -34,6 +34,9 @@ dev = [
     "hypothesis>=6.90",
     "pytest-cov>=4.1",
     "ruff>=0.2",
+    "mypy>=1.8",
+    "types-redis>=4.6",
+    "pre-commit>=3.6",
 ]
 viz = [
     "lightweight-charts>=2.0",
@@ -60,3 +63,44 @@ line-length = 99
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = ["UP042"]  # Allow (str, Enum) pattern — used consistently across codebase
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+no_strict_optional = true
+allow_untyped_defs = true
+check_untyped_defs = false
+exclude = ["tests/", "alembic/", "scripts/"]
+
+[[tool.mypy.overrides]]
+module = "agentic_trading.core.*"
+disallow_untyped_defs = false
+warn_unreachable = true
+
+[[tool.mypy.overrides]]
+module = "agentic_trading.governance.*"
+disallow_untyped_defs = false
+warn_unreachable = true
+
+[tool.coverage.run]
+source = ["src/agentic_trading"]
+omit = [
+    "*/tests/*",
+    "*/alembic/*",
+    "*/__pycache__/*",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+fail_under = 0
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if __name__ ==",
+    "raise NotImplementedError",
+    "@overload",
+]

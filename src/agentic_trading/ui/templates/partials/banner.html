@@ -1,0 +1,23 @@
+{% if banner %}
+<div class="critical-banner">
+  <div>
+    <div class="banner-text">
+      {{ banner.mode | upper | replace("_", " ") }} MODE
+    </div>
+    <div class="banner-detail">
+      {{ banner.incident_count }} active incident{{ "s" if banner.incident_count != 1 else "" }}
+      {% if banner.incidents %}
+       — {{ banner.incidents[0].description | default("") }}
+      {% endif %}
+    </div>
+  </div>
+  {% if banner.incidents %}
+  <button class="btn btn-ghost"
+          hx-post="/actions/resolve-incident/{{ banner.incidents[0].incident_id }}"
+          hx-target="#banner-container"
+          hx-swap="innerHTML">
+    Resolve
+  </button>
+  {% endif %}
+</div>
+{% endif %}

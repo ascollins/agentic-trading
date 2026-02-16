@@ -121,7 +121,20 @@ class PortfolioManager:
         )
 
         if qty <= Decimal("0"):
+            best_rc = max(signals, key=lambda s: s.confidence).risk_constraints if signals else {}
+            logger.warning(
+                "No target for %s: qty=0 (price_in_rc=%s, instrument=%s, close=%s)",
+                symbol,
+                best_rc.get("price", "missing"),
+                instrument is not None,
+                max(signals, key=lambda s: s.confidence).features_used.get("close", "missing") if signals else "?",
+            )
             return None
+
+        logger.info(
+            "Target: %s %s qty=%s (confidence=%.2f, capital=%.0f)",
+            side.value, symbol, qty, avg_confidence, capital,
+        )
 
         return TargetPosition(
             strategy_id=signals[0].strategy_id,  # Primary strategy
@@ -205,7 +218,24 @@ class PortfolioManager:
                 instrument=instrument,
             )
 
-        # Apply sizing multiplier (from regime policy)
+        # Cap notional value at max_position_pct of capital.
+        # Volatility-adjusted sizing with tiny ATR (e.g. 1-minute candles)
+        # can produce enormous positions that exceed available capital.
+        max_notional = capital * self._max_position_pct
+        notional = float(qty) * price
+        if notional > max_notional and notional > 0:
+            scale = max_notional / notional
+            qty = Decimal(str(float(qty) * scale))
+            logger.info(
+                "Notional cap applied for %s: %.0f → %.0f (max %.0f, %.0f%%)",
+                best_signal.symbol,
+                notional,
+                float(qty) * price,
+                max_notional,
+                self._max_position_pct * 100,
+            )
+
+        # Apply sizing multiplier (from safe_mode / regime policy)
         qty = Decimal(str(float(qty) * self._sizing_multiplier))
 
         # Apply governance sizing (maturity cap × health multiplier)

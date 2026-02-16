@@ -116,3 +116,12 @@ class ExecutionTokenError(GovernanceError):
 
 class GovernanceCanaryFailure(GovernanceError):
     """Governance canary detected infrastructure failure."""
+
+
+# --- Control Plane ---
+class ControlPlaneError(TradingError):
+    """Control plane infrastructure error."""
+
+
+class ControlPlaneUnavailable(ControlPlaneError):
+    """A critical control plane component is unavailable (audit, policy, etc)."""

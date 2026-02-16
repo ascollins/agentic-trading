@@ -1,0 +1,90 @@
+{% set stage_order = ['candidate', 'backtest', 'eval_pack', 'paper', 'limited', 'scale'] %}
+{% set stage_labels = {'candidate': 'C', 'backtest': 'BT', 'eval_pack': 'EV', 'paper': 'PA', 'limited': 'LIM', 'scale': 'SCALE'} %}
+
+{% if promotion_result is defined and promotion_result %}
+  <div class="card" style="margin-bottom: 16px; padding: 12px 16px;
+    {% if promotion_result.approved %}
+      background: var(--color-positive-bg); border-color: rgba(52,211,153,0.3);
+    {% else %}
+      background: var(--color-warning-bg); border-color: rgba(251,191,36,0.3);
+    {% endif %}
+  ">
+    <span style="font-size: 0.875rem; font-weight: 500;">
+      {% if promotion_result.approved %}
+        Promotion approved: {{ promotion_result.reason }}
+      {% else %}
+        Promotion denied: {{ promotion_result.reason }}
+      {% endif %}
+    </span>
+  </div>
+{% endif %}
+
+{% for strategy in strategies %}
+  {% set current_idx = stage_order.index(strategy.stage) if strategy.stage in stage_order else 0 %}
+  <div class="strategy-card">
+    <div class="strategy-header">
+      <div class="strategy-name">{{ strategy.strategy_id }}</div>
+      <div class="strategy-grade {{ 'score-good' if strategy.quality_score >= 70 else ('score-ok' if strategy.quality_score >= 50 else 'score-bad') }}">
+        {{ strategy.quality_grade }} {{ strategy.quality_score }}
+      </div>
+    </div>
+
+    <!-- Stage Ribbon -->
+    <div class="stage-ribbon">
+      {% for stage in stage_order %}
+        {% set idx = loop.index0 %}
+        <div class="stage-dot {{ 'completed' if idx < current_idx else ('current' if idx == current_idx else '') }}"></div>
+        {% if not loop.last %}
+          <div class="stage-connector {{ 'completed' if idx < current_idx else '' }}"></div>
+        {% endif %}
+      {% endfor %}
+    </div>
+    <div class="stage-labels">
+      {% for stage in stage_order %}
+        {% set idx = loop.index0 %}
+        <span class="stage-label {{ 'current' if idx == current_idx else '' }}">
+          {{ stage_labels[stage] }}
+        </span>
+      {% endfor %}
+    </div>
+
+    <!-- Stats row -->
+    <div class="strategy-stats" style="margin-top: 16px;">
+      <div>
+        <span class="{{ 'side-long' if strategy.pnl_positive else 'side-short' }}" style="font-family: 'SF Mono', monospace; font-weight: 600;">
+          {{ "+" if strategy.pnl_positive else "" }}${{ "{:,.0f}".format(strategy.pnl_today) }}
+        </span>
+        today
+      </div>
+      <div>
+        <span class="stat-value">{{ strategy.total_trades }}</span> trades
+      </div>
+      <div>
+        WR <span class="stat-value">{{ strategy.win_rate }}%</span>
+      </div>
+      {% if strategy.stage in ['paper', 'limited'] %}
+      <div>
+        <button class="btn btn-primary" style="font-size: 0.75rem; padding: 2px 12px;"
+                hx-post="/actions/promote/{{ strategy.strategy_id }}"
+                hx-target="#strategies-list"
+                hx-swap="innerHTML">
+          Promote
+        </button>
+      </div>
+      {% endif %}
+    </div>
+
+    {% if strategy.quality_score < 60 and strategy.stage in ['paper', 'limited', 'scale'] %}
+    <div style="margin-top: 12px; font-size: 0.8125rem; color: var(--color-warning);">
+      Below promotion threshold
+    </div>
+    {% endif %}
+  </div>
+{% endfor %}
+
+{% if not strategies %}
+  <div class="empty-state">
+    <div class="empty-message">No strategies registered</div>
+    <div class="empty-detail">Configure strategies in your TOML config file</div>
+  </div>
+{% endif %}

@@ -1,0 +1,448 @@
+{
+  "annotations": { "list": [] },
+  "description": "At-a-glance system health, portfolio status, and key metrics. Start here.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [
+    { "title": "Strategy Performance", "url": "/d/strategy-performance", "type": "link", "icon": "bolt", "tooltip": "Deep dive into strategy win rates, profit, and behavior" },
+    { "title": "Risk & Governance", "url": "/d/risk-governance", "type": "link", "icon": "shield", "tooltip": "Risk limits, safety controls, and compliance" },
+    { "title": "System Health", "url": "/d/system-health", "type": "link", "icon": "heart", "tooltip": "Speed, data feeds, and component status" },
+    { "title": "Trader Quality", "url": "/d/trader-quality", "type": "link", "icon": "favorite", "tooltip": "Institutional-grade quality scorecard — strategy grades F to A+" },
+    { "title": "Strategy Reference Guide", "url": "/d/strategy-reference", "type": "link", "icon": "book", "tooltip": "How each strategy works" },
+    { "title": "Live Narration", "url": "/d/narration-live", "type": "link", "icon": "comment-alt", "tooltip": "Plain-English commentary on decisions" }
+  ],
+  "panels": [
+    {
+      "title": "",
+      "type": "text",
+      "gridPos": { "h": 2, "w": 24, "x": 0, "y": 0 },
+      "options": { "content": "# System Health", "mode": "markdown" }
+    },
+    {
+      "title": "System Status",
+      "description": "Overall system state. Green = all systems running normally. Red = emergency stop is active or a critical component is down.",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 5, "x": 0, "y": 2 },
+      "targets": [
+        {
+          "expr": "trading_kill_switch_active",
+          "legendFormat": "status",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "ALL SYSTEMS GO", "color": "green" }, "1": { "text": "EMERGENCY STOP ACTIVE", "color": "red" } } }
+          ],
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "green" },
+              { "value": 1, "color": "red" }
+            ]
+          }
+        }
+      },
+      "options": { "graphMode": "none", "textMode": "auto", "colorMode": "background", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "title": "Portfolio Health",
+      "description": "Based on current drawdown. Green = drawdown under 5%. Yellow = 5-10%. Orange = 10-15%. Red = over 15%.",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 5, "x": 5, "y": 2 },
+      "targets": [
+        {
+          "expr": "trading_drawdown_pct",
+          "legendFormat": "drawdown",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "green" },
+              { "value": 0.05, "color": "yellow" },
+              { "value": 0.10, "color": "orange" },
+              { "value": 0.15, "color": "red" }
+            ]
+          },
+          "mappings": [
+            { "type": "range", "options": { "from": 0, "to": 0.05, "result": { "text": "Healthy", "color": "green" } } },
+            { "type": "range", "options": { "from": 0.05, "to": 0.10, "result": { "text": "Caution", "color": "yellow" } } },
+            { "type": "range", "options": { "from": 0.10, "to": 0.15, "result": { "text": "Warning", "color": "orange" } } },
+            { "type": "range", "options": { "from": 0.15, "to": 1, "result": { "text": "Critical", "color": "red" } } }
+          ]
+        }
+      },
+      "options": { "graphMode": "none", "textMode": "auto", "colorMode": "background", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "title": "Risk Guardrails",
+      "description": "Are safety controls blocking trades? Green = no recent blocks. Yellow/Red = trades are being stopped by the governance system.",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 5, "x": 10, "y": 2 },
+      "targets": [
+        {
+          "expr": "increase(trading_governance_blocks_total[15m])",
+          "legendFormat": "blocks",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "green" },
+              { "value": 1, "color": "yellow" },
+              { "value": 5, "color": "red" }
+            ]
+          },
+          "mappings": [
+            { "type": "range", "options": { "from": 0, "to": 0.5, "result": { "text": "All Clear", "color": "green" } } },
+            { "type": "range", "options": { "from": 0.5, "to": 5, "result": { "text": "Trades Blocked", "color": "yellow" } } },
+            { "type": "range", "options": { "from": 5, "to": 999999, "result": { "text": "Many Blocks", "color": "red" } } }
+          ]
+        }
+      },
+      "options": { "graphMode": "none", "textMode": "auto", "colorMode": "background", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "title": "Data Feed",
+      "description": "Is market data flowing? Shows the stalest data feed. Green = data is fresh (<30s). Yellow = slightly delayed. Red = stale data (>60s).",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 5, "x": 15, "y": 2 },
+      "targets": [
+        {
+          "expr": "max(trading_data_staleness_seconds)",
+          "legendFormat": "staleness",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "green" },
+              { "value": 30, "color": "yellow" },
+              { "value": 60, "color": "red" }
+            ]
+          },
+          "mappings": [
+            { "type": "range", "options": { "from": 0, "to": 30, "result": { "text": "Live", "color": "green" } } },
+            { "type": "range", "options": { "from": 30, "to": 60, "result": { "text": "Delayed", "color": "yellow" } } },
+            { "type": "range", "options": { "from": 60, "to": 999999, "result": { "text": "Stale", "color": "red" } } }
+          ]
+        }
+      },
+      "options": { "graphMode": "none", "textMode": "auto", "colorMode": "background", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "title": "Trading Mode",
+      "description": "Current operating mode: Live (real money), Paper (simulated), or Backtest (historical replay).",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 2 },
+      "targets": [
+        {
+          "expr": "trading_system_info",
+          "legendFormat": "{{mode}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "1": { "text": "RUNNING", "color": "green" } } }
+          ]
+        }
+      },
+      "options": { "graphMode": "none", "textMode": "name", "colorMode": "background", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "title": "",
+      "type": "text",
+      "gridPos": { "h": 2, "w": 24, "x": 0, "y": 6 },
+      "options": { "content": "# Key Numbers", "mode": "markdown" }
+    },
+    {
+      "title": "Today's Profit / Loss",
+      "description": "How much the portfolio gained or lost today. Green = positive. Red = negative.",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "trading_daily_pnl",
+          "legendFormat": "daily_pnl",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "red" },
+              { "value": 0, "color": "green" }
+            ]
+          }
+        }
+      },
+      "options": { "graphMode": "area", "textMode": "auto", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "title": "Portfolio Value",
+      "description": "Total account value right now, including all open positions.",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 8 },
+      "targets": [
+        {
+          "expr": "trading_equity",
+          "legendFormat": "equity",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "currencyUSD" }
+      },
+      "options": { "graphMode": "area", "textMode": "auto", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "title": "Gross Exposure",
+      "description": "Total dollar value of all open positions (gross). This is the combined notional value of all positions currently deployed.",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "expr": "trading_gross_exposure",
+          "legendFormat": "exposure",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "currencyUSD" }
+      },
+      "options": { "graphMode": "none", "textMode": "auto", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "title": "Active Trades",
+      "description": "Number of trades currently open across all strategies.",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 8 },
+      "targets": [
+        {
+          "expr": "trading_journal_open_trades",
+          "legendFormat": "open",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "blue" }
+            ]
+          }
+        }
+      },
+      "options": { "graphMode": "none", "textMode": "auto", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "title": "",
+      "type": "text",
+      "gridPos": { "h": 2, "w": 24, "x": 0, "y": 12 },
+      "options": { "content": "# Portfolio Value Over Time", "mode": "markdown" }
+    },
+    {
+      "title": "Portfolio Value Over Time",
+      "description": "Your total account value plotted over time. An upward trend means the strategies are making money overall.",
+      "type": "timeseries",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 14 },
+      "targets": [
+        {
+          "expr": "trading_equity",
+          "legendFormat": "Portfolio Value",
+          "refId": "A"
+        },
+        {
+          "expr": "trading_daily_pnl",
+          "legendFormat": "Today's P&L",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Today's P&L" },
+            "properties": [
+              { "id": "custom.drawStyle", "value": "bars" },
+              { "id": "custom.fillOpacity", "value": 50 },
+              { "id": "custom.lineWidth", "value": 0 },
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "semi-dark-blue" } }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "title": "",
+      "type": "text",
+      "gridPos": { "h": 2, "w": 24, "x": 0, "y": 24 },
+      "options": { "content": "# Strategy Scorecard", "mode": "markdown" }
+    },
+    {
+      "title": "Strategy Win Rates",
+      "description": "What percentage of each strategy's trades are profitable. Above 50% (green) is good. Below 40% (red) needs attention.",
+      "type": "bargauge",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 26 },
+      "targets": [
+        {
+          "expr": "trading_journal_win_rate",
+          "legendFormat": "{{strategy_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "red" },
+              { "value": 0.40, "color": "yellow" },
+              { "value": 0.50, "color": "green" }
+            ]
+          }
+        }
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true,
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      }
+    },
+    {
+      "title": "Average Profit per Trade",
+      "description": "How much each strategy makes (or loses) per trade on average. Positive (green) = profitable. Negative (red) = losing money.",
+      "type": "bargauge",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 26 },
+      "targets": [
+        {
+          "expr": "trading_journal_expectancy",
+          "legendFormat": "{{strategy_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "red" },
+              { "value": 0, "color": "green" }
+            ]
+          }
+        }
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true,
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      }
+    },
+    {
+      "title": "",
+      "type": "text",
+      "gridPos": { "h": 2, "w": 24, "x": 0, "y": 34 },
+      "options": { "content": "# Recent Safety Events", "mode": "markdown" }
+    },
+    {
+      "title": "Blocked Trades (Last Hour)",
+      "description": "Trades that were stopped by the safety system in the last hour. Shows why each trade was blocked and which strategy tried to place it.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 36 },
+      "targets": [
+        {
+          "expr": "increase(trading_governance_blocks_total[1h])",
+          "legendFormat": "{{strategy_id}}: {{reason}}",
+          "refId": "A",
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "stacking": { "mode": "normal" }
+          },
+          "color": { "mode": "palette-classic" }
+        }
+      }
+    },
+    {
+      "title": "Strategy Health",
+      "description": "Overall health rating for each strategy. 1.0 = perfect health. Below 0.7 = needs attention. Below 0.4 = critical. Based on recent performance and behavior.",
+      "type": "bargauge",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 36 },
+      "targets": [
+        {
+          "expr": "trading_strategy_health_score",
+          "legendFormat": "{{strategy_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "red" },
+              { "value": 0.4, "color": "yellow" },
+              { "value": 0.7, "color": "green" }
+            ]
+          }
+        }
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true,
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      }
+    },
+    {
+      "title": "",
+      "type": "text",
+      "gridPos": { "h": 3, "w": 24, "x": 0, "y": 44 },
+      "options": {
+        "content": "### Deep Dives\n\n| | | | | |\n|---|---|---|---|---|\n| [Strategy Performance →](/d/strategy-performance) | [Risk & Governance →](/d/risk-governance) | [System Health →](/d/system-health) | [Strategy Reference Guide →](/d/strategy-reference) | [Live Narration →](/d/narration-live) |",
+        "mode": "markdown"
+      }
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["trading", "overview"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "10s",
+  "title": "Trading Overview",
+  "uid": "trading-overview"
+}

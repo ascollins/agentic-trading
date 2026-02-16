@@ -1,17 +1,28 @@
 """Execution engine: order lifecycle management.
 
 Receives OrderIntent events, checks kill switch and risk, submits orders via
-the exchange adapter, and manages the full lifecycle from intent through
-acknowledgement to fill.  Publishes OrderAck, FillEvent, and PositionUpdate
-events onto the event bus.
+the exchange adapter (or ToolGateway when available), and manages the full
+lifecycle from intent through acknowledgement to fill.  Publishes OrderAck,
+FillEvent, and PositionUpdate events onto the event bus.
+
+When a ToolGateway is provided, the engine uses the institutional control
+plane for all exchange side effects.  Policy evaluation, approval, audit
+logging, and kill-switch checks are handled by the control plane.  An
+OrderLifecycleManager tracks each order through a strict FSM.
+
+Without a ToolGateway (legacy mode), the engine falls back to direct adapter
+calls with inline governance/risk checks (preserved for backward compatibility
+during migration).
 """
 
 from __future__ import annotations
 
+import inspect
 import logging
-from typing import Any
-
+import uuid
+from datetime import datetime, timezone
 from decimal import Decimal
+from typing import Any
 
 from agentic_trading.core.enums import GovernanceAction, OrderStatus
 from agentic_trading.core.errors import (
@@ -54,20 +65,32 @@ class ExecutionEngine:
       - Forward ``FillEvent`` / ``OrderUpdate`` / ``PositionUpdate``.
       - Retry failed submissions through ``OrderManager``.
 
+    When ``tool_gateway`` is provided, the engine uses the institutional
+    control plane for all exchange mutations.  The ToolGateway handles
+    policy evaluation, approval, audit logging, kill-switch, and rate
+    limiting.  An ``OrderLifecycleManager`` tracks each order's FSM.
+
     Parameters
     ----------
     adapter:
         Exchange adapter implementing ``IExchangeAdapter``.
+        Used directly only in legacy mode (no tool_gateway).
     event_bus:
         Event bus implementing ``IEventBus``.
     risk_manager:
         Pre/post-trade risk checker implementing ``IRiskChecker``.
     kill_switch:
         Callable returning ``True`` when the kill switch is active.
+        In CP mode, ToolGateway handles kill switch.
     portfolio_state_provider:
         Callable returning the latest ``PortfolioState`` snapshot.
     max_retries:
         Maximum submission retries before giving up (default 3).
+    governance_gate:
+        Legacy governance gate.  Ignored when tool_gateway is provided.
+    tool_gateway:
+        Institutional control plane gateway.  When provided, all exchange
+        mutations go through the control plane.
     """
 
     def __init__(
@@ -79,6 +102,7 @@ class ExecutionEngine:
         portfolio_state_provider: Any = None,
         max_retries: int = 3,
         governance_gate: Any = None,
+        tool_gateway: Any = None,
     ) -> None:
         self._adapter = adapter
         self._event_bus = event_bus
@@ -88,7 +112,16 @@ class ExecutionEngine:
         self._portfolio_state_provider = portfolio_state_provider
         self._order_manager = OrderManager(max_retries=max_retries)
         self._governance_gate = governance_gate
+        self._tool_gateway = tool_gateway
         self._running: bool = False
+
+        # OrderLifecycleManager for FSM tracking (CP mode)
+        self._lifecycle_manager: Any = None
+        if self._tool_gateway is not None:
+            from agentic_trading.control_plane.state_machine import (
+                OrderLifecycleManager,
+            )
+            self._lifecycle_manager = OrderLifecycleManager()
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -96,7 +129,7 @@ class ExecutionEngine:
 
     async def start(self) -> None:
         """Subscribe to relevant event-bus topics and start processing."""
-        logger.info("ExecutionEngine starting")
+        logger.info("ExecutionEngine starting (cp_mode=%s)", self._tool_gateway is not None)
         await self._event_bus.subscribe(
             topic="execution",
             group="execution_engine",
@@ -137,7 +170,15 @@ class ExecutionEngine:
         """Handle an incoming ``OrderIntent``."""
         if not isinstance(event, OrderIntent):
             return
-        await self.handle_intent(event)
+        try:
+            await self.handle_intent(event)
+        except DuplicateOrderError:
+            logger.debug("Duplicate order suppressed: %s", event.dedupe_key)
+        except Exception:
+            logger.warning(
+                "Failed to process order intent %s", event.dedupe_key,
+                exc_info=True,
+            )
 
     # ------------------------------------------------------------------
     # Core intent processing
@@ -146,18 +187,245 @@ class ExecutionEngine:
     async def handle_intent(self, intent: OrderIntent) -> OrderAck | None:
         """Process a single ``OrderIntent`` through the full lifecycle.
 
-        Steps:
-            1. Kill switch check
-            2. Deduplicate via order manager
-            3. Pre-trade risk check
-            4. Submit to exchange adapter (with retry)
-            5. Publish OrderAck
-            6. Register the order in the order manager
-
-        Returns the ``OrderAck`` on success, or ``None`` on rejection.
+        When tool_gateway is set, uses the control plane path.
+        Otherwise, falls back to the legacy direct-adapter path.
         """
+        if self._tool_gateway is not None:
+            return await self._handle_intent_cp(intent)
+        return await self._handle_intent_legacy(intent)
+
+    # ------------------------------------------------------------------
+    # Control Plane path (ToolGateway)
+    # ------------------------------------------------------------------
+
+    async def _handle_intent_cp(self, intent: OrderIntent) -> OrderAck | None:
+        """Process an order intent through the institutional control plane.
+
+        Steps:
+            1. Deduplicate via order manager
+            2. Pre-trade risk check (still engine-local for now)
+            3. Create OrderLifecycle FSM
+            4. Build ProposedAction
+            5. Submit via ToolGateway.call() (policy, approval, audit,
+               kill-switch, rate-limit all handled by the gateway)
+            6. Interpret ToolCallResult → OrderAck
+            7. Handle immediate fills
+        """
+        from agentic_trading.control_plane.action_types import (
+            ActionScope,
+            ProposedAction,
+            ToolName,
+        )
+        from agentic_trading.control_plane.state_machine import OrderState
+
+        # 1. Deduplication
+        if self._order_manager.dedupe_check(intent.dedupe_key):
+            raise DuplicateOrderError(
+                f"Duplicate dedupe_key: {intent.dedupe_key}"
+            )
+
+        # Register the intent as PENDING
+        self._order_manager.register_intent(intent)
+
+        # 2. Create OrderLifecycle FSM
+        lifecycle = self._lifecycle_manager.create(
+            action_id=intent.dedupe_key,
+            correlation_id=intent.trace_id,
+        )
+        # INTENT_RECEIVED -> PREFLIGHT_POLICY
+        lifecycle.transition(OrderState.PREFLIGHT_POLICY)
+
+        # 3. Pre-trade risk check
+        portfolio_state = self._get_portfolio_state()
+        _risk_result = self._risk_manager.pre_trade_check(intent, portfolio_state)
+        if inspect.isawaitable(_risk_result):
+            _risk_result = await _risk_result
+        risk_result: RiskCheckResult = _risk_result
+        if not risk_result.passed:
+            logger.warning(
+                "Order rejected by risk check '%s': %s (dedupe_key=%s)",
+                risk_result.check_name,
+                risk_result.reason,
+                intent.dedupe_key,
+            )
+            # PREFLIGHT_POLICY -> BLOCKED
+            lifecycle.transition(OrderState.BLOCKED)
+            lifecycle.error = f"risk_check_failed: {risk_result.reason}"
+            self._order_manager.update_order(
+                OrderUpdate(
+                    order_id="",
+                    client_order_id=intent.dedupe_key,
+                    symbol=intent.symbol,
+                    exchange=intent.exchange,
+                    status=OrderStatus.REJECTED,
+                    trace_id=intent.trace_id,
+                )
+            )
+            ack = OrderAck(
+                order_id="",
+                client_order_id=intent.dedupe_key,
+                symbol=intent.symbol,
+                exchange=intent.exchange,
+                status=OrderStatus.REJECTED,
+                message=f"Risk check failed: {risk_result.reason}",
+                trace_id=intent.trace_id,
+            )
+            await self._publish_ack(ack)
+            await self._event_bus.publish("risk", risk_result)
+            return ack
+
+        # 4. Build ProposedAction for ToolGateway
+        # Stay in PREFLIGHT_POLICY while ToolGateway evaluates policy,
+        # approval, and submits.  Transition based on outcome.
+        proposed = ProposedAction(
+            tool_name=ToolName.SUBMIT_ORDER,
+            scope=ActionScope(
+                strategy_id=intent.strategy_id,
+                symbol=intent.symbol,
+                exchange=intent.exchange,
+                actor="execution_engine",
+            ),
+            request_params={"intent": intent.model_dump(mode="json")},
+            idempotency_key=intent.dedupe_key,
+            causation_id=intent.event_id,
+        )
+
+        # 5. Submit via ToolGateway (policy + approval + audit + adapter)
+        result = await self._tool_gateway.call(proposed)
+        lifecycle.tool_result = result
+
+        if not result.success:
+            error_str = result.error or "unknown"
+
+            # Pending approval: policy passed but human approval needed
+            if error_str.startswith("pending_approval:"):
+                # PREFLIGHT_POLICY -> AWAITING_APPROVAL
+                lifecycle.transition(OrderState.AWAITING_APPROVAL)
+                ack = OrderAck(
+                    order_id="",
+                    client_order_id=intent.dedupe_key,
+                    symbol=intent.symbol,
+                    exchange=intent.exchange,
+                    status=OrderStatus.PENDING,
+                    message=f"Awaiting approval: {error_str}",
+                    trace_id=intent.trace_id,
+                )
+                await self._publish_ack(ack)
+                return ack
+
+            # Policy block: order rejected at policy evaluation
+            if error_str.startswith("policy_blocked:"):
+                # PREFLIGHT_POLICY -> BLOCKED
+                lifecycle.transition(OrderState.BLOCKED)
+                lifecycle.error = error_str
+            else:
+                # Submission failure: policy passed but adapter failed
+                # PREFLIGHT_POLICY -> SUBMITTING -> SUBMIT_FAILED
+                lifecycle.transition(OrderState.SUBMITTING)
+                lifecycle.transition(OrderState.SUBMIT_FAILED)
+                lifecycle.error = error_str
+
+            self._order_manager.update_order(
+                OrderUpdate(
+                    order_id="",
+                    client_order_id=intent.dedupe_key,
+                    symbol=intent.symbol,
+                    exchange=intent.exchange,
+                    status=OrderStatus.REJECTED,
+                    trace_id=intent.trace_id,
+                )
+            )
+            ack = OrderAck(
+                order_id="",
+                client_order_id=intent.dedupe_key,
+                symbol=intent.symbol,
+                exchange=intent.exchange,
+                status=OrderStatus.REJECTED,
+                message=error_str,
+                trace_id=intent.trace_id,
+            )
+            await self._publish_ack(ack)
+            return ack
+
+        # 6. Success — interpret the ToolCallResult response as OrderAck
+        # PREFLIGHT_POLICY -> SUBMITTING -> SUBMITTED
+        lifecycle.transition(OrderState.SUBMITTING)
+        lifecycle.transition(OrderState.SUBMITTED)
+
+        resp = result.response
+        ack_status_str = resp.get("status", "submitted")
+        # Map string status back to OrderStatus enum
+        try:
+            ack_status = OrderStatus(ack_status_str)
+        except ValueError:
+            ack_status = OrderStatus.SUBMITTED
+
+        ack = OrderAck(
+            order_id=resp.get("order_id", ""),
+            client_order_id=resp.get("client_order_id", intent.dedupe_key),
+            symbol=resp.get("symbol", intent.symbol),
+            exchange=resp.get("exchange", intent.exchange),
+            status=ack_status,
+            message=resp.get("message", ""),
+            trace_id=intent.trace_id,
+        )
+
+        logger.info(
+            "Order submitted via CP: order_id=%s symbol=%s status=%s",
+            ack.order_id,
+            ack.symbol,
+            ack.status.value,
+        )
+
+        # Emit order metric
+        try:
+            from agentic_trading.observability.metrics import record_order
+            side_val = intent.side.value if hasattr(intent.side, "value") else str(intent.side)
+            otype = intent.order_type.value if hasattr(intent.order_type, "value") else str(intent.order_type)
+            record_order(intent.symbol, side_val, otype, ack.status.value)
+        except Exception:
+            pass
+
+        # Transition to SUBMITTED in order manager
+        self._order_manager.update_order(
+            OrderUpdate(
+                order_id=ack.order_id,
+                client_order_id=intent.dedupe_key,
+                symbol=intent.symbol,
+                exchange=intent.exchange,
+                status=OrderStatus.SUBMITTED,
+                remaining_qty=intent.qty,
+                trace_id=intent.trace_id,
+            )
+        )
+        await self._publish_ack(ack)
+
+        # SUBMITTED -> MONITORING
+        lifecycle.transition(OrderState.MONITORING)
+
+        # 7. Handle immediate fill (PaperAdapter or instant market fill)
+        if ack.status == OrderStatus.FILLED:
+            # MONITORING -> COMPLETE
+            lifecycle.transition(OrderState.COMPLETE)
+
+            synthetic_fill = self._synthesize_fill(intent, ack, resp)
+            lifecycle.fills.append({"fill_id": synthetic_fill.fill_id})
+            await self.handle_fill(synthetic_fill)
+
+            # COMPLETE -> POST_TRADE -> TERMINAL
+            lifecycle.transition(OrderState.POST_TRADE)
+            lifecycle.transition(OrderState.TERMINAL)
+
+        return ack
+
+    # ------------------------------------------------------------------
+    # Legacy path (direct adapter)
+    # ------------------------------------------------------------------
+
+    async def _handle_intent_legacy(self, intent: OrderIntent) -> OrderAck | None:
+        """Process an order via direct adapter calls (pre-control-plane)."""
         # 1. Kill-switch gate
-        if self._is_kill_switch_active():
+        if await self._is_kill_switch_active():
             logger.warning(
                 "Order rejected (kill switch active): dedupe_key=%s symbol=%s",
                 intent.dedupe_key,
@@ -177,10 +445,6 @@ class ExecutionEngine:
 
         # 2. Deduplication
         if self._order_manager.dedupe_check(intent.dedupe_key):
-            logger.info(
-                "Duplicate order intent suppressed: dedupe_key=%s",
-                intent.dedupe_key,
-            )
             raise DuplicateOrderError(
                 f"Duplicate dedupe_key: {intent.dedupe_key}"
             )
@@ -247,9 +511,10 @@ class ExecutionEngine:
 
         # 3. Pre-trade risk check
         portfolio_state = self._get_portfolio_state()
-        risk_result: RiskCheckResult = self._risk_manager.pre_trade_check(
-            intent, portfolio_state
-        )
+        _risk_result = self._risk_manager.pre_trade_check(intent, portfolio_state)
+        if inspect.isawaitable(_risk_result):
+            _risk_result = await _risk_result
+        risk_result: RiskCheckResult = _risk_result
         if not risk_result.passed:
             logger.warning(
                 "Order rejected by risk check '%s': %s (dedupe_key=%s)",
@@ -282,10 +547,46 @@ class ExecutionEngine:
 
         # 4. Submit with retry
         ack = await self._submit_with_retry(intent)
+
+        # 5. If the adapter returned an immediate fill (e.g. PaperAdapter or
+        #    a live market order that filled instantly), synthesize a FillEvent
+        #    so the journal and narration see it.
+        if ack is not None and ack.status == OrderStatus.FILLED:
+            synthetic_fill = FillEvent(
+                fill_id=str(uuid.uuid4()),
+                order_id=ack.order_id,
+                client_order_id=ack.client_order_id or intent.dedupe_key,
+                symbol=intent.symbol,
+                exchange=intent.exchange,
+                side=intent.side,
+                price=intent.price or Decimal("0"),
+                qty=intent.qty,
+                fee=Decimal("0"),
+                fee_currency="USDT",
+                is_maker=False,
+                trace_id=intent.trace_id,
+                timestamp=datetime.now(timezone.utc),
+            )
+            # Try to get actual fill price from PaperAdapter's order record
+            if hasattr(self._adapter, "_orders"):
+                paper_order = self._adapter._orders.get(ack.order_id)
+                if paper_order is not None:
+                    synthetic_fill = synthetic_fill.model_copy(update={
+                        "price": paper_order.avg_fill_price,
+                    })
+            # For CCXTAdapter: use the last fill price from the exchange
+            if hasattr(self._adapter, "_last_fill_price"):
+                fill_price = self._adapter._last_fill_price
+                if fill_price is not None and fill_price > Decimal("0"):
+                    synthetic_fill = synthetic_fill.model_copy(update={
+                        "price": fill_price,
+                    })
+            await self.handle_fill(synthetic_fill)
+
         return ack
 
     # ------------------------------------------------------------------
-    # Submission with retry
+    # Submission with retry (legacy path)
     # ------------------------------------------------------------------
 
     async def _submit_with_retry(self, intent: OrderIntent) -> OrderAck:
@@ -308,6 +609,14 @@ class ExecutionEngine:
                     ack.symbol,
                     ack.status.value,
                 )
+                # Emit order metric
+                try:
+                    from agentic_trading.observability.metrics import record_order
+                    side_val = intent.side.value if hasattr(intent.side, "value") else str(intent.side)
+                    otype = intent.order_type.value if hasattr(intent.order_type, "value") else str(intent.order_type)
+                    record_order(intent.symbol, side_val, otype, ack.status.value)
+                except Exception:
+                    pass
                 # Transition to SUBMITTED in order manager
                 self._order_manager.update_order(
                     OrderUpdate(
@@ -422,8 +731,10 @@ class ExecutionEngine:
         )
         await self._event_bus.publish("state", position_update)
 
-        # Post-trade risk check
-        portfolio_state = self._get_portfolio_state()
+        # Refresh portfolio state for post-trade check.
+        # In CP mode, use ToolGateway for reads; otherwise use adapter.
+        portfolio_state = await self._refresh_portfolio_for_post_trade()
+
         from agentic_trading.core.models import Fill as FillModel
 
         fill_model = FillModel(
@@ -441,9 +752,12 @@ class ExecutionEngine:
             timestamp=fill.timestamp,
             trace_id=fill.trace_id,
         )
-        post_risk = self._risk_manager.post_trade_check(
+        _post_risk = self._risk_manager.post_trade_check(
             fill_model, portfolio_state
         )
+        if inspect.isawaitable(_post_risk):
+            _post_risk = await _post_risk
+        post_risk = _post_risk
         if not post_risk.passed:
             logger.warning(
                 "Post-trade risk alert: check=%s reason=%s",
@@ -475,12 +789,84 @@ class ExecutionEngine:
     # Helpers
     # ------------------------------------------------------------------
 
-    def _is_kill_switch_active(self) -> bool:
+    def _synthesize_fill(
+        self,
+        intent: OrderIntent,
+        ack: OrderAck,
+        response: dict[str, Any],
+    ) -> FillEvent:
+        """Build a synthetic FillEvent from a successful submission.
+
+        Used when the adapter reports an immediate fill (PaperAdapter,
+        or a live market order that filled instantly).
+        """
+        fill_price = intent.price or Decimal("0")
+        # Try to extract fill price from the response
+        if response.get("avg_fill_price"):
+            try:
+                fill_price = Decimal(str(response["avg_fill_price"]))
+            except Exception:
+                pass
+
+        return FillEvent(
+            fill_id=str(uuid.uuid4()),
+            order_id=ack.order_id,
+            client_order_id=ack.client_order_id or intent.dedupe_key,
+            symbol=intent.symbol,
+            exchange=intent.exchange,
+            side=intent.side,
+            price=fill_price,
+            qty=intent.qty,
+            fee=Decimal("0"),
+            fee_currency="USDT",
+            is_maker=False,
+            trace_id=intent.trace_id,
+            timestamp=datetime.now(timezone.utc),
+        )
+
+    async def _refresh_portfolio_for_post_trade(self) -> PortfolioState:
+        """Refresh portfolio state from exchange for post-trade risk check.
+
+        In CP mode, uses ToolGateway for reads; otherwise uses adapter.
+        """
+        try:
+            if self._tool_gateway is not None:
+                from agentic_trading.control_plane.action_types import ToolName
+                pos_resp = await self._tool_gateway.read(
+                    ToolName.GET_POSITIONS, actor="execution_engine",
+                )
+                bal_resp = await self._tool_gateway.read(
+                    ToolName.GET_BALANCES, actor="execution_engine",
+                )
+                # ToolGateway returns dicts, need to reconstruct
+                # For now, fall back to cached state since reconstructing
+                # Pydantic models from dicts requires the model classes.
+                # The read responses are audited; we use cached state for
+                # the actual risk check.
+                return self._get_portfolio_state()
+            else:
+                positions = await self._adapter.get_positions()
+                balances = await self._adapter.get_balances()
+                return PortfolioState(
+                    positions={p.symbol: p for p in positions},
+                    balances={b.currency: b for b in balances},
+                )
+        except Exception:
+            logger.debug(
+                "Could not refresh portfolio for post-trade check, using cached state",
+                exc_info=True,
+            )
+            return self._get_portfolio_state()
+
+    async def _is_kill_switch_active(self) -> bool:
         """Check kill switch from both cached flag and callable."""
         if self._kill_switch_active:
             return True
         if self._kill_switch is not None and callable(self._kill_switch):
-            return self._kill_switch()
+            result = self._kill_switch()
+            if inspect.isawaitable(result):
+                return await result
+            return bool(result)
         return False
 
     def _get_portfolio_state(self) -> PortfolioState:
@@ -506,5 +892,15 @@ class ExecutionEngine:
         return self._order_manager
 
     @property
+    def lifecycle_manager(self) -> Any:
+        """Expose the OrderLifecycleManager (CP mode only, None in legacy)."""
+        return self._lifecycle_manager
+
+    @property
     def is_running(self) -> bool:
         return self._running
+
+    @property
+    def uses_control_plane(self) -> bool:
+        """Whether this engine is using the institutional control plane."""
+        return self._tool_gateway is not None

@@ -6,4 +6,6 @@ This package provides pre-trade analysis tools:
 - **Trade plans** — structured trade plan model with Signal bridge
 - **HTF analysis** — higher-timeframe structure assessment
 - **Market context** — macro regime framing for crypto positioning
+- **SMC confluence** — multi-TF Smart Money Concepts alignment scoring
+- **SMC trade plans** — automated trade plan generation from SMC analysis
 """

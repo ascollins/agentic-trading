@@ -31,6 +31,7 @@ services:
   trading:
     build: .
     env_file: .env
+    command: ["live", "--config", "configs/live.toml", "--live"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -61,7 +62,7 @@ services:
       - "3001:3000"
     environment:
       GF_SECURITY_ADMIN_PASSWORD: admin
-      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/narration.json
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/overview.json
       GF_INSTALL_PLUGINS: yesoreyeram-infinity-datasource
     volumes:
       - grafanadata:/var/lib/grafana

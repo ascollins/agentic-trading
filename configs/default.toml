@@ -2,7 +2,7 @@
 # Default configuration - base settings for all modes
 # ===================================================================
 
-mode = "backtest"
+mode = "live"
 read_only = false
 
 [symbols]

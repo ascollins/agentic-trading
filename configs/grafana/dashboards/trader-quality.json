@@ -1,0 +1,494 @@
+{
+  "annotations": { "list": [] },
+  "description": "Institutional-grade quality assessment of the trader agent. Grades each strategy from F to A+ across key performance metrics. For portfolio managers and strategy reviewers.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [
+    { "title": "\u2190 Back to Overview", "url": "/d/trading-overview", "type": "link", "icon": "arrow-left", "tooltip": "Return to the main overview dashboard" },
+    { "title": "Strategy Performance", "url": "/d/strategy-performance", "type": "link", "icon": "bolt" },
+    { "title": "Risk & Governance", "url": "/d/risk-governance", "type": "link", "icon": "shield" }
+  ],
+  "panels": [
+    {
+      "title": "",
+      "type": "text",
+      "gridPos": { "h": 2, "w": 24, "x": 0, "y": 0 },
+      "options": { "content": "# Trader Agent Quality Scorecard", "mode": "markdown" }
+    },
+    {
+      "title": "Portfolio Quality Score",
+      "description": "Overall quality score for the entire trading portfolio, weighted by trade count per strategy. Above 75 (green) is institutional grade. Below 60 (red) needs attention.",
+      "type": "gauge",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 2 },
+      "targets": [
+        {
+          "expr": "trading_quality_portfolio_score",
+          "legendFormat": "Portfolio",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "red" },
+              { "value": 40, "color": "orange" },
+              { "value": 60, "color": "yellow" },
+              { "value": 75, "color": "green" },
+              { "value": 90, "color": "dark-green" }
+            ]
+          },
+          "mappings": [
+            { "type": "range", "options": { "from": 95, "to": 100, "result": { "text": "A+" } } },
+            { "type": "range", "options": { "from": 90, "to": 94.9, "result": { "text": "A" } } },
+            { "type": "range", "options": { "from": 85, "to": 89.9, "result": { "text": "A-" } } },
+            { "type": "range", "options": { "from": 80, "to": 84.9, "result": { "text": "B+" } } },
+            { "type": "range", "options": { "from": 75, "to": 79.9, "result": { "text": "B" } } },
+            { "type": "range", "options": { "from": 70, "to": 74.9, "result": { "text": "B-" } } },
+            { "type": "range", "options": { "from": 65, "to": 69.9, "result": { "text": "C+" } } },
+            { "type": "range", "options": { "from": 60, "to": 64.9, "result": { "text": "C" } } },
+            { "type": "range", "options": { "from": 55, "to": 59.9, "result": { "text": "C-" } } },
+            { "type": "range", "options": { "from": 40, "to": 54.9, "result": { "text": "D" } } },
+            { "type": "range", "options": { "from": 0, "to": 39.9, "result": { "text": "F" } } }
+          ]
+        }
+      }
+    },
+    {
+      "title": "Strategies Passing",
+      "description": "How many strategies meet the minimum quality bar (score >= 60). If this drops to 0, no strategies are considered production-worthy.",
+      "type": "stat",
+      "gridPos": { "h": 3, "w": 4, "x": 6, "y": 2 },
+      "targets": [
+        {
+          "expr": "trading_quality_strategies_passing",
+          "legendFormat": "Passing",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "red" },
+              { "value": 1, "color": "yellow" },
+              { "value": 3, "color": "green" }
+            ]
+          }
+        }
+      },
+      "options": { "graphMode": "none", "textMode": "auto", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "title": "Strategies Failing",
+      "description": "How many strategies scored below the quality bar. Consider disabling or retuning these strategies.",
+      "type": "stat",
+      "gridPos": { "h": 3, "w": 4, "x": 10, "y": 2 },
+      "targets": [
+        {
+          "expr": "trading_quality_strategies_failing",
+          "legendFormat": "Failing",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "green" },
+              { "value": 1, "color": "yellow" },
+              { "value": 3, "color": "red" }
+            ]
+          }
+        }
+      },
+      "options": { "graphMode": "none", "textMode": "auto", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "title": "Strategy Quality Leaderboard",
+      "description": "Overall quality score for each strategy (0-100). Green = institutional grade (75+). Yellow = acceptable (60-74). Red = needs attention (<60).",
+      "type": "bargauge",
+      "gridPos": { "h": 6, "w": 10, "x": 14, "y": 2 },
+      "targets": [
+        {
+          "expr": "trading_quality_overall_score",
+          "legendFormat": "{{strategy_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "red" },
+              { "value": 40, "color": "orange" },
+              { "value": 60, "color": "yellow" },
+              { "value": 75, "color": "green" },
+              { "value": 90, "color": "dark-green" }
+            ]
+          }
+        }
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true,
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      }
+    },
+    {
+      "title": "Quality Pass/Fail by Strategy",
+      "description": "Quick view: which strategies pass (green) and which fail (red) the quality assessment. Passing requires a score of 60+ and sufficient trade count.",
+      "type": "stat",
+      "gridPos": { "h": 3, "w": 8, "x": 6, "y": 5 },
+      "targets": [
+        {
+          "expr": "trading_quality_passing",
+          "legendFormat": "{{strategy_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "FAIL", "color": "red" }, "1": { "text": "PASS", "color": "green" } } }
+          ]
+        }
+      },
+      "options": { "graphMode": "none", "textMode": "auto", "colorMode": "background", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "title": "",
+      "type": "text",
+      "gridPos": { "h": 2, "w": 24, "x": 0, "y": 8 },
+      "options": { "content": "# Risk-Adjusted Returns", "mode": "markdown" }
+    },
+    {
+      "title": "Sharpe Ratio Score",
+      "description": "How well each strategy's returns compensate for risk. Target: > 1.0. Above 1.5 is very good. This is the most important risk-adjusted metric for institutional investors.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 10 },
+      "targets": [
+        {
+          "expr": "trading_quality_metric_score{metric=\"sharpe_ratio\"}",
+          "legendFormat": "{{strategy_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 100,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "thresholdsStyle": { "mode": "area" }
+          },
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "red" },
+              { "value": 60, "color": "yellow" },
+              { "value": 75, "color": "green" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Sortino Ratio Score",
+      "description": "Like Sharpe, but only penalizes downside volatility. Better for strategies that have occasional large gains. Target: > 1.5.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 10 },
+      "targets": [
+        {
+          "expr": "trading_quality_metric_score{metric=\"sortino_ratio\"}",
+          "legendFormat": "{{strategy_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 100,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "thresholdsStyle": { "mode": "area" }
+          },
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "red" },
+              { "value": 60, "color": "yellow" },
+              { "value": 75, "color": "green" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Calmar Ratio Score",
+      "description": "Return divided by max drawdown. Tells you how much pain you endure for each unit of return. Target: > 1.0, 2.0+ is excellent.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 10 },
+      "targets": [
+        {
+          "expr": "trading_quality_metric_score{metric=\"calmar_ratio\"}",
+          "legendFormat": "{{strategy_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 100,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "thresholdsStyle": { "mode": "area" }
+          },
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "red" },
+              { "value": 60, "color": "yellow" },
+              { "value": 75, "color": "green" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "",
+      "type": "text",
+      "gridPos": { "h": 2, "w": 24, "x": 0, "y": 18 },
+      "options": { "content": "# Trade Quality Metrics", "mode": "markdown" }
+    },
+    {
+      "title": "Profit Factor Score",
+      "description": "Ratio of total gains to total losses. Above 1.75 (green) is target. Below 1.0 means losing money overall.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 20 },
+      "targets": [
+        {
+          "expr": "trading_quality_metric_score{metric=\"profit_factor\"}",
+          "legendFormat": "{{strategy_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 100,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "thresholdsStyle": { "mode": "area" }
+          },
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "red" },
+              { "value": 60, "color": "yellow" },
+              { "value": 75, "color": "green" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Win Rate Score",
+      "description": "Win rate graded relative to strategy type. Trend strategies are expected to win less often (30-50%) than mean reversion strategies (60-80%). The grade adjusts accordingly.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 20 },
+      "targets": [
+        {
+          "expr": "trading_quality_metric_score{metric=\"win_rate\"}",
+          "legendFormat": "{{strategy_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 100,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "thresholdsStyle": { "mode": "area" }
+          },
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "red" },
+              { "value": 60, "color": "yellow" },
+              { "value": 75, "color": "green" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Avg R-Multiple Score",
+      "description": "On average, how many R (initial risk units) does each strategy earn per trade? Target: > 0.3R. Positive = making more than risked.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 20 },
+      "targets": [
+        {
+          "expr": "trading_quality_metric_score{metric=\"avg_r_multiple\"}",
+          "legendFormat": "{{strategy_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 100,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "thresholdsStyle": { "mode": "area" }
+          },
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "red" },
+              { "value": 60, "color": "yellow" },
+              { "value": 75, "color": "green" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "",
+      "type": "text",
+      "gridPos": { "h": 2, "w": 24, "x": 0, "y": 28 },
+      "options": { "content": "# Capital Safety & Edge Verification", "mode": "markdown" }
+    },
+    {
+      "title": "Max Drawdown Score",
+      "description": "How deep has the portfolio fallen from its peak? Target: less than 15-20%. This is a critical capital preservation metric. Red = dangerous drawdown levels.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 30 },
+      "targets": [
+        {
+          "expr": "trading_quality_metric_score{metric=\"max_drawdown\"}",
+          "legendFormat": "{{strategy_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 100,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "thresholdsStyle": { "mode": "area" }
+          },
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "red" },
+              { "value": 60, "color": "yellow" },
+              { "value": 75, "color": "green" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Statistical Edge Score",
+      "description": "Is each strategy's performance due to genuine skill or random luck? Based on statistical hypothesis testing. Green = strong evidence of real skill.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 30 },
+      "targets": [
+        {
+          "expr": "trading_quality_metric_score{metric=\"statistical_edge\"}",
+          "legendFormat": "{{strategy_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 100,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "thresholdsStyle": { "mode": "area" }
+          },
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "red" },
+              { "value": 60, "color": "yellow" },
+              { "value": 75, "color": "green" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Risk of Ruin Score",
+      "description": "Probability of a catastrophic 50%+ drawdown over the next 500 trades, from Monte Carlo simulation. Target: < 5%. Green = safe. Red = dangerous.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 30 },
+      "targets": [
+        {
+          "expr": "trading_quality_metric_score{metric=\"ruin_probability\"}",
+          "legendFormat": "{{strategy_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 100,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "thresholdsStyle": { "mode": "area" }
+          },
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "red" },
+              { "value": 60, "color": "yellow" },
+              { "value": 75, "color": "green" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "",
+      "type": "text",
+      "gridPos": { "h": 2, "w": 24, "x": 0, "y": 38 },
+      "options": { "content": "# Quality Targets Reference", "mode": "markdown" }
+    },
+    {
+      "title": "Target Ranges for Institutional Quality",
+      "type": "text",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 40 },
+      "options": {
+        "content": "| Metric | Target Range | Grade Thresholds |\n|--------|-------------|------------------|\n| **Sharpe Ratio** | > 1.0 (1.5+ very good) | A: \u2265 2.0 \u2022 B: \u2265 1.0 \u2022 C: \u2265 0.5 \u2022 F: < 0 |\n| **Sortino Ratio** | > 1.5 | A: \u2265 2.5 \u2022 B: \u2265 1.5 \u2022 C: \u2265 1.0 \u2022 F: < 0 |\n| **Calmar Ratio** | > 1.0 (2.0+ excellent) | A: \u2265 2.0 \u2022 B: \u2265 1.0 \u2022 C: \u2265 0.5 \u2022 F: < 0 |\n| **Profit Factor** | > 1.75 | A: \u2265 2.5 \u2022 B: \u2265 1.75 \u2022 C: \u2265 1.5 \u2022 F: < 1.0 |\n| **Max Drawdown** | < 15-20% | A: \u2264 5% \u2022 B: \u2264 15% \u2022 C: \u2264 20% \u2022 F: > 30% |\n| **Win Rate** | Varies by type | Trend: 30-50% \u2022 Mean Rev: 60-80% \u2022 Breakout: 30-50% |\n| **Avg R-Multiple** | > 0.3R | A: \u2265 0.7R \u2022 B: \u2265 0.3R \u2022 C: \u2265 0.1R \u2022 F: < 0R |\n| **Expectancy** | > $0 per trade | A: > $50 \u2022 B: > $20 \u2022 C: > $5 \u2022 F: < $0 |\n| **Trade Management** | > 50% MFE captured | A: > 70% \u2022 B: > 50% \u2022 C: > 40% \u2022 F: < 30% |\n| **Statistical Edge** | p-value < 0.05 | A: < 0.01 \u2022 B: < 0.05 \u2022 C: < 0.10 \u2022 F: > 0.25 |\n| **Risk of Ruin** | < 5% | A: \u2264 1% \u2022 B: \u2264 5% \u2022 C: \u2264 10% \u2022 F: > 20% |\n\n**Overall Score Grades:** A+ (95-100) \u2022 A (90-94) \u2022 A- (85-89) \u2022 B+ (80-84) \u2022 B (75-79) \u2022 B- (70-74) \u2022 C+ (65-69) \u2022 C (60-64) \u2022 C- (55-59) \u2022 D (40-54) \u2022 F (0-39)\n\n**Passing threshold:** Score \u2265 60 (C grade) with at least 15 completed trades.",
+        "mode": "markdown"
+      }
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["trading", "quality", "scorecard"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "30s",
+  "title": "Trader Agent Quality",
+  "uid": "trader-quality"
+}

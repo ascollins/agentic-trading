@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% set active_tab = "strategies" %}
+{% block title %}Strategies{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h2>Strategies</h2>
+  <div class="breadcrumb">Strategies / Lifecycle</div>
+</div>
+
+<div id="strategies-list"
+     hx-get="/partials/strategies/list"
+     hx-trigger="every 30s"
+     hx-swap="innerHTML">
+  {% include "partials/strategies_list.html" %}
+</div>
+{% endblock %}

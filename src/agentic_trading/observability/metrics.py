@@ -44,6 +44,12 @@ FILLS_TOTAL = Counter(
     ["symbol", "side"],
 )
 
+TRADING_STOPS_SET = Counter(
+    "trading_stops_set_total",
+    "TP/SL/trailing stops set on exchange",
+    ["symbol", "stop_type"],
+)
+
 # ---------------------------------------------------------------------------
 # Portfolio metrics
 # ---------------------------------------------------------------------------
@@ -235,6 +241,11 @@ def update_equity(value: float) -> None:
 def update_drawdown(pct: float) -> None:
     """Update the drawdown percentage gauge."""
     DRAWDOWN.set(pct)
+
+
+def update_gross_exposure(value: float) -> None:
+    """Update the gross portfolio exposure gauge."""
+    GROSS_EXPOSURE.set(value)
 
 
 def update_position(symbol: str, side: str, size: float) -> None:
@@ -551,3 +562,62 @@ def update_journal_best_session(
     """Update best-performing session and hour gauges."""
     if best_hour is not None:
         JOURNAL_BEST_HOUR.labels(strategy_id=strategy_id).set(best_hour)
+
+
+# ---------------------------------------------------------------------------
+# Quality Scorecard metrics
+# ---------------------------------------------------------------------------
+
+QUALITY_OVERALL_SCORE = Gauge(
+    "trading_quality_overall_score",
+    "Overall quality score (0-100) per strategy",
+    ["strategy_id"],
+)
+
+QUALITY_METRIC_SCORE = Gauge(
+    "trading_quality_metric_score",
+    "Individual metric score (0-100) per strategy",
+    ["strategy_id", "metric"],
+)
+
+QUALITY_PASSING = Gauge(
+    "trading_quality_passing",
+    "Whether strategy passes quality assessment (1=yes, 0=no)",
+    ["strategy_id"],
+)
+
+QUALITY_PORTFOLIO_SCORE = Gauge(
+    "trading_quality_portfolio_score",
+    "Overall portfolio quality score (0-100)",
+)
+
+QUALITY_STRATEGIES_PASSING = Gauge(
+    "trading_quality_strategies_passing",
+    "Number of strategies passing quality assessment",
+)
+
+QUALITY_STRATEGIES_FAILING = Gauge(
+    "trading_quality_strategies_failing",
+    "Number of strategies failing quality assessment",
+)
+
+
+def update_quality_scores(strategy_id: str, report_dict: dict) -> None:
+    """Update quality scorecard Prometheus metrics from a QualityReport dict."""
+    overall = report_dict.get("overall_score", 0.0)
+    QUALITY_OVERALL_SCORE.labels(strategy_id=strategy_id).set(overall)
+    QUALITY_PASSING.labels(strategy_id=strategy_id).set(
+        1 if report_dict.get("passing", False) else 0
+    )
+
+    for metric in report_dict.get("metrics", []):
+        QUALITY_METRIC_SCORE.labels(
+            strategy_id=strategy_id, metric=metric["name"]
+        ).set(metric["score"])
+
+
+def update_portfolio_quality(portfolio_dict: dict) -> None:
+    """Update portfolio-level quality scorecard metrics."""
+    QUALITY_PORTFOLIO_SCORE.set(portfolio_dict.get("overall_score", 0.0))
+    QUALITY_STRATEGIES_PASSING.set(portfolio_dict.get("passing_strategies", 0))
+    QUALITY_STRATEGIES_FAILING.set(portfolio_dict.get("failing_strategies", 0))

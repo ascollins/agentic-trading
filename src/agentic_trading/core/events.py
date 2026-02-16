@@ -14,6 +14,8 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from .enums import (
+    AgentStatus,
+    AgentType,
     CircuitBreakerType,
     Exchange,
     GovernanceAction,
@@ -147,6 +149,11 @@ class Signal(BaseEvent):
     features_used: dict[str, float] = Field(default_factory=dict)
     timeframe: Timeframe = Timeframe.M1
     risk_constraints: dict[str, Any] = Field(default_factory=dict)
+
+    # Explicit server-side TP/SL levels (set by strategies)
+    take_profit: Decimal | None = None
+    stop_loss: Decimal | None = None
+    trailing_stop: Decimal | None = None  # Trailing stop distance (not price)
 
 
 class RegimeState(BaseEvent):
@@ -407,3 +414,84 @@ class GovernanceCanaryCheck(BaseEvent):
     all_healthy: bool
     components_checked: int = 0
     failed_components: list[str] = Field(default_factory=list)
+
+
+class ApprovalRequested(BaseEvent):
+    """Published when a high-impact action is held for approval."""
+
+    source_module: str = "governance.approval"
+    request_id: str
+    strategy_id: str
+    symbol: str
+    action_type: str = "order"
+    trigger: str = ""
+    escalation_level: str = ""
+    notional_usd: float = 0.0
+    impact_tier: str = "low"
+    reason: str = ""
+    ttl_seconds: int = 300
+
+
+class ApprovalResolved(BaseEvent):
+    """Published when an approval request is approved, rejected, or expired."""
+
+    source_module: str = "governance.approval"
+    request_id: str
+    strategy_id: str
+    symbol: str
+    status: str = ""  # "approved", "rejected", "expired", "escalated"
+    decided_by: str = ""
+    reason: str = ""
+    decision_time_seconds: float = 0.0
+
+
+# ===========================================================================
+# Topic: agent
+# ===========================================================================
+
+
+class AgentHealthReport(BaseModel):
+    """Health status report from an agent."""
+
+    healthy: bool = True
+    message: str = ""
+    details: dict[str, Any] = Field(default_factory=dict)
+    last_work_at: datetime | None = None
+    error_count: int = 0
+
+
+class AgentCapabilities(BaseModel):
+    """Declares what an agent can do and what it needs."""
+
+    subscribes_to: list[str] = Field(default_factory=list)
+    publishes_to: list[str] = Field(default_factory=list)
+    description: str = ""
+
+
+class AgentStarted(BaseEvent):
+    """Published when an agent starts."""
+
+    source_module: str = "agents"
+    agent_id: str
+    agent_type: AgentType
+    agent_name: str = ""
+
+
+class AgentStopped(BaseEvent):
+    """Published when an agent stops."""
+
+    source_module: str = "agents"
+    agent_id: str
+    agent_type: AgentType
+    agent_name: str = ""
+    reason: str = ""
+
+
+class AgentHealthChanged(BaseEvent):
+    """Published when an agent's health status changes."""
+
+    source_module: str = "agents"
+    agent_id: str
+    agent_type: AgentType
+    healthy: bool
+    message: str = ""

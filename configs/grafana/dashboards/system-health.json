@@ -1,0 +1,372 @@
+{
+  "annotations": { "list": [] },
+  "description": "System speed, data feeds, and component health. For on-call responders diagnosing operational issues.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [
+    { "title": "← Back to Overview", "url": "/d/trading-overview", "type": "link", "icon": "arrow-left", "tooltip": "Return to the main overview dashboard" },
+    { "title": "Strategy Performance", "url": "/d/strategy-performance", "type": "link", "icon": "bolt" },
+    { "title": "Risk & Governance", "url": "/d/risk-governance", "type": "link", "icon": "shield" }
+  ],
+  "panels": [
+    {
+      "title": "",
+      "type": "text",
+      "gridPos": { "h": 2, "w": 24, "x": 0, "y": 0 },
+      "options": { "content": "# System Speed", "mode": "markdown" }
+    },
+    {
+      "title": "Decision Speed",
+      "description": "How quickly the system processes market data and decides whether to trade. 'Typical' = 95% of decisions are faster than this. 'Slowest' = worst-case speed. Under 100ms (green) is good. Over 500ms (red) means decisions are too slow.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 2 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(trading_decision_latency_seconds_bucket[5m]))",
+          "legendFormat": "Typical",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.99, rate(trading_decision_latency_seconds_bucket[5m]))",
+          "legendFormat": "Slowest",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "thresholdsStyle": { "mode": "line+area" }
+          },
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "transparent" },
+              { "value": 0.5, "color": "red" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Order Confirmation Speed",
+      "description": "How long until the exchange confirms our orders. 'Typical' = 95% are faster. 'Slowest' = worst case. Under 250ms is normal. Over 1s may indicate exchange issues.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 2 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(trading_order_latency_seconds_bucket[5m]))",
+          "legendFormat": "Typical",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.99, rate(trading_order_latency_seconds_bucket[5m]))",
+          "legendFormat": "Slowest",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "thresholdsStyle": { "mode": "line+area" }
+          },
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "transparent" },
+              { "value": 1.0, "color": "red" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Safety Check Speed",
+      "description": "How fast the governance guardrail checks are running. These checks happen before every trade. Under 25ms is normal. Over 100ms may slow down trading.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 2 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(trading_governance_latency_seconds_bucket[5m]))",
+          "legendFormat": "Typical",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.99, rate(trading_governance_latency_seconds_bucket[5m]))",
+          "legendFormat": "Slowest",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "thresholdsStyle": { "mode": "line+area" }
+          },
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "transparent" },
+              { "value": 0.1, "color": "red" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "",
+      "type": "text",
+      "gridPos": { "h": 2, "w": 24, "x": 0, "y": 10 },
+      "options": { "content": "# Data Feeds", "mode": "markdown" }
+    },
+    {
+      "title": "Market Data Freshness",
+      "description": "Seconds since the last market data update for each symbol. Under 30s (green) = live data. Over 60s (red) = stale data, may indicate a feed outage.",
+      "type": "bargauge",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "targets": [
+        {
+          "expr": "trading_data_staleness_seconds",
+          "legendFormat": "{{symbol}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "green" },
+              { "value": 30, "color": "yellow" },
+              { "value": 60, "color": "red" }
+            ]
+          }
+        }
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true,
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      }
+    },
+    {
+      "title": "Market Data Processed (Last Hour)",
+      "description": "How many price updates were processed per symbol in the last hour. If a symbol drops to zero, its data feed may be broken.",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 12 },
+      "targets": [
+        {
+          "expr": "sum by (symbol) (increase(trading_candles_processed_total[1h]))",
+          "legendFormat": "{{symbol}}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "red" },
+              { "value": 1, "color": "green" }
+            ]
+          }
+        }
+      },
+      "options": { "graphMode": "none", "textMode": "auto", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "title": "Connection Reconnects",
+      "description": "How many times the exchange data connection has reconnected. Occasional reconnects (1-2) are normal. Many reconnects indicate network or exchange issues.",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 12 },
+      "targets": [
+        {
+          "expr": "increase(trading_ws_reconnections_total[1h])",
+          "legendFormat": "{{exchange}}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "green" },
+              { "value": 3, "color": "yellow" },
+              { "value": 10, "color": "red" }
+            ]
+          }
+        }
+      },
+      "options": { "graphMode": "none", "textMode": "auto", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "title": "",
+      "type": "text",
+      "gridPos": { "h": 2, "w": 24, "x": 0, "y": 20 },
+      "options": { "content": "# Component Health", "mode": "markdown" }
+    },
+    {
+      "title": "Early Warning System",
+      "description": "Background health-check components (canaries) that detect problems before they affect trading. Green = passing. Red = a component is failing.",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 22 },
+      "targets": [
+        {
+          "expr": "trading_canary_status",
+          "legendFormat": "{{component}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "1": { "text": "PASSING", "color": "green" }, "0": { "text": "FAILING", "color": "red" } } }
+          ]
+        }
+      },
+      "options": { "graphMode": "none", "textMode": "auto", "colorMode": "background", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "title": "Trading Mode",
+      "description": "Current operating mode. Live = real money. Paper = simulated fills. Backtest = historical replay.",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 22 },
+      "targets": [
+        {
+          "expr": "trading_system_info",
+          "legendFormat": "{{mode}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "1": { "text": "RUNNING", "color": "green" } } }
+          ]
+        }
+      },
+      "options": { "graphMode": "none", "textMode": "name", "colorMode": "background", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "title": "Strategies Allowed to Trade",
+      "description": "Number of strategies that currently hold active permission tokens. Each strategy needs a token to execute trades.",
+      "type": "bargauge",
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 22 },
+      "targets": [
+        {
+          "expr": "trading_active_execution_tokens",
+          "legendFormat": "{{strategy_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 5,
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "red" },
+              { "value": 1, "color": "green" }
+            ]
+          }
+        }
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true,
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      }
+    },
+    {
+      "title": "",
+      "type": "text",
+      "gridPos": { "h": 2, "w": 24, "x": 0, "y": 28 },
+      "options": { "content": "# Orders & Fills", "mode": "markdown" }
+    },
+    {
+      "title": "Orders Submitted (Last Hour)",
+      "description": "Total orders sent to the exchange in the last hour, broken down by status. A high number of rejected orders may indicate configuration issues.",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 30 },
+      "targets": [
+        {
+          "expr": "sum by (status) (increase(trading_orders_total[1h]))",
+          "legendFormat": "{{status}}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short" }
+      },
+      "options": { "graphMode": "none", "textMode": "auto", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "title": "Fills Received (Last Hour)",
+      "description": "Trade executions confirmed by the exchange in the last hour. If orders are submitted but fills don't come back, there may be an exchange or adapter issue.",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 30 },
+      "targets": [
+        {
+          "expr": "sum by (symbol) (increase(trading_fills_total[1h]))",
+          "legendFormat": "{{symbol}}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short" }
+      },
+      "options": { "graphMode": "none", "textMode": "auto", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "title": "Circuit Breaker Trips",
+      "description": "How many times safety circuit breakers have triggered. These automatically pause trading when unusual activity is detected. Zero is normal. Any trips should be investigated.",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 30 },
+      "targets": [
+        {
+          "expr": "increase(trading_circuit_breaker_trips_total[1h])",
+          "legendFormat": "{{breaker_type}}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "green" },
+              { "value": 1, "color": "red" }
+            ]
+          }
+        }
+      },
+      "options": { "graphMode": "none", "textMode": "auto", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["trading", "system", "oncall"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "10s",
+  "title": "System Health",
+  "uid": "system-health"
+}

@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% set active_tab = "home" %}
+{% block title %}Home{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h2>Dashboard</h2>
+  <div class="breadcrumb">Home / Overview</div>
+</div>
+
+<div class="grid-home">
+  <!-- Critical Banner (only shows when degraded) -->
+  <div id="banner-container"
+       hx-get="/partials/home/banner"
+       hx-trigger="every 5s"
+       hx-swap="innerHTML">
+    {% include "partials/banner.html" %}
+  </div>
+
+  <!-- Row 1: Scorecard + Portfolio -->
+  <div class="grid-2">
+    <!-- Daily Effectiveness Score -->
+    <div id="scorecard-container"
+         hx-get="/partials/home/scorecard"
+         hx-trigger="every 10s"
+         hx-swap="innerHTML">
+      {% include "partials/scorecard_card.html" %}
+    </div>
+
+    <!-- Portfolio Summary -->
+    <div id="portfolio-container"
+         hx-get="/partials/home/portfolio"
+         hx-trigger="every 5s"
+         hx-swap="innerHTML">
+      {% include "partials/portfolio_card.html" %}
+    </div>
+  </div>
+
+  <!-- Row 2: Equity Curve -->
+  <div class="card">
+    <div class="card-label">Today's Equity</div>
+    <div class="chart-container">
+      <canvas id="equityChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Row 3: Open Positions -->
+  <div id="positions-container"
+       hx-get="/partials/home/positions"
+       hx-trigger="every 5s"
+       hx-swap="innerHTML">
+    {% include "partials/positions_card.html" %}
+  </div>
+
+  <!-- Row 4: System Status + Pending Approvals -->
+  <div class="grid-2">
+    <!-- System Status -->
+    <div id="system-container"
+         hx-get="/partials/home/system"
+         hx-trigger="every 10s"
+         hx-swap="innerHTML">
+      {% include "partials/system_card.html" %}
+    </div>
+
+    <!-- Pending Approvals -->
+    <div id="approvals-container"
+         hx-get="/partials/home/approvals"
+         hx-trigger="every 5s"
+         hx-swap="innerHTML">
+      {% include "partials/approvals_card.html" %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Equity curve chart
+  fetch('/api/equity-curve')
+    .then(r => r.json())
+    .then(data => {
+      const ctx = document.getElementById('equityChart').getContext('2d');
+      const gradient = ctx.createLinearGradient(0, 0, 0, 200);
+      gradient.addColorStop(0, 'rgba(0, 210, 211, 0.15)');
+      gradient.addColorStop(1, 'rgba(0, 210, 211, 0.0)');
+
+      new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: data.map(d => d.time),
+          datasets: [{
+            data: data.map(d => d.equity),
+            borderColor: '#00d2d3',
+            borderWidth: 2,
+            backgroundColor: gradient,
+            fill: true,
+            tension: 0.3,
+            pointRadius: 0,
+            pointHoverRadius: 4,
+            pointHoverBackgroundColor: '#00d2d3',
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: {
+            intersect: false,
+            mode: 'index',
+          },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: '#1a2332',
+              borderColor: 'rgba(0, 210, 211, 0.3)',
+              borderWidth: 1,
+              titleColor: '#8b95a5',
+              bodyColor: '#f0f2f5',
+              bodyFont: { family: '"SF Mono", monospace', weight: '600' },
+              padding: 12,
+              cornerRadius: 8,
+              callbacks: {
+                label: (ctx) => '$' + ctx.parsed.y.toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                }),
+              },
+            },
+          },
+          scales: {
+            x: {
+              grid: { color: 'rgba(255,255,255,0.04)' },
+              ticks: {
+                color: '#5a6577',
+                font: { size: 11 },
+                maxTicksLimit: 12,
+              },
+            },
+            y: {
+              grid: { color: 'rgba(255,255,255,0.04)' },
+              ticks: {
+                color: '#5a6577',
+                font: { size: 11, family: '"SF Mono", monospace' },
+                callback: (v) => '$' + (v/1000).toFixed(0) + 'k',
+              },
+            },
+          },
+        },
+      });
+    });
+</script>
+{% endblock %}

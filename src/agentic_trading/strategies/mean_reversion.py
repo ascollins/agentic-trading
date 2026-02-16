@@ -11,6 +11,7 @@ Signal logic:
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Any
 
 from agentic_trading.core.enums import SignalDirection
@@ -59,15 +60,47 @@ class MeanReversionStrategy(BaseStrategy):
         if any(v is None for v in (upper_bb, lower_bb, middle_bb, rsi)):
             return None
 
-        # Regime filter: only trade in range/unknown regime
-        if self._get_param("require_range_regime") and self._current_regime:
-            if self._current_regime.regime.value == "trend":
-                return None
-
         price = candle.close
         bb_width = upper_bb - lower_bb
         if bb_width <= 0:
             return None
+
+        # ---- EXIT CHECK: close when price reverts to middle band ----
+        current_pos = self._position_direction(candle.symbol)
+        if current_pos is not None:
+            should_exit = False
+            exit_reasons = []
+
+            if current_pos == "long" and price >= middle_bb:
+                should_exit = True
+                exit_reasons.append(f"Price reached middle BB ({middle_bb:.2f}) — target hit")
+            elif current_pos == "short" and price <= middle_bb:
+                should_exit = True
+                exit_reasons.append(f"Price reached middle BB ({middle_bb:.2f}) — target hit")
+
+            if should_exit:
+                self._record_exit(candle.symbol)
+                return Signal(
+                    strategy_id=self.strategy_id,
+                    symbol=candle.symbol,
+                    direction=SignalDirection.FLAT,
+                    confidence=0.5,
+                    rationale=" | ".join(exit_reasons),
+                    features_used={"bb_middle": middle_bb, "rsi": rsi},
+                    timeframe=candle.timeframe,
+                    risk_constraints={},
+                )
+            # Already positioned, don't re-signal
+            return None
+
+        # ---- ENTRY CHECK ----
+        if self._on_cooldown(candle.symbol, candle.timestamp):
+            return None
+
+        # Regime filter: only trade in range/unknown regime
+        if self._get_param("require_range_regime") and self._current_regime:
+            if self._current_regime.regime.value == "trend":
+                return None
 
         direction = SignalDirection.FLAT
         rationale_parts = []
@@ -79,7 +112,6 @@ class MeanReversionStrategy(BaseStrategy):
         # Mean reversion long: price below lower band + RSI oversold
         if price < lower_bb and rsi < rsi_oversold:
             direction = SignalDirection.LONG
-            # Score: how far below band + how oversold
             band_distance = (lower_bb - price) / bb_width
             rsi_distance = (rsi_oversold - rsi) / rsi_oversold
             mr_score = (band_distance + rsi_distance) / 2.0
@@ -118,11 +150,20 @@ class MeanReversionStrategy(BaseStrategy):
         # Risk: target is middle band, stop is ATR-based
         risk_constraints = {
             "target_price": middle_bb,
+            "price": candle.close,
             "sizing_method": "fixed_fractional",
         }
         if atr is not None:
             risk_constraints["stop_distance_atr"] = atr * 2.0
             risk_constraints["atr"] = atr
+
+        # Explicit TP/SL prices for execution layer
+        _take_profit = Decimal(str(middle_bb))
+        sl_distance = atr * 2.0 if atr is not None else bb_width / 2.0
+        if direction == SignalDirection.LONG:
+            _stop_loss = Decimal(str(candle.close - sl_distance))
+        else:
+            _stop_loss = Decimal(str(candle.close + sl_distance))
 
         features_used = {
             "bb_upper": upper_bb,
@@ -130,9 +171,14 @@ class MeanReversionStrategy(BaseStrategy):
             "bb_middle": middle_bb,
             "rsi": rsi,
             "mr_score": mr_score,
+            "close": candle.close,
         }
         if atr is not None:
             features_used["atr"] = atr
+
+        # Record position and cooldown
+        self._record_entry(candle.symbol, direction.value)
+        self._record_signal_time(candle.symbol, candle.timestamp)
 
         return Signal(
             strategy_id=self.strategy_id,
@@ -143,4 +189,6 @@ class MeanReversionStrategy(BaseStrategy):
             features_used=features_used,
             timeframe=candle.timeframe,
             risk_constraints=risk_constraints,
+            take_profit=_take_profit,
+            stop_loss=_stop_loss,
         )

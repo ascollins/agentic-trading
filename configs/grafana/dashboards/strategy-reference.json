@@ -1,0 +1,149 @@
+{
+  "annotations": { "list": [] },
+  "description": "Reference documentation for all trading strategies. How each strategy works, when it trades, and its key parameters. Not a real-time monitoring dashboard.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "links": [
+    { "title": "← Back to Overview", "url": "/d/trading-overview", "type": "link", "icon": "arrow-left", "tooltip": "Return to the main overview dashboard" },
+    { "title": "Strategy Performance", "url": "/d/strategy-performance", "type": "link", "icon": "bolt", "tooltip": "See real-time strategy performance data" }
+  ],
+  "panels": [
+    {
+      "title": "",
+      "type": "text",
+      "gridPos": { "h": 3, "w": 24, "x": 0, "y": 0 },
+      "options": {
+        "content": "# Strategy Reference Guide\nThis page explains how each trading strategy works. It does not show real-time data — for live performance, go to [Strategy Performance →](/d/strategy-performance).",
+        "mode": "markdown"
+      }
+    },
+    {
+      "title": "",
+      "type": "text",
+      "gridPos": { "h": 2, "w": 24, "x": 0, "y": 3 },
+      "options": { "content": "## Original Strategies", "mode": "markdown" }
+    },
+    {
+      "title": "Trend Following",
+      "type": "text",
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 5 },
+      "options": {
+        "content": "### Overview\nFollows established trends using moving average crossovers. Enters when short-term momentum aligns with the broader trend direction, confirmed by trend strength indicators. Only trades when the trend is strong enough to justify the risk.\n\n### When It Trades\n- **Long:** Fast moving average crosses above slow, trend strength is moderate-to-strong, higher timeframes confirm bullish\n- **Short:** Fast moving average crosses below slow, trend strength is moderate-to-strong, higher timeframes confirm bearish\n- **Skips:** Weak trends, conflicting timeframes, low volume\n\n---\n\n### Technical Detail\n| Parameter | Value |\n|-----------|-------|\n| Fast EMA | 12 periods |\n| Slow EMA | 26 periods |\n| ADX Threshold | 25 (trend strength gate) |\n| ATR Period | 14 (volatility sizing) |\n| ATR Stop Multiplier | 1.5x |\n| Volume Filter | Ratio >= 0.8 |\n| Multi-Timeframe | 1h + 4h confirmation |\n| Sizing | Volatility-adjusted (ATR-based) |\n\n**Confidence formula:**\n`ADX_confidence * 0.7 + 0.3 + HTF_boost`\n\nWhere HTF boost = +0.2 if aligned, -0.1 if not. In range regime, confidence is halved.",
+        "mode": "markdown"
+      }
+    },
+    {
+      "title": "Mean Reversion",
+      "type": "text",
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 5 },
+      "options": {
+        "content": "### Overview\nCaptures price reversions to the mean when markets overextend. Identifies overbought and oversold conditions using statistical bands and momentum indicators. Only active in range-bound markets where mean reversion is most reliable.\n\n### When It Trades\n- **Long:** Price breaks below lower band AND momentum is deeply oversold AND market is ranging\n- **Short:** Price breaks above upper band AND momentum is overbought AND market is ranging\n- **Skips:** Trending markets, weak reversion signals, low score\n\n---\n\n### Technical Detail\n| Parameter | Value |\n|-----------|-------|\n| Bollinger Band Period | 20 |\n| Bollinger Band Std Dev | 2.0 |\n| RSI Period | 14 |\n| RSI Oversold | < 30 |\n| RSI Overbought | > 70 |\n| MR Score Threshold | 0.6 |\n| Regime Filter | Range only (skips trends) |\n| Target | Middle Bollinger Band |\n| Sizing | Fixed fractional |\n\n**MR Score:**\n`(band_distance + RSI_distance) / 2`\n\nConfidence = `score * 0.8 + 0.2`, boosted +0.1 in confirmed range regime.",
+        "mode": "markdown"
+      }
+    },
+    {
+      "title": "Breakout",
+      "type": "text",
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 15 },
+      "options": {
+        "content": "### Overview\nDetects price breakouts from consolidation ranges using Donchian channels. Requires volume confirmation to filter false breakouts and adjusts position size based on market liquidity. Works best in transitioning markets moving from range to trend.\n\n### When It Trades\n- **Long:** Price breaks above the 20-period high AND volume surges above 1.5x average AND sufficient liquidity\n- **Short:** Price breaks below the 20-period low AND volume surges above 1.5x average AND sufficient liquidity\n- **Skips:** Low volume breakouts, illiquid markets, ATR contraction\n\n---\n\n### Technical Detail\n| Parameter | Value |\n|-----------|-------|\n| Donchian Period | 20 (highest high / lowest low) |\n| Volume Confirmation | 1.5x average |\n| ATR Period | 14 |\n| Min Liquidity Score | 0.5 |\n| Stop Distance | Channel width x 0.5 |\n| Sizing | Liquidity-adjusted |\n\n**Confidence formula:**\n`vol_confidence * 0.4 + ATR_confidence * 0.4 + liquidity_factor * 0.2`\n\nATR expansion gives 0.8 confidence (contraction gives 0.4). Trend regime adds +0.1 boost.",
+        "mode": "markdown"
+      }
+    },
+    {
+      "title": "Funding Arbitrage",
+      "type": "text",
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 15 },
+      "options": {
+        "content": "### Overview\nCrypto-native strategy that captures perpetual futures funding rate payments. When funding rates become extreme, takes the opposite side to earn the funding payment. In production, this would pair with a spot hedge for delta-neutral exposure.\n\n### When It Trades\n- **Short:** When funding rate is significantly positive (longs paying shorts) - earns the funding payment\n- **Long:** When funding rate is significantly negative (shorts paying longs) - earns the funding payment\n- **Skips:** Normal funding rates below threshold\n\n---\n\n### Technical Detail\n| Parameter | Value |\n|-----------|-------|\n| Funding Threshold | 0.01% (1 bps per 8h) |\n| High Funding | 0.05% (5 bps per 8h) |\n| Position Size | Fixed 5% of portfolio |\n| ATR Stop Multiplier | 3.0x (wide for funding) |\n| Sizing | Fixed fractional |\n\n**Confidence tiers:**\n- Very high funding (>= 0.05%): confidence 0.9\n- Elevated (>= 0.03%): confidence 0.7\n- Moderate (>= 0.01%): confidence 0.4\n\nDirection is always opposite to funding flow (short when longs pay, long when shorts pay).",
+        "mode": "markdown"
+      }
+    },
+    {
+      "title": "",
+      "type": "text",
+      "gridPos": { "h": 2, "w": 24, "x": 0, "y": 25 },
+      "options": { "content": "## CMT Playbook Strategies", "mode": "markdown" }
+    },
+    {
+      "title": "Multi-Timeframe MA Trend",
+      "type": "text",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 27 },
+      "options": {
+        "content": "### Overview\nUses two moving averages (50 and 200 period) across multiple timeframes to confirm strong trends, then enters on pullbacks to the 21-period moving average.\n\n### When It Trades\n- **Long:** 50 MA above 200 MA (golden cross) + price pulls back to 21 MA + RSI 40-50 zone + trend strength > 20\n- **Short:** 50 MA below 200 MA (death cross) + price rallies to 21 MA + RSI 50-60 zone + trend strength > 20\n- **Confirms across:** 1-hour, 4-hour, and daily timeframes\n\n### Key Parameters\n| Parameter | Value |\n|-----------|-------|\n| Fast EMA | 50 |\n| Slow EMA | 200 |\n| Pullback EMA | 21 |\n| ADX Entry | 20 |\n| ADX Exit | 15 |",
+        "mode": "markdown"
+      }
+    },
+    {
+      "title": "RSI Divergence",
+      "type": "text",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 27 },
+      "options": {
+        "content": "### Overview\nDetects when price and momentum disagree (divergence), which often signals upcoming reversals. Uses RSI to identify when price makes new highs but momentum weakens (or vice versa).\n\n### When It Trades\n- **Long:** Price makes lower lows but RSI makes higher lows (bullish divergence) + RSI below 35\n- **Short:** Price makes higher highs but RSI makes lower highs (bearish divergence) + RSI above 65\n- **Exits:** When RSI crosses back through 50 (the midpoint)\n\n### Key Parameters\n| Parameter | Value |\n|-----------|-------|\n| RSI Oversold | < 35 |\n| RSI Overbought | > 65 |\n| Lookback Window | 50 bars |\n| Divergence Threshold | 5 bars |",
+        "mode": "markdown"
+      }
+    },
+    {
+      "title": "Stochastic + MACD Confluence",
+      "type": "text",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 35 },
+      "options": {
+        "content": "### Overview\nRequires two different momentum indicators to agree within a 3-bar window before trading. This dual-confirmation reduces false signals.\n\n### When It Trades\n- **Long:** Both Stochastic and MACD give buy signals within 3 bars of each other + volume above 1.2x average\n- **Short:** Both give sell signals within 3 bars + volume confirmation\n- **Exits:** Stochastic reverses in overbought/oversold zone OR MACD histogram reverses direction\n\n### Key Parameters\n| Parameter | Value |\n|-----------|-------|\n| Confluence Window | 3 bars |\n| Volume Gate | 1.2x average |\n| Stochastic Overbought | 80 |\n| Stochastic Oversold | 20 |",
+        "mode": "markdown"
+      }
+    },
+    {
+      "title": "Bollinger Band Squeeze Breakout",
+      "type": "text",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 35 },
+      "options": {
+        "content": "### Overview\nIdentifies periods of very low volatility (squeeze) and trades the breakout when volatility expands. Like a spring being compressed — the tighter the squeeze, the more powerful the breakout.\n\n### When It Trades\n- **Entry:** Bollinger Bands contract inside the Keltner Channel (squeeze), then price breaks out\n- **Direction:** Determined by breakout direction (above upper band = long, below lower = short)\n- **Exit:** Trailing stop using the Keltner Channel\n\n### Key Parameters\n| Parameter | Value |\n|-----------|-------|\n| Squeeze Detection | BBW percentile < 10% |\n| BB Period | 20 |\n| Keltner EMA | 20 |\n| Keltner ATR Multiplier | 1.5 |",
+        "mode": "markdown"
+      }
+    },
+    {
+      "title": "Enhanced Mean-Reversion",
+      "type": "text",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 43 },
+      "options": {
+        "content": "### Overview\nAn improved version of basic mean reversion that adds a time-based exit (sells after N bars even if the target isn't hit) and a weekly trend filter to avoid trading against the dominant trend.\n\n### When It Trades\n- **Long:** Price 2+ standard deviations below the mean + RSI oversold + weekly trend not bearish\n- **Short:** Price 2+ standard deviations above the mean + RSI overbought + weekly trend not bullish\n- **Forced exit:** After 10 bars if the trade hasn't reached its target\n\n### Key Parameters\n| Parameter | Value |\n|-----------|-------|\n| BB Period | 20 |\n| BB Std Dev | 2.0 |\n| Time Stop | 10 bars |\n| ATR Stop Multiplier | 2.0 |",
+        "mode": "markdown"
+      }
+    },
+    {
+      "title": "Supply & Demand Zones",
+      "type": "text",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 43 },
+      "options": {
+        "content": "### Overview\nIdentifies institutional buying/selling zones based on Smart Money Concepts (SMC) — areas where large players previously entered the market. Trades when price returns to these zones.\n\n### When It Trades\n- **Long:** Price enters a demand zone (previous institutional buying area) + confirmed by market structure break\n- **Short:** Price enters a supply zone (previous institutional selling area) + confirmed by market structure break\n- **Exits:** When market structure breaks against the position\n\n### Zone Scoring\n`proximity * 0.3 + freshness * 0.3 + structure * 0.25 + volume * 0.15`\n\nFreshness means how recently the zone was created. Structure means alignment with higher-timeframe bias.",
+        "mode": "markdown"
+      }
+    },
+    {
+      "title": "Fibonacci Confluence",
+      "type": "text",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 51 },
+      "options": {
+        "content": "### Overview\nFinds areas where multiple Fibonacci retracement levels from different swing points cluster together. When 3+ levels converge within a narrow band, it creates a high-probability support/resistance zone.\n\n### When It Trades\n- **Long:** Price enters a confluence zone (3+ Fibonacci levels clustered together) + bullish candlestick confirmation\n- **Short:** Price enters a confluence zone + bearish candlestick confirmation\n- **Exits:** RSI reaches overbought/oversold extremes\n\n### Key Parameters\n| Parameter | Value |\n|-----------|-------|\n| Fibonacci Levels | 0.236, 0.382, 0.5, 0.618, 0.786 |\n| Cluster Width | 0.5% band |\n| Min Levels in Cluster | 3 |\n| Swing Lookback | 100 bars |",
+        "mode": "markdown"
+      }
+    },
+    {
+      "title": "OBV Divergence",
+      "type": "text",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 51 },
+      "options": {
+        "content": "### Overview\nDetects divergences between price and On-Balance Volume (OBV), which measures buying/selling pressure. When price moves one way but volume pressure moves the other, a reversal is likely.\n\n### When It Trades\n- **Long:** Price makes lower lows but OBV makes higher lows (accumulation) + price breaks above recent swing high\n- **Short:** Price makes higher highs but OBV makes lower highs (distribution) + price breaks below recent swing low\n- **Exits:** OBV crosses its own 20-period moving average against the position\n\n### Key Parameters\n| Parameter | Value |\n|-----------|-------|\n| OBV EMA | 20 |\n| Lookback | 50 bars |\n| Divergence Min Bars | 5 |",
+        "mode": "markdown"
+      }
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["trading", "reference", "documentation"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "",
+  "title": "Strategy Reference Guide",
+  "uid": "strategy-reference"
+}

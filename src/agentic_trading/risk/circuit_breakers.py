@@ -127,6 +127,12 @@ class CircuitBreaker:
             self.threshold,
             self.trip_count,
         )
+        # Emit Prometheus metric
+        try:
+            from agentic_trading.observability.metrics import CIRCUIT_BREAKER_TRIPS
+            CIRCUIT_BREAKER_TRIPS.labels(breaker_type=self.breaker_type.value).inc()
+        except Exception:
+            pass
 
     def _reset(self, now: float) -> None:
         self.tripped = False

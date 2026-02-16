@@ -45,6 +45,8 @@ class _SimPosition:
     side: str  # "long" or "short"
     qty: float
     entry_price: float
+    stop_price: float = 0.0  # 0 = no stop
+    strategy_id: str = ""
     entry_time: datetime | None = None
 
 
@@ -96,6 +98,7 @@ class BacktestEngine:
         self._equity = initial_capital
         self._cash = initial_capital
         self._sim_positions: dict[str, _SimPosition] = {}  # symbol → position
+        self._last_price: dict[str, float] = {}  # symbol → last known close
         self._equity_curve: list[float] = [initial_capital]
         self._trade_returns: list[float] = []
         self._total_fees = 0.0
@@ -138,6 +141,22 @@ class BacktestEngine:
 
         for ts, symbol, candle in all_events:
             self._clock.set_time(ts)
+            self._last_price[symbol] = candle.close
+
+            # 0. Check stop-losses before anything else
+            pos = self._sim_positions.get(symbol)
+            if pos is not None and pos.stop_price > 0:
+                stopped = False
+                if pos.side == "long" and candle.low <= pos.stop_price:
+                    stopped = True
+                elif pos.side == "short" and candle.high >= pos.stop_price:
+                    stopped = True
+                if stopped:
+                    self._close_position_at_stop(pos, candle)
+                    # Notify strategies that position was stopped out
+                    for strategy in self._strategies:
+                        if hasattr(strategy, "_record_exit"):
+                            strategy._record_exit(symbol)
 
             # 1. Compute features (with aliasing for strategy compat)
             features = self._compute_features(symbol, candle)
@@ -256,6 +275,10 @@ class BacktestEngine:
 
         fills = self._fill_sim.simulate_fill(intent, candle, self._clock.now())
 
+        # Compute stop price from risk constraints
+        rc = signal.risk_constraints
+        stop_distance = rc.get("stop_distance_atr", rc.get("stop_distance", 0))
+
         for fill in fills:
             fill_price = float(fill.price)
             fill_qty = float(fill.qty)
@@ -270,11 +293,22 @@ class BacktestEngine:
             else:
                 self._cash += fill_price * fill_qty
 
+            # Compute stop price relative to fill price
+            if stop_distance > 0:
+                if direction == "long":
+                    stop_price = fill_price - stop_distance
+                else:
+                    stop_price = fill_price + stop_distance
+            else:
+                stop_price = 0.0  # No stop
+
             self._sim_positions[signal.symbol] = _SimPosition(
                 symbol=signal.symbol,
                 side=direction,
                 qty=fill_qty,
                 entry_price=fill_price,
+                stop_price=stop_price,
+                strategy_id=signal.strategy_id,
                 entry_time=self._clock.now(),
             )
 
@@ -319,26 +353,80 @@ class BacktestEngine:
         # Remove position
         self._sim_positions.pop(pos.symbol, None)
 
+    def _close_position_at_stop(self, pos: _SimPosition, candle: Candle) -> None:
+        """Close a position at its stop price (not candle close).
+
+        Uses the stop price for fill calculation to simulate realistic
+        stop-loss execution.  Fees are still applied via the fee model.
+        """
+        stop_price = pos.stop_price
+        fee = float(self._fee_model.compute_fee(
+            price=stop_price,
+            qty=pos.qty,
+            is_maker=False,  # Stop-loss fills as taker
+        ))
+
+        self._total_fees += fee
+        self._cash -= fee
+
+        # Cash accounting at the stop price
+        if pos.side == "long":
+            self._cash += stop_price * pos.qty  # Sell to close
+        else:
+            self._cash -= stop_price * pos.qty  # Buy to close
+
+        # Record trade PnL
+        if pos.entry_price > 0:
+            if pos.side == "long":
+                trade_ret = (stop_price - pos.entry_price) / pos.entry_price
+            else:
+                trade_ret = (pos.entry_price - stop_price) / pos.entry_price
+            self._trade_returns.append(trade_ret)
+
+        logger.debug(
+            "Stop-loss hit: %s %s @ %.2f (entry %.2f, stop %.2f)",
+            pos.side, pos.symbol, stop_price, pos.entry_price, stop_price,
+        )
+
+        # Remove position
+        self._sim_positions.pop(pos.symbol, None)
+
     def _compute_qty(self, signal: Signal, candle: Candle) -> float:
-        """Compute order quantity with cash constraint."""
+        """Compute order quantity with cash and leverage constraints.
+
+        Position sizing uses fixed-fractional risk:
+        - Risk 1% of equity per trade
+        - Stop distance from signal or fallback to ATR * 2
+        - Max notional capped at 10% of equity (max ~10x leverage across portfolio)
+        """
         rc = signal.risk_constraints
         atr = rc.get("atr", candle.high - candle.low)
         price = candle.close
 
-        if price <= 0:
+        if price <= 0 or self._equity <= 0:
             return 0
 
-        # Risk 2% of equity per trade, sized by ATR
-        risk_amount = self._equity * 0.02
-        stop_distance = atr * 2.0 if atr > 0 else price * 0.02
+        # Risk 0.5% of equity per trade — conservative for 1m candle strategies
+        risk_amount = self._equity * 0.005
+
+        # Use the stop distance from signal if provided, else fallback
+        stop_distance = rc.get("stop_distance_atr", rc.get("stop_distance", 0))
+        if stop_distance <= 0:
+            stop_distance = atr * 2.0 if atr > 0 else price * 0.02
+
         qty = risk_amount / stop_distance
 
         # Scale by confidence
         qty *= signal.confidence
 
+        # Max position size: 5% of equity in notional value
+        max_notional = self._equity * 0.05
+        max_qty_by_notional = max_notional / price
+        qty = min(qty, max_qty_by_notional)
+
         # Cash constraint: can't spend more than available cash
-        max_qty = max(0, self._cash * 0.95) / price  # Keep 5% cash buffer
-        qty = min(qty, max_qty)
+        max_qty_by_cash = max(0, self._cash * 0.95) / price  # Keep 5% cash buffer
+        qty = min(qty, max_qty_by_cash)
 
         return qty
 
@@ -356,13 +444,22 @@ class BacktestEngine:
             self._total_funding += float(payment)
 
     def _update_equity(self, candle: Candle) -> None:
-        """Update equity curve with current mark-to-market."""
+        """Update equity curve with current mark-to-market.
+
+        Uses the current candle's close for its symbol, and last known
+        prices for other symbols, so multi-symbol positions are valued
+        correctly.
+        """
+        # Update last known price for this candle's symbol
+        self._last_price[candle.symbol] = candle.close
+
         unrealized = 0.0
         for symbol, pos in self._sim_positions.items():
+            mark_price = self._last_price.get(symbol, pos.entry_price)
             if pos.side == "long":
-                unrealized += pos.qty * (candle.close - pos.entry_price)
+                unrealized += pos.qty * (mark_price - pos.entry_price)
             else:
-                unrealized += pos.qty * (pos.entry_price - candle.close)
+                unrealized += pos.qty * (pos.entry_price - mark_price)
 
         self._equity = self._cash + unrealized
         self._equity_curve.append(self._equity)

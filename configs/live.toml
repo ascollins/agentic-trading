@@ -1,27 +1,248 @@
 # ===================================================================
-# Live trading configuration
+# Live trading configuration (Bybit Demo)
 # ===================================================================
-# WARNING: This mode trades with REAL money.
+# WARNING: This mode uses the CCXTAdapter (real exchange API).
+# Currently configured for Bybit DEMO (production URL, virtual funds).
 # Requires: I_UNDERSTAND_LIVE_TRADING=true env var AND --live CLI flag
+# ===================================================================
+# All 12 strategies enabled. Tighter risk limits and longer cooldowns
+# than paper mode. Safe mode active (25% position size multiplier).
 # ===================================================================
 
 mode = "live"
-
-[[exchanges]]
-name = "binance"
-api_key_env = "TRADING_BINANCE_API_KEY"
-secret_env = "TRADING_BINANCE_SECRET"
-testnet = false
-rate_limit = 1200
 
 [[exchanges]]
 name = "bybit"
 api_key_env = "TRADING_BYBIT_API_KEY"
 secret_env = "TRADING_BYBIT_SECRET"
 testnet = false
+demo = true          # Bybit demo trading: production URL, virtual funds
 rate_limit = 1200
 
-# Conservative risk for live
+[symbols]
+# Top 5 USDT perpetuals by volume on Bybit
+symbols = [
+    "BTC/USDT",
+    "ETH/USDT",
+    "SOL/USDT",
+    "XRP/USDT",
+    "DOGE/USDT",
+]
+
+# ===================================================================
+# TREND & MOMENTUM STRATEGIES
+# ===================================================================
+
+[[strategies]]
+strategy_id = "trend_following"
+enabled = true
+
+[strategies.params]
+fast_ema = 12
+slow_ema = 26
+signal_ema = 9
+adx_threshold = 25
+atr_multiplier = 2.5         # Wider stops for live
+volume_filter = true
+min_confidence = 0.4          # Higher bar for live entries
+signal_cooldown_minutes = 60
+
+[[strategies]]
+strategy_id = "multi_tf_ma"
+enabled = true
+
+[strategies.params]
+fast_ema = 50
+slow_ema = 200
+pullback_ema = 21
+adx_entry_threshold = 20
+adx_exit_threshold = 15
+rsi_pullback_low = 40
+rsi_pullback_high = 50
+rsi_rally_low = 50
+rsi_rally_high = 60
+atr_multiplier = 2.5
+min_confidence = 0.4
+signal_cooldown_minutes = 60
+
+[[strategies]]
+strategy_id = "breakout"
+enabled = true
+
+[strategies.params]
+donchian_period = 20
+volume_confirmation_multiplier = 1.5
+atr_period = 14
+breakout_atr_threshold = 1.0
+min_liquidity_score = 0.5
+min_confidence = 0.4
+signal_cooldown_minutes = 60
+
+# ===================================================================
+# MEAN REVERSION STRATEGIES
+# ===================================================================
+
+[[strategies]]
+strategy_id = "mean_reversion"
+enabled = true
+
+[strategies.params]
+bb_period = 20
+bb_std = 2.5                  # Wider bands = more extreme signals only
+rsi_oversold = 25
+rsi_overbought = 75
+mean_reversion_score_threshold = 0.5
+require_range_regime = false
+min_confidence = 0.4
+signal_cooldown_minutes = 60
+
+[[strategies]]
+strategy_id = "mean_reversion_enhanced"
+enabled = true
+
+[strategies.params]
+bb_period = 20
+bb_std = 2.5
+rsi_oversold = 25
+rsi_overbought = 75
+time_stop_bars = 10
+atr_multiplier = 2.5
+weekly_trend_filter = true
+min_confidence = 0.4
+signal_cooldown_minutes = 60
+
+# ===================================================================
+# OSCILLATOR & DIVERGENCE STRATEGIES
+# ===================================================================
+
+[[strategies]]
+strategy_id = "rsi_divergence"
+enabled = true
+
+[strategies.params]
+rsi_period = 14
+rsi_oversold = 35
+rsi_overbought = 65
+lookback_bars = 30
+min_divergence_bars = 5
+rsi_exit_level = 50
+atr_multiplier = 2.5
+trend_filter = true
+min_confidence = 0.4
+signal_cooldown_minutes = 60
+
+[[strategies]]
+strategy_id = "stochastic_macd"
+enabled = true
+
+[strategies.params]
+stoch_oversold = 20
+stoch_overbought = 80
+volume_gate = 1.2
+confluence_window = 3
+atr_multiplier = 2.0
+min_confidence = 0.4
+signal_cooldown_minutes = 60
+
+[[strategies]]
+strategy_id = "obv_divergence"
+enabled = true
+
+[strategies.params]
+lookback_bars = 30
+min_divergence_bars = 5
+volume_confirmation = 1.0
+atr_multiplier = 2.5
+obv_ema_exit = true
+min_confidence = 0.4
+signal_cooldown_minutes = 60
+
+# ===================================================================
+# VOLATILITY STRATEGIES
+# ===================================================================
+
+[[strategies]]
+strategy_id = "bb_squeeze"
+enabled = true
+
+[strategies.params]
+squeeze_percentile = 0.10
+adx_threshold = 20
+rsi_neutral = 50
+atr_multiplier = 2.5
+keltner_trailing = true
+min_confidence = 0.4
+signal_cooldown_minutes = 60
+
+# ===================================================================
+# SMART MONEY CONCEPTS (SMC) STRATEGIES
+# ===================================================================
+
+[[strategies]]
+strategy_id = "supply_demand"
+enabled = true
+
+[strategies.params]
+min_demand_distance = 0.0
+max_demand_distance = 0.02
+min_supply_distance = 0.0
+max_supply_distance = 0.02
+require_bos = true
+volume_gate = 1.0
+atr_multiplier = 2.0
+target_rr_ratio = 2.0
+min_confidence = 0.4
+signal_cooldown_minutes = 60
+
+[[strategies]]
+strategy_id = "fibonacci_confluence"
+enabled = true
+
+[strategies.params]
+swing_lookback = 50
+min_swing_pct = 0.03
+confluence_band_pct = 0.005
+min_confluence_levels = 3
+rsi_long_max = 40
+rsi_short_min = 60
+atr_multiplier = 2.5
+atr_target_multiplier = 3.0
+min_confidence = 0.4
+signal_cooldown_minutes = 60
+
+# ===================================================================
+# FUNDING RATE STRATEGY
+# ===================================================================
+
+[[strategies]]
+strategy_id = "funding_arb"
+enabled = true
+
+[strategies.params]
+funding_threshold = 0.0001
+high_funding_threshold = 0.0005
+position_size_pct = 0.05
+atr_stop_multiplier = 3.0
+min_confidence = 0.4
+signal_cooldown_minutes = 60
+
+# ===================================================================
+# EXIT MANAGEMENT (server-side TP/SL on Bybit)
+# ===================================================================
+
+[exits]
+enabled = true
+sl_atr_multiplier = 2.5           # SL = entry ± ATR × 2.5
+tp_atr_multiplier = 5.0           # TP = entry ± ATR × 5.0 (2:1 R:R)
+trailing_stop_atr_multiplier = 2.0 # Trailing distance = ATR × 2.0
+trailing_strategies = [
+    "trend_following", "breakout", "multi_tf_ma", "bb_squeeze",
+]
+
+# ===================================================================
+# RISK MANAGEMENT (conservative for live)
+# ===================================================================
+
 [risk]
 max_portfolio_leverage = 2.0
 max_single_position_pct = 0.05
@@ -29,14 +250,40 @@ max_daily_loss_pct = 0.03
 max_drawdown_pct = 0.10
 reconciliation_interval_seconds = 15
 
-# Safe mode recommended for initial live deployment
+# Safe mode for initial live deployment
 [safe_mode]
 enabled = true
-max_symbols = 3
+max_symbols = 5
 max_leverage = 2
 position_size_multiplier = 0.25
+
+# ===================================================================
+# OBSERVABILITY
+# ===================================================================
 
 [observability]
 log_level = "INFO"
 log_format = "json"
 decision_audit = true
+
+# ===================================================================
+# OPTIMIZER (disabled until historical data available)
+# ===================================================================
+
+[optimizer_scheduler]
+enabled = false
+interval_hours = 24.0
+strategies = [
+    "trend_following", "mean_reversion", "breakout",
+    "multi_tf_ma", "rsi_divergence", "stochastic_macd",
+    "obv_divergence", "bb_squeeze", "supply_demand",
+    "fibonacci_confluence", "mean_reversion_enhanced",
+]
+data_window_days = 90
+n_samples = 30
+top_n_for_wf = 3
+wf_folds = 3
+auto_apply = false           # Manual review recommended for live
+max_results_kept = 10
+results_dir = "data/optimizer_results"
+initial_delay_minutes = 10.0 # Wait for system warmup

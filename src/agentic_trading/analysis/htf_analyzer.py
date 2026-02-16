@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from typing import Any
 
 from agentic_trading.core.enums import (
     MarketStructureBias,
@@ -60,6 +61,11 @@ class HTFAssessment:
     confluences: list[str] = field(default_factory=list)
     conflicts: list[str] = field(default_factory=list)
 
+    # Optional SMC confluence data (populated when SMCConfluenceScorer is used)
+    smc_confluence: Any | None = None  # SMCConfluenceResult
+    smc_confluence_score: float = 0.0
+    smc_key_levels: dict[str, float] = field(default_factory=dict)
+
 
 class HTFAnalyzer:
     """Analyzes multi-timeframe features to assess market structure.
@@ -81,6 +87,7 @@ class HTFAnalyzer:
         adx_trend_threshold: float = 25.0,
         rsi_overbought: float = 70.0,
         rsi_oversold: float = 30.0,
+        smc_scorer: Any | None = None,
     ) -> None:
         self._ema_fast = trend_ema_fast
         self._ema_slow = trend_ema_slow
@@ -88,6 +95,7 @@ class HTFAnalyzer:
         self._adx_threshold = adx_trend_threshold
         self._rsi_ob = rsi_overbought
         self._rsi_os = rsi_oversold
+        self._smc_scorer = smc_scorer
 
     def analyze(
         self,
@@ -173,7 +181,7 @@ class HTFAnalyzer:
             elif vs == "contracting":
                 vol = VolatilityRegime.LOW
 
-        return HTFAssessment(
+        assessment = HTFAssessment(
             symbol=symbol,
             overall_bias=overall,
             bias_alignment_score=round(alignment, 2),
@@ -183,6 +191,35 @@ class HTFAnalyzer:
             confluences=confluences,
             conflicts=conflicts,
         )
+
+        # Optional SMC confluence scoring
+        if self._smc_scorer is not None:
+            try:
+                smc_result = self._smc_scorer.score(
+                    symbol, aligned_features, available_timeframes,
+                )
+                assessment.smc_confluence = smc_result
+                assessment.smc_confluence_score = smc_result.total_confluence_points
+                key_levels: dict[str, float] = {}
+                if smc_result.equilibrium_price is not None:
+                    key_levels["equilibrium"] = smc_result.equilibrium_price
+                if smc_result.dealing_range_high is not None:
+                    key_levels["dealing_range_high"] = smc_result.dealing_range_high
+                if smc_result.dealing_range_low is not None:
+                    key_levels["dealing_range_low"] = smc_result.dealing_range_low
+                if smc_result.nearest_demand_price is not None:
+                    key_levels["nearest_demand"] = smc_result.nearest_demand_price
+                if smc_result.nearest_supply_price is not None:
+                    key_levels["nearest_supply"] = smc_result.nearest_supply_price
+                assessment.smc_key_levels = key_levels
+
+                # Merge SMC confluence/conflict observations
+                assessment.confluences.extend(smc_result.confluence_factors)
+                assessment.conflicts.extend(smc_result.conflicts)
+            except Exception:
+                logger.debug("SMC confluence scoring failed", exc_info=True)
+
+        return assessment
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -244,6 +281,34 @@ class HTFAnalyzer:
             vol_state = "expanding"
         elif atr_pct < 1.0:
             vol_state = "contracting"
+
+        # SMC observations (if smc features present)
+        smc_bias = features.get(f"{prefix}_smc_swing_bias")
+        if smc_bias is not None:
+            if smc_bias > 0.3:
+                observations.append("SMC structure bullish")
+            elif smc_bias < -0.3:
+                observations.append("SMC structure bearish")
+
+        smc_zone = features.get(f"{prefix}_smc_price_zone")
+        if smc_zone is not None:
+            zone_names = {
+                -2.0: "deep discount", -1.0: "discount",
+                0.0: "equilibrium", 1.0: "premium", 2.0: "deep premium",
+            }
+            zone_name = zone_names.get(smc_zone)
+            if zone_name and zone_name != "equilibrium":
+                observations.append(f"Price in {zone_name}")
+
+        if features.get(f"{prefix}_smc_in_ote", 0) > 0:
+            observations.append("Price in OTE zone")
+
+        smc_choch = features.get(f"{prefix}_smc_choch_bullish", 0)
+        smc_choch_bear = features.get(f"{prefix}_smc_choch_bearish", 0)
+        if smc_choch > 0:
+            observations.append("Bullish CHoCH detected")
+        if smc_choch_bear > 0:
+            observations.append("Bearish CHoCH detected")
 
         return TimeframeSummary(
             timeframe=tf,

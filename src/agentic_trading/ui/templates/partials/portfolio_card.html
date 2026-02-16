@@ -1,0 +1,19 @@
+<div class="card">
+  <div class="card-label">Portfolio</div>
+  {% if portfolio %}
+    <div style="display: flex; align-items: baseline; gap: 12px; margin-bottom: 8px;">
+      <span class="portfolio-equity">${{ "{:,.0f}".format(portfolio.equity) }}</span>
+      <span class="portfolio-pnl {{ 'positive' if portfolio.pnl_positive else 'negative' }}">
+        {{ "+" if portfolio.pnl_positive else "" }}{{ "{:,.2f}".format(portfolio.pnl_today) }}
+        ({{ "+" if portfolio.pnl_positive else "" }}{{ "%.2f" | format(portfolio.pnl_today_pct) }}%)
+      </span>
+    </div>
+    <div class="card-subtext">
+      {{ portfolio.open_positions }} open position{{ "s" if portfolio.open_positions != 1 else "" }}
+    </div>
+  {% else %}
+    <div class="empty-state">
+      <div class="empty-message">No portfolio data</div>
+    </div>
+  {% endif %}
+</div>

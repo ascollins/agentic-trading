@@ -1,0 +1,47 @@
+<div class="card">
+  <div class="card-label">
+    Pending Approvals
+    {% if approvals %}
+      <span class="badge badge-warning" style="margin-left: 8px;">{{ approvals | length }}</span>
+    {% endif %}
+  </div>
+
+  {% if approvals %}
+    {% for approval in approvals %}
+    <div class="approval-item">
+      <div class="approval-info">
+        <div style="font-weight: 500; font-size: 0.875rem;">
+          {{ approval.symbol }} — {{ approval.trigger | replace("_", " ") | title }}
+        </div>
+        <div style="font-size: 0.8125rem; color: var(--text-secondary);">
+          {{ approval.strategy_id }} | {{ approval.escalation_level }}
+          {% if approval.notional_usd %}
+            | ${{ "{:,.0f}".format(approval.notional_usd) }}
+          {% endif %}
+          {% if approval.created_at %}
+            | {{ approval.created_at }}
+          {% endif %}
+        </div>
+      </div>
+      <div class="approval-actions">
+        <button class="btn btn-approve"
+                hx-post="/actions/approve/{{ approval.request_id }}"
+                hx-target="#approvals-container"
+                hx-swap="innerHTML">
+          Approve
+        </button>
+        <button class="btn btn-deny"
+                hx-post="/actions/deny/{{ approval.request_id }}"
+                hx-target="#approvals-container"
+                hx-swap="innerHTML">
+          Deny
+        </button>
+      </div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <div class="empty-state" style="padding: 24px 0;">
+      <div class="empty-message" style="font-size: 0.875rem;">No pending approvals</div>
+    </div>
+  {% endif %}
+</div>

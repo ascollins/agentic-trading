@@ -156,6 +156,13 @@ class DriftDetector:
                 action.value,
             )
 
+            # Emit Prometheus drift metric
+            try:
+                from agentic_trading.observability.metrics import update_drift_deviation
+                update_drift_deviation(strategy_id, metric_name, deviation_pct)
+            except Exception:
+                pass
+
         return alerts
 
     def get_status(self, strategy_id: str) -> dict[str, Any]:

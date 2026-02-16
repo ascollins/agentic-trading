@@ -382,6 +382,25 @@ class PaperAdapter:
         return Decimal("0")
 
     # ------------------------------------------------------------------
+    # IExchangeAdapter: set_trading_stop (no-op for paper)
+    # ------------------------------------------------------------------
+
+    async def set_trading_stop(
+        self,
+        symbol: str,
+        *,
+        take_profit: Decimal | None = None,
+        stop_loss: Decimal | None = None,
+        trailing_stop: Decimal | None = None,
+    ) -> dict[str, Any]:
+        """No-op for paper mode — TP/SL are server-side exchange features."""
+        logger.info(
+            "PaperAdapter TP/SL (no-op): %s tp=%s sl=%s trail=%s",
+            symbol, take_profit, stop_loss, trailing_stop,
+        )
+        return {"result": "paper_mode_noop"}
+
+    # ------------------------------------------------------------------
     # Position management
     # ------------------------------------------------------------------
 

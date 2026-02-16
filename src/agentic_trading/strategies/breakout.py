@@ -11,6 +11,7 @@ Signal logic:
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Any
 
 from agentic_trading.core.enums import SignalDirection
@@ -63,10 +64,43 @@ class BreakoutStrategy(BaseStrategy):
         atr_expanding = True
         if self._prev_atr is not None:
             atr_change = (atr - self._prev_atr) / self._prev_atr if self._prev_atr > 0 else 0
-            atr_threshold = self._get_param("breakout_atr_threshold")
-            # ATR should be at least stable or expanding
             atr_expanding = atr_change > -0.1  # Allow small contraction
         self._prev_atr = atr
+
+        # ---- EXIT CHECK: close if price re-enters deep into channel ----
+        current_pos = self._position_direction(candle.symbol)
+        channel_mid = (donchian_upper + donchian_lower) / 2.0
+        if current_pos is not None:
+            should_exit = False
+            exit_reasons = []
+
+            # Exit when price falls back to channel midpoint (not just below upper)
+            # This gives breakout trades room to breathe
+            if current_pos == "long" and price < channel_mid:
+                should_exit = True
+                exit_reasons.append(f"Price {price:.2f} fell to channel mid {channel_mid:.2f}")
+            elif current_pos == "short" and price > channel_mid:
+                should_exit = True
+                exit_reasons.append(f"Price {price:.2f} rose to channel mid {channel_mid:.2f}")
+
+            if should_exit:
+                self._record_exit(candle.symbol)
+                return Signal(
+                    strategy_id=self.strategy_id,
+                    symbol=candle.symbol,
+                    direction=SignalDirection.FLAT,
+                    confidence=0.5,
+                    rationale=" | ".join(exit_reasons),
+                    features_used={"donchian_upper": donchian_upper, "donchian_lower": donchian_lower},
+                    timeframe=candle.timeframe,
+                    risk_constraints={},
+                )
+            # Already positioned, don't re-signal
+            return None
+
+        # ---- ENTRY CHECK ----
+        if self._on_cooldown(candle.symbol, candle.timestamp):
+            return None
 
         # Volume confirmation
         vol_mult = self._get_param("volume_confirmation_multiplier")
@@ -107,15 +141,15 @@ class BreakoutStrategy(BaseStrategy):
         liquidity_score = f.get("liquidity_score", 1.0)
         min_liq = self._get_param("min_liquidity_score")
         if liquidity_score < min_liq:
-            return None  # Skip in illiquid conditions
+            return None
 
         # Confidence
-        vol_confidence = min(1.0, (volume_ratio - 1.0) / 2.0)  # 0-1 based on volume spike
+        vol_confidence = min(1.0, (volume_ratio - 1.0) / 2.0)
         atr_confidence = 0.8 if atr_expanding else 0.4
         liq_factor = min(1.0, liquidity_score / 0.8)
         confidence = vol_confidence * 0.4 + atr_confidence * 0.4 + liq_factor * 0.2
 
-        # Regime boost: breakouts work better in trend regimes
+        # Regime boost
         if self._current_regime and self._current_regime.regime.value == "trend":
             confidence = min(1.0, confidence + 0.1)
             rationale_parts.append("Trend regime (boosted)")
@@ -127,8 +161,9 @@ class BreakoutStrategy(BaseStrategy):
         # Risk constraints
         channel_width = donchian_upper - donchian_lower
         risk_constraints = {
-            "stop_distance": channel_width * 0.5,  # Stop at mid-channel
+            "stop_distance": channel_width * 0.5,
             "atr": atr,
+            "price": candle.close,
             "sizing_method": "liquidity_adjusted",
             "liquidity_score": liquidity_score,
         }
@@ -139,7 +174,21 @@ class BreakoutStrategy(BaseStrategy):
             "atr": atr,
             "volume_ratio": volume_ratio,
             "liquidity_score": liquidity_score,
+            "close": candle.close,
         }
+
+        # Explicit TP/SL prices (3:1 R:R to stop distance)
+        stop_distance = channel_width * 0.5
+        if direction == SignalDirection.LONG:
+            _stop_loss = Decimal(str(candle.close - stop_distance))
+            _take_profit = Decimal(str(candle.close + channel_width * 1.5))
+        else:
+            _stop_loss = Decimal(str(candle.close + stop_distance))
+            _take_profit = Decimal(str(candle.close - channel_width * 1.5))
+
+        # Record position and cooldown
+        self._record_entry(candle.symbol, direction.value)
+        self._record_signal_time(candle.symbol, candle.timestamp)
 
         return Signal(
             strategy_id=self.strategy_id,
@@ -150,4 +199,6 @@ class BreakoutStrategy(BaseStrategy):
             features_used=features_used,
             timeframe=candle.timeframe,
             risk_constraints=risk_constraints,
+            take_profit=_take_profit,
+            stop_loss=_stop_loss,
         )

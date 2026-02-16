@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% set active_tab = "settings" %}
+{% block title %}Settings{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h2>Settings</h2>
+  <div class="breadcrumb">Settings / Configuration</div>
+</div>
+
+<div class="card">
+  <!-- Account -->
+  <div class="settings-section">
+    <h3>Account</h3>
+    <div class="settings-row">
+      <span class="settings-label">Exchange</span>
+      <span class="settings-value">
+        {{ exchange }}
+        {% if exchange_connected %}
+          <span class="status-dot healthy" style="margin-left: 8px;"></span>Connected
+        {% else %}
+          <span class="status-dot critical" style="margin-left: 8px;"></span>Disconnected
+        {% endif %}
+      </span>
+    </div>
+    <div class="settings-row">
+      <span class="settings-label">Mode</span>
+      <span class="settings-value">
+        <span class="badge badge-cyan">{{ mode | upper }}</span>
+      </span>
+    </div>
+  </div>
+
+  <!-- Risk Limits -->
+  <div class="settings-section">
+    <h3>Risk Limits</h3>
+    <div class="settings-row">
+      <span class="settings-label">Max position size</span>
+      <span class="settings-value">{{ risk_limits.max_position_pct }}</span>
+    </div>
+    <div class="settings-row">
+      <span class="settings-label">Max daily loss</span>
+      <span class="settings-value" style="color: var(--color-negative);">{{ risk_limits.max_daily_loss }}</span>
+    </div>
+    <div class="settings-row">
+      <span class="settings-label">Max drawdown</span>
+      <span class="settings-value" style="color: var(--color-negative);">{{ risk_limits.max_drawdown }}</span>
+    </div>
+    <div class="settings-row">
+      <span class="settings-label">Kill switch</span>
+      <span class="settings-value">
+        {% if risk_limits.kill_switch %}
+          <span class="badge badge-negative">ACTIVE</span>
+        {% else %}
+          <span style="color: var(--text-muted);">OFF</span>
+        {% endif %}
+      </span>
+    </div>
+  </div>
+
+  <!-- Governance -->
+  <div class="settings-section">
+    <h3>Governance</h3>
+    <div class="settings-row">
+      <span class="settings-label">Policy engine</span>
+      <span class="settings-value">
+        {% if governance.policy_engine %}
+          Enabled ({{ governance.policy_rules_count }} rules)
+        {% else %}
+          <span style="color: var(--text-muted);">Disabled</span>
+        {% endif %}
+      </span>
+    </div>
+    <div class="settings-row">
+      <span class="settings-label">Approval workflow</span>
+      <span class="settings-value">
+        {% if governance.approval_workflow %}
+          Enabled
+          {% if governance.auto_approve_l1 %}
+            <span style="color: var(--text-muted); font-family: inherit;"> (auto L1)</span>
+          {% endif %}
+        {% else %}
+          <span style="color: var(--text-muted);">Disabled</span>
+        {% endif %}
+      </span>
+    </div>
+    <div class="settings-row">
+      <span class="settings-label">Shadow mode</span>
+      <span class="settings-value">
+        {% if governance.shadow_mode %}
+          <span class="badge badge-warning">ON</span>
+        {% else %}
+          <span style="color: var(--text-muted);">OFF</span>
+        {% endif %}
+      </span>
+    </div>
+  </div>
+
+  <!-- Agents -->
+  <div class="settings-section">
+    <h3>Agents</h3>
+    <div class="settings-row">
+      <span class="settings-label">Status</span>
+      <span class="settings-value">
+        <span class="status-dot {{ 'healthy' if agents.running == agents.total else 'warning' }}"></span>
+        {{ agents.running }}/{{ agents.total }} running
+      </span>
+    </div>
+  </div>
+
+  <!-- System -->
+  <div class="settings-section">
+    <h3>System</h3>
+    <div class="settings-row">
+      <span class="settings-label">Event bus</span>
+      <span class="settings-value">{{ system.event_bus }}</span>
+    </div>
+    <div class="settings-row">
+      <span class="settings-label">Metrics</span>
+      <span class="settings-value">{{ system.metrics }}</span>
+    </div>
+    <div class="settings-row">
+      <span class="settings-label">Database</span>
+      <span class="settings-value">{{ system.database }}</span>
+    </div>
+  </div>
+</div>
+{% endblock %}

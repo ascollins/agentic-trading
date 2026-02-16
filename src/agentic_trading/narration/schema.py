@@ -64,6 +64,9 @@ class DecisionExplanation(BaseModel):
     # Market context (plain English, no jargon)
     market_summary: str = ""
 
+    # SMC analysis text (pre-formatted multi-TF analysis report)
+    smc_analysis_text: str = ""
+
     # Strategy / regime
     active_strategy: str = ""
     active_regime: str = ""  # "trending" / "ranging" / "unknown"

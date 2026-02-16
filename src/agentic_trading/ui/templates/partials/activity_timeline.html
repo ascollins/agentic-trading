@@ -1,0 +1,17 @@
+{% for event in events %}
+<div class="timeline-item">
+  <div class="timeline-time">{{ event.time }}</div>
+  <div class="timeline-icon {{ event.icon | default('signal') }}"></div>
+  <div class="timeline-content">
+    <div class="timeline-title">{{ event.title }}</div>
+    <div class="timeline-subtitle">{{ event.subtitle }}</div>
+  </div>
+</div>
+{% endfor %}
+
+{% if not events %}
+<div class="empty-state">
+  <div class="empty-message">No activity yet today</div>
+  <div class="empty-detail">Strategies are monitoring the market</div>
+</div>
+{% endif %}

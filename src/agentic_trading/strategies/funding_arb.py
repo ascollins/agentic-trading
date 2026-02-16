@@ -15,6 +15,7 @@ is the same: go against the crowd when funding is extreme.
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Any
 
 from agentic_trading.core.enums import SignalDirection
@@ -104,6 +105,19 @@ class FundingArbStrategy(BaseStrategy):
         if atr is not None:
             features_used["atr"] = atr
 
+        # Compute explicit TP/SL prices (2:1 R:R)
+        _take_profit: Decimal | None = None
+        _stop_loss: Decimal | None = None
+        price = candle.close
+        if atr is not None:
+            sl_distance = atr * self._get_param("atr_stop_multiplier")
+            if direction == SignalDirection.LONG:
+                _stop_loss = Decimal(str(price - sl_distance))
+                _take_profit = Decimal(str(price + sl_distance * 2))
+            else:
+                _stop_loss = Decimal(str(price + sl_distance))
+                _take_profit = Decimal(str(price - sl_distance * 2))
+
         return Signal(
             strategy_id=self.strategy_id,
             symbol=candle.symbol,
@@ -113,4 +127,6 @@ class FundingArbStrategy(BaseStrategy):
             features_used=features_used,
             timeframe=candle.timeframe,
             risk_constraints=risk_constraints,
+            take_profit=_take_profit,
+            stop_loss=_stop_loss,
         )

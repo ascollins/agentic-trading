@@ -1,0 +1,386 @@
+{
+  "annotations": { "list": [] },
+  "description": "Risk limits, safety controls, strategy compliance, and governance decisions. For Risk Analysts and compliance monitoring.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [
+    { "title": "← Back to Overview", "url": "/d/trading-overview", "type": "link", "icon": "arrow-left", "tooltip": "Return to the main overview dashboard" },
+    { "title": "Strategy Performance", "url": "/d/strategy-performance", "type": "link", "icon": "bolt" },
+    { "title": "System Health", "url": "/d/system-health", "type": "link", "icon": "heart" }
+  ],
+  "panels": [
+    {
+      "title": "",
+      "type": "text",
+      "gridPos": { "h": 2, "w": 24, "x": 0, "y": 0 },
+      "options": { "content": "# Risk Status", "mode": "markdown" }
+    },
+    {
+      "title": "Emergency Stop",
+      "description": "Has the system-wide emergency stop been activated? This immediately halts all trading activity when triggered.",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 2 },
+      "targets": [
+        {
+          "expr": "trading_kill_switch_active",
+          "legendFormat": "kill_switch",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "OFF — Trading Active", "color": "green" }, "1": { "text": "ENGAGED — All Trading Stopped", "color": "red" } } }
+          ]
+        }
+      },
+      "options": { "graphMode": "none", "textMode": "auto", "colorMode": "background", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "title": "Portfolio Drawdown",
+      "description": "How far the portfolio has fallen from its highest point. This is the primary risk gauge. Green < 5%. Yellow 5-10%. Red > 15%. If this hits the limit, trading should be paused.",
+      "type": "gauge",
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 2 },
+      "targets": [
+        {
+          "expr": "trading_drawdown_pct",
+          "legendFormat": "drawdown",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 0.3,
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "green" },
+              { "value": 0.05, "color": "yellow" },
+              { "value": 0.10, "color": "orange" },
+              { "value": 0.15, "color": "red" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Risk of Total Loss",
+      "description": "Simulated probability that each strategy could deplete the account. Based on thousands of random simulations. Below 5% (green) is acceptable. Above 15% (red) is dangerous.",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 2 },
+      "targets": [
+        {
+          "expr": "trading_journal_ruin_probability",
+          "legendFormat": "{{strategy_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "green" },
+              { "value": 0.05, "color": "yellow" },
+              { "value": 0.15, "color": "red" }
+            ]
+          }
+        }
+      },
+      "options": { "graphMode": "none", "textMode": "auto", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "title": "Recommended Position Size",
+      "description": "The mathematically optimal allocation for each strategy, based on its win rate and average payoff. Higher = strategy deserves a larger allocation. Near zero = reduce allocation.",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 2 },
+      "targets": [
+        {
+          "expr": "trading_journal_kelly_fraction",
+          "legendFormat": "{{strategy_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "red" },
+              { "value": 0.05, "color": "yellow" },
+              { "value": 0.15, "color": "green" }
+            ]
+          }
+        }
+      },
+      "options": { "graphMode": "none", "textMode": "auto", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "title": "",
+      "type": "text",
+      "gridPos": { "h": 2, "w": 24, "x": 0, "y": 7 },
+      "options": { "content": "# Worst Loss Streaks", "mode": "markdown" }
+    },
+    {
+      "title": "Worst Loss Streak by Strategy",
+      "description": "The maximum peak-to-trough dollar loss for each strategy over the rolling window. This shows how bad things have gotten for each strategy.",
+      "type": "gauge",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
+      "targets": [
+        {
+          "expr": "trading_journal_max_drawdown",
+          "legendFormat": "{{strategy_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "green" },
+              { "value": 1000, "color": "yellow" },
+              { "value": 5000, "color": "red" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Gross Exposure",
+      "description": "Total dollar value of all open positions right now (gross). Compare this to your risk limits to see if you're over-exposed.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 9 },
+      "targets": [
+        {
+          "expr": "trading_gross_exposure",
+          "legendFormat": "Gross Exposure",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 20
+          }
+        }
+      }
+    },
+    {
+      "title": "",
+      "type": "text",
+      "gridPos": { "h": 2, "w": 24, "x": 0, "y": 17 },
+      "options": { "content": "# Safety & Controls", "mode": "markdown" }
+    },
+    {
+      "title": "Safety Check Results",
+      "description": "How many trades were approved vs blocked by the safety system. A high number of blocks may indicate strategies are pushing against risk limits.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 19 },
+      "targets": [
+        {
+          "expr": "increase(trading_governance_decisions_total[5m])",
+          "legendFormat": "{{action}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "stacking": { "mode": "normal" }
+          }
+        }
+      }
+    },
+    {
+      "title": "Blocked Trades — Reasons",
+      "description": "Why trades were blocked. Common reasons include: maturity gate (strategy not promoted to live yet), risk limit breaches, or policy violations.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 19 },
+      "targets": [
+        {
+          "expr": "increase(trading_governance_blocks_total[5m])",
+          "legendFormat": "{{strategy_id}}: {{reason}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "stacking": { "mode": "normal" }
+          },
+          "color": { "mode": "palette-classic" }
+        }
+      }
+    },
+    {
+      "title": "",
+      "type": "text",
+      "gridPos": { "h": 2, "w": 24, "x": 0, "y": 27 },
+      "options": { "content": "# Strategy Compliance", "mode": "markdown" }
+    },
+    {
+      "title": "Strategy Behavior Change",
+      "description": "Is each strategy behaving differently than its historical baseline? Large deviations (>10%) mean the strategy's behavior has shifted — possibly due to changing market conditions. Worth investigating if sustained.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 29 },
+      "targets": [
+        {
+          "expr": "trading_strategy_drift_pct",
+          "legendFormat": "{{strategy_id}} / {{metric}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "thresholdsStyle": { "mode": "line" }
+          },
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "green" },
+              { "value": 0.10, "color": "yellow" },
+              { "value": 0.25, "color": "red" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Strategy Promotion Status",
+      "description": "Which stage each strategy has reached in the promotion pipeline. Stages: 0 = New (untested), 1 = Testing, 2 = Paper Trading, 3 = Limited Live, 4 = Full Live. Higher = more trusted.",
+      "type": "bargauge",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 29 },
+      "targets": [
+        {
+          "expr": "trading_strategy_maturity_level",
+          "legendFormat": "{{strategy_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 4,
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "red" },
+              { "value": 1, "color": "orange" },
+              { "value": 2, "color": "yellow" },
+              { "value": 3, "color": "semi-dark-green" },
+              { "value": 4, "color": "green" }
+            ]
+          },
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "New" }, "1": { "text": "Testing" }, "2": { "text": "Paper" }, "3": { "text": "Limited Live" }, "4": { "text": "Full Live" } } }
+          ]
+        }
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true,
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      }
+    },
+    {
+      "title": "Strategy Health",
+      "description": "Overall health rating per strategy (0 to 1.0). Combines win rate, drawdown, behavior drift, and other factors. Above 0.7 = healthy. Below 0.4 = needs investigation.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 37 },
+      "targets": [
+        {
+          "expr": "trading_strategy_health_score",
+          "legendFormat": "{{strategy_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 1,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "thresholdsStyle": { "mode": "line" }
+          },
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "red" },
+              { "value": 0.4, "color": "yellow" },
+              { "value": 0.7, "color": "green" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Strategies Allowed to Trade",
+      "description": "How many strategies currently hold active permission tokens to place trades. A strategy needs a token to execute. If this drops to 0, no trades can be placed.",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 37 },
+      "targets": [
+        {
+          "expr": "sum(trading_active_execution_tokens)",
+          "legendFormat": "Total Tokens",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "red" },
+              { "value": 1, "color": "green" }
+            ]
+          }
+        }
+      },
+      "options": { "graphMode": "none", "textMode": "auto", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "title": "Early Warning System",
+      "description": "Background health-check components that detect problems early. Green = all checks passing. Red = a component has failed and needs investigation.",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 37 },
+      "targets": [
+        {
+          "expr": "trading_canary_status",
+          "legendFormat": "{{component}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "1": { "text": "ALL CLEAR", "color": "green" }, "0": { "text": "WARNING", "color": "red" } } }
+          ]
+        }
+      },
+      "options": { "graphMode": "none", "textMode": "auto", "colorMode": "background", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["trading", "risk", "governance"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "10s",
+  "title": "Risk & Governance",
+  "uid": "risk-governance"
+}

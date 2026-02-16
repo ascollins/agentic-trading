@@ -84,6 +84,9 @@ class CCXTAdapter:
         Optional passphrase (required by some exchanges).
     sandbox:
         If ``True``, use the exchange's sandbox/testnet environment.
+    demo:
+        If ``True``, enable Bybit demo trading (production URL, virtual
+        funds).  Mutually exclusive with *sandbox*.
     default_type:
         Market type for CCXT (``"spot"``, ``"swap"``, ``"future"``).
         Defaults to ``"swap"`` for perpetual futures.
@@ -98,6 +101,7 @@ class CCXTAdapter:
         api_secret: str = "",
         passphrase: str = "",
         sandbox: bool = False,
+        demo: bool = False,
         default_type: str = "swap",
         options: dict[str, Any] | None = None,
     ) -> None:
@@ -125,7 +129,15 @@ class CCXTAdapter:
 
         self._ccxt: ccxt_async.Exchange = exchange_class(config)
 
-        if sandbox:
+        if demo:
+            # Bybit demo trading: production URL, virtual funds
+            self._ccxt.enable_demo_trading(True)
+            logger.info(
+                "CCXT adapter initialised in DEMO mode for %s (type=%s)",
+                self._exchange_name,
+                default_type,
+            )
+        elif sandbox:
             self._ccxt.set_sandbox_mode(True)
             logger.info(
                 "CCXT adapter initialised in SANDBOX mode for %s",
@@ -139,6 +151,7 @@ class CCXTAdapter:
             )
 
         self._markets_loaded: bool = False
+        self._default_type = default_type
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -149,6 +162,20 @@ class CCXTAdapter:
         if not self._markets_loaded:
             await self._ccxt.load_markets()
             self._markets_loaded = True
+
+    def _to_swap_symbol(self, symbol: str) -> str:
+        """Convert spot-style symbol to perpetual format if needed.
+
+        ``BTC/USDT`` → ``BTC/USDT:USDT`` for Bybit linear perpetuals.
+        If the symbol already has a settle suffix it is returned unchanged.
+        """
+        if self._default_type != "swap":
+            return symbol
+        if ":" in symbol:
+            return symbol  # already has settle suffix
+        # For Bybit/Binance linear USDT perpetuals, append :USDT
+        quote = symbol.split("/")[1] if "/" in symbol else "USDT"
+        return f"{symbol}:{quote}"
 
     def _wrap_error(self, exc: Exception) -> ExchangeError:
         """Convert CCXT exceptions to our error hierarchy."""
@@ -175,6 +202,9 @@ class CCXTAdapter:
         """
         await self._ensure_markets()
         try:
+            # Convert spot-format symbol to perpetual if needed
+            ccxt_symbol = self._to_swap_symbol(intent.symbol)
+
             ccxt_type = _ORDER_TYPE_MAP.get(intent.order_type, "limit")
             side_str = intent.side.value  # "buy" or "sell"
             price = float(intent.price) if intent.price is not None else None
@@ -198,7 +228,7 @@ class CCXTAdapter:
                 params["timeInForce"] = intent.time_in_force.value
 
             result: dict[str, Any] = await self._ccxt.create_order(
-                symbol=intent.symbol,
+                symbol=ccxt_symbol,
                 type=ccxt_type,
                 side=side_str,
                 amount=float(intent.qty),
@@ -210,11 +240,71 @@ class CCXTAdapter:
             client_order_id = str(
                 result.get("clientOrderId", intent.dedupe_key)
             )
-            status = _map_status(str(result.get("status", "open")))
+            raw_status = result.get("status")
+            avg_fill_price = result.get("average") or result.get("price")
+
+            # Bybit market orders often return status=None in the create
+            # response.  Fetch the order to get the real status and fill
+            # price so downstream consumers (journal, narration) see a
+            # proper FILLED ack.
+            if raw_status is None and order_id and ccxt_type == "market":
+                try:
+                    # Bybit requires fetchClosedOrder for filled market
+                    # orders (fetchOrder only works for recent open orders).
+                    if (
+                        self._exchange_name == "bybit"
+                        and hasattr(self._ccxt, "fetch_closed_order")
+                    ):
+                        fetched = await self._ccxt.fetch_closed_order(
+                            order_id, ccxt_symbol
+                        )
+                    else:
+                        fetched = await self._ccxt.fetch_order(
+                            order_id, ccxt_symbol
+                        )
+                    raw_status = fetched.get("status")
+                    avg_fill_price = (
+                        fetched.get("average")
+                        or fetched.get("price")
+                        or avg_fill_price
+                    )
+                    logger.info(
+                        "Fetched order %s for status resolution: status=%s avg=%s",
+                        order_id, raw_status, avg_fill_price,
+                    )
+                except Exception as fetch_exc:
+                    # Market orders on Bybit almost always fill instantly;
+                    # if we can't fetch it, assume filled.
+                    if ccxt_type == "market":
+                        raw_status = "closed"
+                        # Try to get last price from ticker for the fill
+                        if avg_fill_price is None:
+                            try:
+                                ticker = await self._ccxt.fetch_ticker(ccxt_symbol)
+                                avg_fill_price = ticker.get("last")
+                            except Exception:
+                                pass
+                        logger.info(
+                            "Could not fetch market order %s (%s); "
+                            "assuming filled at %s",
+                            order_id, fetch_exc, avg_fill_price,
+                        )
+                    else:
+                        logger.warning(
+                            "Could not fetch order %s for status: %s",
+                            order_id, fetch_exc,
+                        )
+
+            status = _map_status(str(raw_status or "open"))
+
+            # Store avg fill price so engine can read it for FillEvent
+            self._last_fill_price: Decimal | None = (
+                Decimal(str(avg_fill_price)) if avg_fill_price else None
+            )
 
             logger.info(
                 "CCXT order created: id=%s client_id=%s symbol=%s "
-                "side=%s type=%s qty=%s price=%s status=%s",
+                "side=%s type=%s qty=%s price=%s avg_fill=%s status=%s",
                 order_id,
                 client_order_id,
                 intent.symbol,
@@ -222,6 +312,7 @@ class CCXTAdapter:
                 ccxt_type,
                 intent.qty,
                 price,
+                avg_fill_price,
                 status.value,
             )
             return OrderAck(
@@ -244,8 +335,9 @@ class CCXTAdapter:
         """Cancel an open order on the exchange."""
         await self._ensure_markets()
         try:
+            ccxt_symbol = self._to_swap_symbol(symbol)
             result: dict[str, Any] = await self._ccxt.cancel_order(
-                id=order_id, symbol=symbol
+                id=order_id, symbol=ccxt_symbol
             )
             return OrderAck(
                 order_id=str(result.get("id", order_id)),
@@ -329,7 +421,7 @@ class CCXTAdapter:
         """Fetch open positions (perpetual futures) from the exchange."""
         await self._ensure_markets()
         try:
-            symbols = [symbol] if symbol else None
+            symbols = [self._to_swap_symbol(symbol)] if symbol else None
             raw_positions: list[dict[str, Any]] = (
                 await self._ccxt.fetch_positions(symbols=symbols)
             )

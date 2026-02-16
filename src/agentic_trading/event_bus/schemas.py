@@ -7,6 +7,8 @@ Used for serialization/deserialization and validation.
 from __future__ import annotations
 
 from agentic_trading.core.events import (
+    ApprovalRequested,
+    ApprovalResolved,
     BalanceUpdate,
     CandleEvent,
     CircuitBreakerEvent,
@@ -58,6 +60,7 @@ TOPIC_SCHEMAS: dict[str, list[type[BaseEvent]]] = {
     "system.health": [SystemHealth],
     "system.kill_switch": [KillSwitchEvent],
     "system.reconciliation": [ReconciliationResult],
+    "governance.approval": [ApprovalRequested, ApprovalResolved],
 }
 
 # Flat map: event class name → event class (for deserialization)

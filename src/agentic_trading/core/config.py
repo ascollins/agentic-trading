@@ -83,6 +83,23 @@ class RiskConfig(BaseModel):
     kill_switch_cancel_all: bool = True
 
 
+class ExitConfig(BaseModel):
+    """Server-side TP/SL defaults when strategy doesn't provide explicit levels."""
+
+    enabled: bool = True  # Master switch for TP/SL
+    sl_atr_multiplier: float = 2.5  # SL = entry ± ATR × this
+    tp_atr_multiplier: float = 5.0  # TP = entry ± ATR × this (2:1 R:R)
+    trailing_stop_atr_multiplier: float = 2.0  # Trailing distance = ATR × this
+    trailing_strategies: list[str] = Field(
+        default_factory=lambda: [
+            "trend_following",
+            "breakout",
+            "multi_tf_ma",
+            "bb_squeeze",
+        ]
+    )
+
+
 class SafeModeConfig(BaseModel):
     enabled: bool = False
     max_symbols: int = 5  # Only top N liquid
@@ -202,6 +219,32 @@ class NarrationConfig(BaseModel):
     tavus_mock: bool = True  # Use mock Tavus adapter by default
 
 
+class OptimizerSchedulerConfig(BaseModel):
+    """Periodic strategy optimizer configuration."""
+
+    enabled: bool = False
+    interval_hours: float = 24.0  # How often to run optimizer
+    strategies: list[str] = Field(
+        default_factory=lambda: ["trend_following", "mean_reversion", "breakout"]
+    )
+    data_window_days: int = 90  # How many days of historical data to use
+    n_samples: int = 30  # Parameter combinations to test per run
+    top_n_for_wf: int = 3  # Top results for walk-forward validation
+    wf_folds: int = 3  # Walk-forward validation folds
+    auto_apply: bool = False  # Automatically apply best params to live strategies
+    max_results_kept: int = 10  # Rotate result files, keep last N
+    results_dir: str = "data/optimizer_results"  # Where to store results JSON
+    initial_delay_minutes: float = 5.0  # Delay before first run (allow warmup)
+
+
+class UIConfig(BaseModel):
+    """Supervision dashboard configuration."""
+
+    enabled: bool = True  # Start UI server alongside trading engine
+    host: str = "0.0.0.0"  # Bind address
+    port: int = 8080  # HTTP port for the supervision UI
+
+
 # ---------------------------------------------------------------------------
 # Top-level settings
 # ---------------------------------------------------------------------------
@@ -225,11 +268,16 @@ class Settings(BaseSettings):
     strategies: list[StrategyParamConfig] = Field(default_factory=list)
     regime: RegimeConfig = Field(default_factory=RegimeConfig)
     risk: RiskConfig = Field(default_factory=RiskConfig)
+    exits: ExitConfig = Field(default_factory=ExitConfig)
     safe_mode: SafeModeConfig = Field(default_factory=SafeModeConfig)
     backtest: BacktestConfig = Field(default_factory=BacktestConfig)
     observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
     governance: GovernanceConfig = Field(default_factory=GovernanceConfig)
     narration: NarrationConfig = Field(default_factory=NarrationConfig)
+    optimizer_scheduler: OptimizerSchedulerConfig = Field(
+        default_factory=OptimizerSchedulerConfig
+    )
+    ui: UIConfig = Field(default_factory=UIConfig)
 
     # Infrastructure
     redis_url: str = "redis://localhost:6379/0"

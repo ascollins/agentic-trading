@@ -11,27 +11,31 @@ that verifies the governance infrastructure itself is operational.
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 from collections import defaultdict
 from collections.abc import Callable
 from typing import Any
 
+from agentic_trading.agents.base import BaseAgent
 from agentic_trading.core.config import CanaryConfig
-from agentic_trading.core.enums import GovernanceAction
-from agentic_trading.core.events import CanaryAlert, GovernanceCanaryCheck
+from agentic_trading.core.enums import AgentType, GovernanceAction
+from agentic_trading.core.events import (
+    AgentCapabilities,
+    CanaryAlert,
+    GovernanceCanaryCheck,
+)
 
 logger = logging.getLogger(__name__)
 
 
-class GovernanceCanary:
+class GovernanceCanary(BaseAgent):
     """Independent infrastructure health verifier.
 
     Usage::
 
         canary = GovernanceCanary(config, kill_switch_fn, event_bus)
         canary.register_component("redis", lambda: redis.ping())
-        await canary.start_periodic()
+        await canary.start()
     """
 
     def __init__(
@@ -39,14 +43,33 @@ class GovernanceCanary:
         config: CanaryConfig,
         kill_switch_fn: Callable[..., Any] | None = None,
         event_bus: Any | None = None,
+        *,
+        agent_id: str | None = None,
     ) -> None:
+        super().__init__(
+            agent_id=agent_id,
+            interval=config.check_interval_seconds,
+        )
         self._config = config
         self._kill_switch_fn = kill_switch_fn
         self._event_bus = event_bus
         self._components: dict[str, Callable[[], bool]] = {}
         self._consecutive_failures: dict[str, int] = defaultdict(int)
-        self._task: asyncio.Task | None = None
-        self._running = False
+
+    # ------------------------------------------------------------------
+    # IAgent
+    # ------------------------------------------------------------------
+
+    @property
+    def agent_type(self) -> AgentType:
+        return AgentType.GOVERNANCE_CANARY
+
+    def capabilities(self) -> AgentCapabilities:
+        return AgentCapabilities(
+            subscribes_to=[],
+            publishes_to=["governance"],
+            description="Independent infrastructure health watchdog",
+        )
 
     # ------------------------------------------------------------------
     # Component registration
@@ -124,6 +147,14 @@ class GovernanceCanary:
             failed_components=failed,
         )
 
+        # Emit canary Prometheus metrics
+        try:
+            from agentic_trading.observability.metrics import update_canary_status
+            for name in self._components:
+                update_canary_status(name, name not in failed)
+        except Exception:
+            pass
+
         if self._event_bus is not None:
             try:
                 await self._event_bus.publish("governance", check_event)
@@ -133,38 +164,27 @@ class GovernanceCanary:
         return check_event
 
     # ------------------------------------------------------------------
-    # Periodic loop
+    # BaseAgent periodic work
+    # ------------------------------------------------------------------
+
+    async def _work(self) -> None:
+        """Run health checks as the periodic work unit."""
+        await self.run_checks()
+
+    # ------------------------------------------------------------------
+    # Backward compatibility
     # ------------------------------------------------------------------
 
     async def start_periodic(
         self, interval: int | None = None
     ) -> None:
-        """Start a background loop running checks at the configured interval."""
-        if self._running:
-            return
-        self._running = True
-        secs = interval or self._config.check_interval_seconds
-        self._task = asyncio.create_task(self._loop(secs))
-        logger.info("Governance canary started (interval=%ds)", secs)
+        """Start the canary. Backward-compatible alias for ``start()``.
 
-    async def stop(self) -> None:
-        """Stop the periodic check loop."""
-        self._running = False
-        if self._task is not None:
-            self._task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._task
-            self._task = None
-        logger.info("Governance canary stopped")
-
-    async def _loop(self, interval: int) -> None:
-        """Internal check loop."""
-        while self._running:
-            try:
-                await self.run_checks()
-            except Exception:
-                logger.error("Canary loop error", exc_info=True)
-            await asyncio.sleep(interval)
+        If ``interval`` is provided, it overrides the config value.
+        """
+        if interval is not None:
+            self._interval = interval
+        await self.start()
 
     # ------------------------------------------------------------------
     # Helpers
@@ -208,10 +228,6 @@ class GovernanceCanary:
     # ------------------------------------------------------------------
     # Introspection
     # ------------------------------------------------------------------
-
-    @property
-    def is_running(self) -> bool:
-        return self._running
 
     @property
     def registered_components(self) -> list[str]:

@@ -194,3 +194,31 @@ class GovernanceAction(str, Enum):
     DEMOTE = "demote"
     PAUSE = "pause"
     KILL = "kill"
+
+
+class AgentType(str, Enum):
+    """Agent type identifiers for the multi-agent architecture."""
+
+    MARKET_INTELLIGENCE = "market_intelligence"
+    STRATEGY = "strategy"
+    PORTFOLIO = "portfolio"
+    EXECUTION = "execution"
+    RISK_GATE = "risk_gate"
+    RECONCILIATION = "reconciliation"
+    GOVERNANCE_CANARY = "governance_canary"
+    OPTIMIZER = "optimizer"
+    REPORTING = "reporting"
+    SURVEILLANCE = "surveillance"
+    INCIDENT_RESPONSE = "incident_response"
+    CUSTOM = "custom"
+
+
+class AgentStatus(str, Enum):
+    """Lifecycle status of an agent."""
+
+    CREATED = "created"
+    STARTING = "starting"
+    RUNNING = "running"
+    STOPPING = "stopping"
+    STOPPED = "stopped"
+    FAILED = "failed"

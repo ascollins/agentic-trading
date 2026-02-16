@@ -1,42 +1,70 @@
 {
   "annotations": { "list": [] },
+  "description": "Complete trading dashboard with all metrics in plain English. For detailed views, use the linked dashboards below.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
-  "links": [],
+  "links": [
+    { "title": "Trading Overview", "url": "/d/trading-overview", "type": "link", "icon": "apps", "tooltip": "Simplified at-a-glance overview — start here" },
+    { "title": "Strategy Performance", "url": "/d/strategy-performance", "type": "link", "icon": "bolt", "tooltip": "Deep dive into strategy win rates and profitability" },
+    { "title": "Risk & Governance", "url": "/d/risk-governance", "type": "link", "icon": "shield", "tooltip": "Risk limits, safety controls, and compliance" },
+    { "title": "System Health", "url": "/d/system-health", "type": "link", "icon": "heart", "tooltip": "Speed, data feeds, and component status" },
+    { "title": "Strategy Reference Guide", "url": "/d/strategy-reference", "type": "link", "icon": "book", "tooltip": "How each strategy works" },
+    { "title": "Live Narration", "url": "/d/narration-live", "type": "link", "icon": "comment-alt", "tooltip": "Plain-English commentary on decisions" }
+  ],
   "panels": [
     {
-      "title": "Portfolio Equity",
+      "title": "Portfolio Value",
+      "description": "Total account value over time. An upward trend means the strategies are making money.",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
       "targets": [
         {
           "expr": "trading_equity",
-          "legendFormat": "equity",
+          "legendFormat": "Portfolio Value",
           "refId": "A"
         }
       ],
       "fieldConfig": {
-        "defaults": { "unit": "currencyUSD" }
+        "defaults": {
+          "unit": "currencyUSD",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        }
       }
     },
     {
-      "title": "Daily PnL",
+      "title": "Today's Profit / Loss",
+      "description": "How much the portfolio gained or lost today. Green = positive, Red = negative.",
       "type": "stat",
       "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
       "targets": [
         {
           "expr": "trading_daily_pnl",
-          "legendFormat": "pnl",
+          "legendFormat": "daily_pnl",
           "refId": "A"
         }
       ],
       "fieldConfig": {
-        "defaults": { "unit": "currencyUSD" }
-      }
+        "defaults": {
+          "unit": "currencyUSD",
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "red" },
+              { "value": 0, "color": "green" }
+            ]
+          }
+        }
+      },
+      "options": { "graphMode": "area", "colorMode": "value" }
     },
     {
-      "title": "Kill Switch",
+      "title": "Emergency Stop",
+      "description": "Has the system-wide emergency stop been activated? This immediately halts all trading when triggered.",
       "type": "stat",
       "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
       "targets": [
@@ -49,13 +77,15 @@
       "fieldConfig": {
         "defaults": {
           "mappings": [
-            { "type": "value", "options": { "0": { "text": "OFF", "color": "green" }, "1": { "text": "ACTIVE", "color": "red" } } }
+            { "type": "value", "options": { "0": { "text": "OFF — Trading Active", "color": "green" }, "1": { "text": "ENGAGED — All Trading Stopped", "color": "red" } } }
           ]
         }
-      }
+      },
+      "options": { "graphMode": "none", "colorMode": "background" }
     },
     {
       "title": "Gross Exposure",
+      "description": "Total dollar value of all open positions (gross). This is the combined notional value of all positions currently deployed.",
       "type": "stat",
       "gridPos": { "h": 4, "w": 6, "x": 12, "y": 4 },
       "targets": [
@@ -70,7 +100,8 @@
       }
     },
     {
-      "title": "System Mode",
+      "title": "Trading Mode",
+      "description": "Current operating mode: Live (real money), Paper (simulated), or Backtest (historical replay).",
       "type": "stat",
       "gridPos": { "h": 4, "w": 6, "x": 18, "y": 4 },
       "targets": [
@@ -86,40 +117,101 @@
             { "type": "value", "options": { "1": { "text": "RUNNING", "color": "green" } } }
           ]
         }
-      }
+      },
+      "options": { "graphMode": "none", "textMode": "name", "colorMode": "background" }
     },
     {
-      "title": "Signals per Strategy",
-      "type": "timeseries",
+      "title": "Signals by Strategy & Direction",
+      "description": "Trading signals generated in the last hour, by strategy and direction. Green = buy, Red = sell, Purple = neutral.",
+      "type": "barchart",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
       "targets": [
         {
-          "expr": "rate(trading_signals_total[5m])",
-          "legendFormat": "{{strategy}}",
-          "refId": "A"
+          "expr": "sum by (strategy_id, direction) (increase(trading_signals_total[1h]))",
+          "legendFormat": "{{strategy_id}} ({{direction}})",
+          "refId": "A",
+          "instant": true
         }
       ],
+      "options": {
+        "orientation": "horizontal",
+        "showValue": "always",
+        "stacking": "normal",
+        "groupWidth": 0.7,
+        "barWidth": 0.8
+      },
       "fieldConfig": {
-        "defaults": { "unit": "ops" }
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": "long" }, "properties": [{ "id": "color", "value": { "fixedColor": "#73BF69", "mode": "fixed" } }] },
+          { "matcher": { "id": "byRegexp", "options": "short" }, "properties": [{ "id": "color", "value": { "fixedColor": "#F2495C", "mode": "fixed" } }] },
+          { "matcher": { "id": "byRegexp", "options": "flat" }, "properties": [{ "id": "color", "value": { "fixedColor": "#B877D9", "mode": "fixed" } }] }
+        ]
       }
     },
     {
-      "title": "Candles Processed",
-      "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "title": "Market Activity by Symbol",
+      "description": "Which markets are getting the most trading attention over the last hour.",
+      "type": "barchart",
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 8 },
       "targets": [
         {
-          "expr": "rate(trading_candles_processed_total[5m])",
+          "expr": "sum by (symbol) (increase(trading_signals_total[1h]))",
           "legendFormat": "{{symbol}}",
-          "refId": "A"
+          "refId": "A",
+          "instant": true
         }
       ],
+      "options": {
+        "orientation": "horizontal",
+        "showValue": "always",
+        "groupWidth": 0.7,
+        "barWidth": 0.8
+      },
       "fieldConfig": {
-        "defaults": { "unit": "ops" }
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "palette-classic" }
+        }
       }
     },
     {
-      "title": "Drawdown %",
+      "title": "Market Data Feed",
+      "description": "Price updates processed per symbol in the last hour. If a symbol drops to zero, its data feed may be broken.",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 8 },
+      "targets": [
+        {
+          "expr": "sum by (symbol) (increase(trading_candles_processed_total[1h]))",
+          "legendFormat": "{{symbol}}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "red" },
+              { "value": 1, "color": "green" }
+            ]
+          }
+        }
+      },
+      "options": {
+        "graphMode": "none",
+        "textMode": "auto",
+        "colorMode": "value",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      }
+    },
+    {
+      "title": "Portfolio Drawdown",
+      "description": "How far the portfolio has fallen from its highest point. Green < 5%, Yellow 5-10%, Red > 15%. This is the primary risk gauge.",
       "type": "gauge",
       "gridPos": { "h": 8, "w": 8, "x": 0, "y": 16 },
       "targets": [
@@ -136,7 +228,7 @@
           "max": 0.3,
           "thresholds": {
             "steps": [
-              { "value": 0, "color": "green" },
+              { "value": null, "color": "green" },
               { "value": 0.05, "color": "yellow" },
               { "value": 0.10, "color": "orange" },
               { "value": 0.15, "color": "red" }
@@ -146,153 +238,246 @@
       }
     },
     {
-      "title": "Decision Latency (p95 / p99)",
+      "title": "Decision Speed",
+      "description": "How quickly the system makes trading decisions after receiving market data. 'Typical' = 95% of decisions are faster. 'Slowest' = worst case. Under 100ms is good.",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 8, "x": 8, "y": 16 },
       "targets": [
         {
           "expr": "histogram_quantile(0.95, rate(trading_decision_latency_seconds_bucket[5m]))",
-          "legendFormat": "p95",
+          "legendFormat": "Typical",
           "refId": "A"
         },
         {
           "expr": "histogram_quantile(0.99, rate(trading_decision_latency_seconds_bucket[5m]))",
-          "legendFormat": "p99",
+          "legendFormat": "Slowest",
           "refId": "B"
         }
       ],
       "fieldConfig": {
-        "defaults": { "unit": "s" }
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "thresholdsStyle": { "mode": "line+area" }
+          },
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "transparent" },
+              { "value": 0.5, "color": "red" }
+            ]
+          }
+        }
       }
     },
     {
-      "title": "Order Latency (p95 / p99)",
+      "title": "Order Confirmation Speed",
+      "description": "How long until the exchange confirms our orders. 'Typical' = 95% are faster. Under 250ms is normal. Over 1s may indicate exchange issues.",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 8, "x": 16, "y": 16 },
       "targets": [
         {
           "expr": "histogram_quantile(0.95, rate(trading_order_latency_seconds_bucket[5m]))",
-          "legendFormat": "p95",
+          "legendFormat": "Typical",
           "refId": "A"
         },
         {
           "expr": "histogram_quantile(0.99, rate(trading_order_latency_seconds_bucket[5m]))",
-          "legendFormat": "p99",
+          "legendFormat": "Slowest",
           "refId": "B"
         }
       ],
       "fieldConfig": {
-        "defaults": { "unit": "s" }
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "thresholdsStyle": { "mode": "line+area" }
+          },
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "transparent" },
+              { "value": 1.0, "color": "red" }
+            ]
+          }
+        }
       }
     },
     {
-      "title": "--- GOVERNANCE ---",
+      "title": "",
       "type": "text",
       "gridPos": { "h": 2, "w": 24, "x": 0, "y": 24 },
-      "options": { "content": "## Governance Framework (Soteria)", "mode": "markdown" }
+      "options": { "content": "## Safety & Controls", "mode": "markdown" }
     },
     {
-      "title": "Governance Decisions",
+      "title": "Safety Check Results",
+      "description": "How many trades were approved vs blocked by the safety system. A high number of blocks may indicate strategies are pushing against risk limits.",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 26 },
       "targets": [
         {
-          "expr": "rate(trading_governance_decisions_total[5m])",
+          "expr": "increase(trading_governance_decisions_total[5m])",
           "legendFormat": "{{action}}",
           "refId": "A"
         }
       ],
       "fieldConfig": {
-        "defaults": { "unit": "ops" }
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "stacking": { "mode": "normal" }
+          }
+        }
       }
     },
     {
-      "title": "Governance Blocks",
+      "title": "Blocked Trades — Reasons",
+      "description": "Why trades were blocked. Common reasons: maturity gate (strategy not promoted), risk limit breaches, policy violations.",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 26 },
       "targets": [
         {
-          "expr": "rate(trading_governance_blocks_total[5m])",
-          "legendFormat": "{{reason}}",
+          "expr": "increase(trading_governance_blocks_total[5m])",
+          "legendFormat": "{{strategy_id}}: {{reason}}",
           "refId": "A"
         }
       ],
       "fieldConfig": {
-        "defaults": { "unit": "ops" }
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "stacking": { "mode": "normal" }
+          },
+          "color": { "mode": "palette-classic" }
+        }
       }
     },
     {
-      "title": "Strategy Health Scores",
+      "title": "Strategy Health",
+      "description": "Overall health rating per strategy (0 to 1.0). Above 0.7 = healthy. Below 0.4 = needs investigation. Combines win rate, drawdown, and behavior drift.",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 8, "x": 0, "y": 34 },
       "targets": [
         {
-          "expr": "trading_health_score",
-          "legendFormat": "{{strategy}}",
-          "refId": "A"
-        }
-      ]
-    },
-    {
-      "title": "Drift Deviation %",
-      "type": "timeseries",
-      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 34 },
-      "targets": [
-        {
-          "expr": "trading_drift_deviation",
-          "legendFormat": "{{strategy}} / {{metric}}",
+          "expr": "trading_strategy_health_score",
+          "legendFormat": "{{strategy_id}}",
           "refId": "A"
         }
       ],
       "fieldConfig": {
-        "defaults": { "unit": "percentunit" }
+        "defaults": {
+          "min": 0,
+          "max": 1,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "thresholdsStyle": { "mode": "line" }
+          },
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "red" },
+              { "value": 0.4, "color": "yellow" },
+              { "value": 0.7, "color": "green" }
+            ]
+          }
+        }
       }
     },
     {
-      "title": "Active Execution Tokens",
-      "type": "stat",
-      "gridPos": { "h": 8, "w": 4, "x": 16, "y": 34 },
+      "title": "Strategy Behavior Change",
+      "description": "How much each strategy has deviated from its normal behavior pattern. Large deviations (>10%) may indicate changing market conditions.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 34 },
       "targets": [
         {
-          "expr": "trading_active_tokens",
-          "legendFormat": "tokens",
+          "expr": "trading_strategy_drift_pct",
+          "legendFormat": "{{strategy_id}} / {{metric}}",
           "refId": "A"
         }
-      ]
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "thresholdsStyle": { "mode": "line" }
+          },
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "green" },
+              { "value": 0.10, "color": "yellow" },
+              { "value": 0.25, "color": "red" }
+            ]
+          }
+        }
+      }
     },
     {
-      "title": "Canary Status",
+      "title": "Strategies Allowed to Trade",
+      "description": "How many strategies currently hold active trading permission. If this drops to 0, no trades can be placed.",
       "type": "stat",
-      "gridPos": { "h": 8, "w": 4, "x": 20, "y": 34 },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 34 },
+      "targets": [
+        {
+          "expr": "sum(trading_active_execution_tokens)",
+          "legendFormat": "Total",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "red" },
+              { "value": 1, "color": "green" }
+            ]
+          }
+        }
+      },
+      "options": { "graphMode": "none", "colorMode": "value" }
+    },
+    {
+      "title": "Early Warning System",
+      "description": "Background health-check components. Green = all checks passing. Red = a component has failed and needs investigation.",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 34 },
       "targets": [
         {
           "expr": "trading_canary_status",
-          "legendFormat": "canary",
+          "legendFormat": "{{component}}",
           "refId": "A"
         }
       ],
       "fieldConfig": {
         "defaults": {
           "mappings": [
-            { "type": "value", "options": { "1": { "text": "HEALTHY", "color": "green" }, "0": { "text": "FAILING", "color": "red" } } }
+            { "type": "value", "options": { "1": { "text": "ALL CLEAR", "color": "green" }, "0": { "text": "WARNING", "color": "red" } } }
           ]
         }
-      }
+      },
+      "options": { "graphMode": "none", "colorMode": "background" }
     },
     {
-      "title": "Governance Gate Latency",
+      "title": "Safety Check Speed",
+      "description": "How fast the guardrail checks are running. These checks happen before every trade. Under 25ms is normal.",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 42 },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 38 },
       "targets": [
         {
           "expr": "histogram_quantile(0.95, rate(trading_governance_latency_seconds_bucket[5m]))",
-          "legendFormat": "p95",
+          "legendFormat": "Typical",
           "refId": "A"
-        },
-        {
-          "expr": "histogram_quantile(0.99, rate(trading_governance_latency_seconds_bucket[5m]))",
-          "legendFormat": "p99",
-          "refId": "B"
         }
       ],
       "fieldConfig": {
@@ -300,27 +485,53 @@
       }
     },
     {
-      "title": "Maturity Levels",
-      "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 42 },
+      "title": "Strategy Promotion Status",
+      "description": "Which stage each strategy has reached. 0=New, 1=Testing, 2=Paper, 3=Limited Live, 4=Full Live. Higher = more trusted.",
+      "type": "bargauge",
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 38 },
       "targets": [
         {
-          "expr": "trading_maturity_level",
-          "legendFormat": "{{strategy}} = {{level}}",
+          "expr": "trading_strategy_maturity_level",
+          "legendFormat": "{{strategy_id}}",
           "refId": "A"
         }
-      ]
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 4,
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "red" },
+              { "value": 1, "color": "orange" },
+              { "value": 2, "color": "yellow" },
+              { "value": 3, "color": "semi-dark-green" },
+              { "value": 4, "color": "green" }
+            ]
+          },
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "New" }, "1": { "text": "Testing" }, "2": { "text": "Paper" }, "3": { "text": "Ltd Live" }, "4": { "text": "Full Live" } } }
+          ]
+        }
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true,
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      }
     },
     {
-      "title": "--- TRADE JOURNAL & ANALYTICS ---",
+      "title": "",
       "type": "text",
-      "gridPos": { "h": 2, "w": 24, "x": 0, "y": 50 },
-      "options": { "content": "## Trade Journal (Edgewonk-inspired)", "mode": "markdown" }
+      "gridPos": { "h": 2, "w": 24, "x": 0, "y": 42 },
+      "options": { "content": "## Trade Performance Analytics", "mode": "markdown" }
     },
     {
-      "title": "Win Rate (Rolling)",
+      "title": "Win Rate by Strategy",
+      "description": "What percentage of each strategy's trades are profitable. Above 50% (green) is good. Below 40% (red) needs attention.",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 52 },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 44 },
       "targets": [
         {
           "expr": "trading_journal_win_rate",
@@ -333,9 +544,15 @@
           "unit": "percentunit",
           "min": 0,
           "max": 1,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "thresholdsStyle": { "mode": "line" }
+          },
           "thresholds": {
             "steps": [
-              { "value": 0, "color": "red" },
+              { "value": null, "color": "red" },
               { "value": 0.40, "color": "yellow" },
               { "value": 0.50, "color": "green" }
             ]
@@ -344,9 +561,10 @@
       }
     },
     {
-      "title": "Profit Factor (Rolling)",
+      "title": "Gains vs. Losses Ratio",
+      "description": "Total winning dollars divided by total losing dollars. Above 1.0 means gains outweigh losses. Higher is better.",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 52 },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 44 },
       "targets": [
         {
           "expr": "trading_journal_profit_factor",
@@ -356,9 +574,15 @@
       ],
       "fieldConfig": {
         "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "thresholdsStyle": { "mode": "line" }
+          },
           "thresholds": {
             "steps": [
-              { "value": 0, "color": "red" },
+              { "value": null, "color": "red" },
               { "value": 1.0, "color": "yellow" },
               { "value": 1.5, "color": "green" }
             ]
@@ -367,9 +591,10 @@
       }
     },
     {
-      "title": "Avg R-Multiple",
+      "title": "Average Reward per Risk",
+      "description": "For each dollar risked, how many dollars earned on average. Above 0.5 (green) is good. Negative (red) means losing more than the initial risk.",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 52 },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 44 },
       "targets": [
         {
           "expr": "trading_journal_avg_r_multiple",
@@ -379,9 +604,15 @@
       ],
       "fieldConfig": {
         "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "thresholdsStyle": { "mode": "line" }
+          },
           "thresholds": {
             "steps": [
-              { "value": -1, "color": "red" },
+              { "value": null, "color": "red" },
               { "value": 0, "color": "yellow" },
               { "value": 0.5, "color": "green" }
             ]
@@ -390,9 +621,10 @@
       }
     },
     {
-      "title": "Expectancy ($/trade)",
+      "title": "Average Profit per Trade",
+      "description": "The average dollar amount each strategy makes or loses per trade. Positive (green) = profitable.",
       "type": "stat",
-      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 60 },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 52 },
       "targets": [
         {
           "expr": "trading_journal_expectancy",
@@ -405,17 +637,19 @@
           "unit": "currencyUSD",
           "thresholds": {
             "steps": [
-              { "value": -100, "color": "red" },
+              { "value": null, "color": "red" },
               { "value": 0, "color": "green" }
             ]
           }
         }
-      }
+      },
+      "options": { "graphMode": "none", "colorMode": "value" }
     },
     {
-      "title": "Sharpe (Trade-level)",
+      "title": "Return Consistency",
+      "description": "How steady are the profits? Higher = more reliable returns. Above 1.0 (green) is excellent.",
       "type": "stat",
-      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 60 },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 52 },
       "targets": [
         {
           "expr": "trading_journal_sharpe",
@@ -427,18 +661,20 @@
         "defaults": {
           "thresholds": {
             "steps": [
-              { "value": -1, "color": "red" },
+              { "value": null, "color": "red" },
               { "value": 0, "color": "yellow" },
               { "value": 1.0, "color": "green" }
             ]
           }
         }
-      }
+      },
+      "options": { "graphMode": "none", "colorMode": "value" }
     },
     {
-      "title": "Management Efficiency",
+      "title": "Profit Capture Rate",
+      "description": "What % of each trade's maximum potential profit did we actually capture? 70%+ (green) = excellent. Below 40% (red) = exiting too early or late.",
       "type": "gauge",
-      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 60 },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 52 },
       "targets": [
         {
           "expr": "trading_journal_management_efficiency",
@@ -453,7 +689,7 @@
           "max": 1,
           "thresholds": {
             "steps": [
-              { "value": 0, "color": "red" },
+              { "value": null, "color": "red" },
               { "value": 0.4, "color": "yellow" },
               { "value": 0.7, "color": "green" }
             ]
@@ -462,26 +698,29 @@
       }
     },
     {
-      "title": "Open / Closed Trades",
+      "title": "Active / Completed Trades",
+      "description": "How many trades are currently open vs. completed since system started.",
       "type": "stat",
-      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 60 },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 52 },
       "targets": [
         {
           "expr": "trading_journal_open_trades",
-          "legendFormat": "open",
+          "legendFormat": "Active",
           "refId": "A"
         },
         {
           "expr": "trading_journal_closed_trades",
-          "legendFormat": "closed",
+          "legendFormat": "Completed",
           "refId": "B"
         }
-      ]
+      ],
+      "options": { "graphMode": "none" }
     },
     {
-      "title": "Rolling Max Drawdown",
+      "title": "Worst Loss Streak by Strategy",
+      "description": "The maximum peak-to-trough dollar loss for each strategy. Shows how bad things have gotten.",
       "type": "gauge",
-      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 64 },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 56 },
       "targets": [
         {
           "expr": "trading_journal_max_drawdown",
@@ -494,7 +733,7 @@
           "unit": "currencyUSD",
           "thresholds": {
             "steps": [
-              { "value": 0, "color": "green" },
+              { "value": null, "color": "green" },
               { "value": 1000, "color": "yellow" },
               { "value": 5000, "color": "red" }
             ]
@@ -503,9 +742,10 @@
       }
     },
     {
-      "title": "Confidence Calibration (Brier Score)",
+      "title": "Prediction Accuracy",
+      "description": "When a strategy says it's 80% confident, is it actually right 80% of the time? Lower = more accurate. Below 0.15 (green) is well-calibrated.",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 64 },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 56 },
       "targets": [
         {
           "expr": "trading_journal_confidence_brier",
@@ -515,9 +755,15 @@
       ],
       "fieldConfig": {
         "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "thresholdsStyle": { "mode": "line" }
+          },
           "thresholds": {
             "steps": [
-              { "value": 0, "color": "green" },
+              { "value": null, "color": "green" },
               { "value": 0.15, "color": "yellow" },
               { "value": 0.25, "color": "red" }
             ]
@@ -526,9 +772,10 @@
       }
     },
     {
-      "title": "Statistical Edge (p-value)",
+      "title": "Is This Skill or Luck?",
+      "description": "Statistical test: is the strategy's performance due to genuine skill or random chance? Below 0.05 (green) = likely real skill. Above 0.25 (red) = could be luck.",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 64 },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 56 },
       "targets": [
         {
           "expr": "trading_journal_edge_pvalue",
@@ -538,9 +785,15 @@
       ],
       "fieldConfig": {
         "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "thresholdsStyle": { "mode": "line" }
+          },
           "thresholds": {
             "steps": [
-              { "value": 0, "color": "green" },
+              { "value": null, "color": "green" },
               { "value": 0.05, "color": "yellow" },
               { "value": 0.25, "color": "red" }
             ]
@@ -550,8 +803,9 @@
     },
     {
       "title": "Overtrading Alert",
+      "description": "Is any strategy trading more frequently than expected? NORMAL = expected pace. OVERTRADING = too many signals, may need throttling.",
       "type": "stat",
-      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 72 },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 64 },
       "targets": [
         {
           "expr": "trading_journal_overtrading",
@@ -565,12 +819,14 @@
             { "type": "value", "options": { "0": { "text": "NORMAL", "color": "green" }, "1": { "text": "OVERTRADING", "color": "red" } } }
           ]
         }
-      }
+      },
+      "options": { "graphMode": "none", "colorMode": "background" }
     },
     {
-      "title": "Probability of Ruin (MC)",
+      "title": "Risk of Total Loss",
+      "description": "Simulated probability that each strategy could deplete the account. Below 5% (green) is acceptable. Above 15% (red) is dangerous.",
       "type": "stat",
-      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 72 },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 64 },
       "targets": [
         {
           "expr": "trading_journal_ruin_probability",
@@ -583,18 +839,20 @@
           "unit": "percentunit",
           "thresholds": {
             "steps": [
-              { "value": 0, "color": "green" },
+              { "value": null, "color": "green" },
               { "value": 0.05, "color": "yellow" },
               { "value": 0.15, "color": "red" }
             ]
           }
         }
-      }
+      },
+      "options": { "graphMode": "none", "colorMode": "value" }
     },
     {
-      "title": "Kelly Fraction",
+      "title": "Recommended Position Size",
+      "description": "Mathematically optimal allocation per strategy based on win rate and payoff. Higher = strategy deserves larger allocation.",
       "type": "stat",
-      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 72 },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 64 },
       "targets": [
         {
           "expr": "trading_journal_kelly_fraction",
@@ -607,25 +865,43 @@
           "unit": "percentunit",
           "thresholds": {
             "steps": [
-              { "value": 0, "color": "red" },
+              { "value": null, "color": "red" },
               { "value": 0.05, "color": "yellow" },
               { "value": 0.15, "color": "green" }
             ]
           }
         }
-      }
+      },
+      "options": { "graphMode": "none", "colorMode": "value" }
     },
     {
-      "title": "Trades per Strategy",
-      "type": "timeseries",
-      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 72 },
+      "title": "Trade Count by Strategy",
+      "description": "Total trades per strategy, broken down by wins and losses.",
+      "type": "barchart",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 64 },
       "targets": [
         {
           "expr": "trading_journal_trades_total",
           "legendFormat": "{{strategy_id}} ({{outcome}})",
-          "refId": "A"
+          "refId": "A",
+          "instant": true
         }
-      ]
+      ],
+      "options": {
+        "orientation": "horizontal",
+        "showValue": "always",
+        "stacking": "normal"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": "win" }, "properties": [{ "id": "color", "value": { "fixedColor": "#73BF69", "mode": "fixed" } }] },
+          { "matcher": { "id": "byRegexp", "options": "loss" }, "properties": [{ "id": "color", "value": { "fixedColor": "#F2495C", "mode": "fixed" } }] }
+        ]
+      }
     }
   ],
   "schemaVersion": 39,

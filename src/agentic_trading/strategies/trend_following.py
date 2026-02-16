@@ -11,6 +11,7 @@ Signal logic:
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Any
 
 from agentic_trading.core.enums import SignalDirection, Timeframe
@@ -63,12 +64,52 @@ class TrendFollowingStrategy(BaseStrategy):
         if any(v is None for v in (fast_ema, slow_ema, adx, atr)):
             return None  # Not enough data yet
 
+        adx_threshold = self._get_param("adx_threshold")
+
+        # ---- EXIT CHECK: close position if trend dies ----
+        current_pos = self._position_direction(candle.symbol)
+        if current_pos is not None:
+            # Exit if ADX drops below threshold (trend exhausted)
+            should_exit = False
+            exit_reasons = []
+
+            if adx < adx_threshold:
+                should_exit = True
+                exit_reasons.append(f"ADX={adx:.1f} below threshold {adx_threshold}")
+
+            # Exit if EMA crossover reverses
+            if current_pos == "long" and fast_ema < slow_ema:
+                should_exit = True
+                exit_reasons.append("EMA crossover reversed (bearish)")
+            elif current_pos == "short" and fast_ema > slow_ema:
+                should_exit = True
+                exit_reasons.append("EMA crossover reversed (bullish)")
+
+            if should_exit:
+                self._record_exit(candle.symbol)
+                return Signal(
+                    strategy_id=self.strategy_id,
+                    symbol=candle.symbol,
+                    direction=SignalDirection.FLAT,
+                    confidence=0.5,
+                    rationale=" | ".join(exit_reasons),
+                    features_used={"adx": adx, fast_key: fast_ema, slow_key: slow_ema},
+                    timeframe=candle.timeframe,
+                    risk_constraints={},
+                )
+            # Already positioned, don't re-signal
+            return None
+
+        # ---- ENTRY CHECK ----
+        # Cooldown: skip if recently signalled
+        if self._on_cooldown(candle.symbol, candle.timestamp):
+            return None
+
         # Check multi-timeframe alignment (higher TF trend confirmation)
         htf_bullish = self._check_higher_tf_alignment(f, direction="long")
         htf_bearish = self._check_higher_tf_alignment(f, direction="short")
 
         # ADX filter: only trade in strong trends
-        adx_threshold = self._get_param("adx_threshold")
         if adx < adx_threshold:
             return None
 
@@ -97,7 +138,6 @@ class TrendFollowingStrategy(BaseStrategy):
         elif direction == SignalDirection.SHORT and htf_bearish:
             rationale_parts.append("HTF aligned bearish")
         elif direction == SignalDirection.LONG and not htf_bullish:
-            # Counter-trend on higher TF: reduce confidence
             rationale_parts.append("HTF not aligned (reduced confidence)")
         elif direction == SignalDirection.SHORT and not htf_bearish:
             rationale_parts.append("HTF not aligned (reduced confidence)")
@@ -124,18 +164,34 @@ class TrendFollowingStrategy(BaseStrategy):
 
         # Risk constraints: ATR-based stop distance
         atr_mult = self._get_param("atr_multiplier")
+        sl_distance = atr * atr_mult
+        tp_distance = sl_distance * 2.0  # 2:1 reward-to-risk
         risk_constraints = {
-            "stop_distance_atr": atr * atr_mult,
+            "stop_distance_atr": sl_distance,
             "atr": atr,
+            "price": candle.close,
             "sizing_method": "volatility_adjusted",
         }
+
+        # Compute explicit TP/SL price levels
+        if direction == SignalDirection.LONG:
+            _stop_loss = Decimal(str(candle.close - sl_distance))
+            _take_profit = Decimal(str(candle.close + tp_distance))
+        else:
+            _stop_loss = Decimal(str(candle.close + sl_distance))
+            _take_profit = Decimal(str(candle.close - tp_distance))
 
         features_used = {
             fast_key: fast_ema,
             slow_key: slow_ema,
             "adx": adx,
             "atr": atr,
+            "close": candle.close,
         }
+
+        # Record position and cooldown
+        self._record_entry(candle.symbol, direction.value)
+        self._record_signal_time(candle.symbol, candle.timestamp)
 
         return Signal(
             strategy_id=self.strategy_id,
@@ -146,6 +202,8 @@ class TrendFollowingStrategy(BaseStrategy):
             features_used=features_used,
             timeframe=candle.timeframe,
             risk_constraints=risk_constraints,
+            take_profit=_take_profit,
+            stop_loss=_stop_loss,
         )
 
     def _check_higher_tf_alignment(self, features: dict[str, float], direction: str) -> bool:

@@ -57,6 +57,8 @@ class GovernanceGate:
         drift: DriftDetector,
         tokens: TokenManager | None = None,
         event_bus: Any = None,
+        policy_engine: Any = None,
+        approval_manager: Any = None,
     ) -> None:
         self._config = config
         self._maturity = maturity
@@ -65,6 +67,8 @@ class GovernanceGate:
         self._drift = drift
         self._tokens = tokens
         self._event_bus = event_bus
+        self._policy_engine = policy_engine
+        self._approval_manager = approval_manager
 
     # ------------------------------------------------------------------
     # Main evaluation
@@ -156,6 +160,77 @@ class GovernanceGate:
             await self._publish_and_log(decision, t0)
             return decision
 
+        # 3.5 Approval workflow check (if configured)
+        if self._approval_manager is not None:
+            try:
+                approval_context = {
+                    "strategy_id": strategy_id,
+                    "symbol": symbol,
+                    "notional_usd": notional_usd,
+                    "impact_tier": impact_tier.value,
+                    "maturity_level": level.value,
+                    "leverage": leverage,
+                    "portfolio_pct": portfolio_pct,
+                    "is_reduce_only": is_reduce_only,
+                }
+                matching_rule = self._approval_manager.check_approval_required(
+                    approval_context,
+                )
+                if matching_rule is not None:
+                    # Request approval and block until resolved
+                    from .approval_models import ApprovalTrigger
+
+                    request = await self._approval_manager.request_approval(
+                        strategy_id=strategy_id,
+                        symbol=symbol,
+                        trigger=ApprovalTrigger(matching_rule.trigger.value),
+                        escalation_level=matching_rule.escalation_level,
+                        notional_usd=notional_usd,
+                        impact_tier=impact_tier.value,
+                        reason=f"Rule '{matching_rule.name}' requires approval",
+                        ttl_seconds=matching_rule.ttl_seconds,
+                    )
+                    details["approval_request_id"] = request.request_id
+                    details["approval_rule"] = matching_rule.rule_id
+
+                    # If auto-approved (L1), continue; otherwise BLOCK
+                    from .approval_models import ApprovalStatus
+
+                    if request.status != ApprovalStatus.APPROVED:
+                        decision = GovernanceDecision(
+                            strategy_id=strategy_id,
+                            symbol=symbol,
+                            action=GovernanceAction.BLOCK,
+                            reason=f"pending_approval: {matching_rule.name}",
+                            sizing_multiplier=0.0,
+                            maturity_level=level,
+                            impact_tier=impact_tier,
+                            trace_id=trace_id,
+                            details=details,
+                        )
+                        await self._publish_and_log(decision, t0)
+                        return decision
+                    details["approval_auto_approved"] = True
+            except Exception:
+                # B6 FIX: Fail-closed. Approval subsystem error = BLOCK.
+                logger.error(
+                    "Approval manager check failed — BLOCKING (fail-closed)",
+                    exc_info=True,
+                )
+                decision = GovernanceDecision(
+                    strategy_id=strategy_id,
+                    symbol=symbol,
+                    action=GovernanceAction.BLOCK,
+                    reason="approval_manager_error",
+                    sizing_multiplier=0.0,
+                    maturity_level=level,
+                    impact_tier=impact_tier,
+                    trace_id=trace_id,
+                    details={**details, "error": "approval_manager_unavailable"},
+                )
+                await self._publish_and_log(decision, t0)
+                return decision
+
         # 4. Health score → sizing multiplier
         health_score = self._health.get_score(strategy_id)
         health_mult = self._health.get_sizing_multiplier(strategy_id)
@@ -223,9 +298,72 @@ class GovernanceGate:
             self._tokens.consume(token_id)
             details["token_consumed"] = token_id
 
+        # 6.5 Policy engine evaluation (if configured)
+        policy_mult = 1.0
+        if self._policy_engine is not None:
+            try:
+                policy_context = {
+                    "strategy_id": strategy_id,
+                    "symbol": symbol,
+                    "order_notional_usd": notional_usd,
+                    "position_pct_of_equity": portfolio_pct,
+                    "projected_leverage": leverage,
+                    "projected_exposure_pct": leverage,
+                    "is_reduce_only": is_reduce_only,
+                    "existing_positions": existing_positions,
+                }
+                for set_id in self._policy_engine.registered_sets:
+                    pd = self._policy_engine.evaluate(set_id, policy_context)
+                    details[f"policy_{set_id}"] = {
+                        "passed": pd.all_passed,
+                        "action": pd.action.value,
+                        "failed_count": len(pd.failed_rules),
+                        "shadow_count": len(pd.shadow_violations),
+                    }
+                    if not pd.all_passed:
+                        policy_mult = min(policy_mult, pd.sizing_multiplier)
+                        if pd.action in (
+                            GovernanceAction.BLOCK,
+                            GovernanceAction.KILL,
+                        ):
+                            decision = GovernanceDecision(
+                                strategy_id=strategy_id,
+                                symbol=symbol,
+                                action=pd.action,
+                                reason=f"policy_violation: {pd.reason}",
+                                sizing_multiplier=0.0,
+                                maturity_level=level,
+                                impact_tier=impact_tier,
+                                health_score=round(health_score, 4),
+                                trace_id=trace_id,
+                                details=details,
+                            )
+                            await self._publish_and_log(decision, t0)
+                            return decision
+            except Exception:
+                # B5 FIX: Fail-closed. Policy engine error = BLOCK.
+                logger.error(
+                    "Policy engine evaluation failed — BLOCKING (fail-closed)",
+                    exc_info=True,
+                )
+                decision = GovernanceDecision(
+                    strategy_id=strategy_id,
+                    symbol=symbol,
+                    action=GovernanceAction.BLOCK,
+                    reason="policy_engine_error",
+                    sizing_multiplier=0.0,
+                    maturity_level=level,
+                    impact_tier=impact_tier,
+                    health_score=round(health_score, 4),
+                    trace_id=trace_id,
+                    details={**details, "error": "policy_engine_unavailable"},
+                )
+                await self._publish_and_log(decision, t0)
+                return decision
+
         # 7. Compose final sizing multiplier
-        # Multiplicative: maturity_cap × health_mult × drift_mult
-        final_mult = maturity_cap * health_mult * drift_mult
+        # Multiplicative: maturity_cap × health_mult × drift_mult × policy_mult
+        final_mult = maturity_cap * health_mult * drift_mult * policy_mult
         final_mult = max(0.0, min(1.0, final_mult))
 
         if final_mult < 1.0 and drift_action == GovernanceAction.REDUCE_SIZE:
@@ -293,6 +431,25 @@ class GovernanceGate:
     def tokens(self) -> TokenManager | None:
         return self._tokens
 
+    @property
+    def policy_engine(self) -> Any:
+        """Access the policy engine (may be None)."""
+        return self._policy_engine
+
+    @property
+    def approval_manager(self) -> Any:
+        """Access the approval manager (may be None)."""
+        return self._approval_manager
+
+    def get_sizing_multiplier(self, strategy_id: str) -> float:
+        """Get the combined sizing multiplier for a strategy.
+
+        Used by PortfolioManager for position sizing.
+        """
+        health_mult = self._health.get_sizing_multiplier(strategy_id)
+        maturity_cap = self._maturity.get_sizing_cap(strategy_id)
+        return max(0.0, min(1.0, health_mult * maturity_cap))
+
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
@@ -312,6 +469,46 @@ class GovernanceGate:
             decision.reason,
             elapsed * 1000,
         )
+
+        # Emit Prometheus governance metrics
+        try:
+            from agentic_trading.observability.metrics import (
+                record_governance_decision,
+                record_governance_block,
+                record_governance_latency,
+                update_health_score,
+                update_maturity_level,
+            )
+            record_governance_decision(
+                decision.strategy_id, decision.action.value,
+            )
+            record_governance_latency(elapsed)
+
+            if decision.action in (
+                GovernanceAction.BLOCK,
+                GovernanceAction.PAUSE,
+                GovernanceAction.KILL,
+            ):
+                record_governance_block(
+                    decision.strategy_id, decision.reason,
+                )
+
+            if decision.health_score is not None:
+                update_health_score(
+                    decision.strategy_id, decision.health_score,
+                )
+            if decision.maturity_level is not None:
+                _maturity_to_int = {
+                    "L0_shadow": 0, "L1_paper": 1, "L2_gated": 2,
+                    "L3_constrained": 3, "L4_autonomous": 4,
+                }
+                mat_val = decision.maturity_level.value if hasattr(decision.maturity_level, "value") else str(decision.maturity_level)
+                update_maturity_level(
+                    decision.strategy_id,
+                    _maturity_to_int.get(mat_val, 0),
+                )
+        except Exception:
+            pass  # Metrics emission should never break governance
 
         if self._event_bus is not None:
             try:
