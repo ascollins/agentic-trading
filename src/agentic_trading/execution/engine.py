@@ -552,6 +552,7 @@ class ExecutionEngine:
         #    a live market order that filled instantly), synthesize a FillEvent
         #    so the journal and narration see it.
         if ack is not None and ack.status == OrderStatus.FILLED:
+            fill_price = self._resolve_fill_price(intent, ack, response=None)
             synthetic_fill = FillEvent(
                 fill_id=str(uuid.uuid4()),
                 order_id=ack.order_id,
@@ -559,7 +560,7 @@ class ExecutionEngine:
                 symbol=intent.symbol,
                 exchange=intent.exchange,
                 side=intent.side,
-                price=intent.price or Decimal("0"),
+                price=fill_price,
                 qty=intent.qty,
                 fee=Decimal("0"),
                 fee_currency="USDT",
@@ -567,20 +568,6 @@ class ExecutionEngine:
                 trace_id=intent.trace_id,
                 timestamp=datetime.now(timezone.utc),
             )
-            # Try to get actual fill price from PaperAdapter's order record
-            if hasattr(self._adapter, "_orders"):
-                paper_order = self._adapter._orders.get(ack.order_id)
-                if paper_order is not None:
-                    synthetic_fill = synthetic_fill.model_copy(update={
-                        "price": paper_order.avg_fill_price,
-                    })
-            # For CCXTAdapter: use the last fill price from the exchange
-            if hasattr(self._adapter, "_last_fill_price"):
-                fill_price = self._adapter._last_fill_price
-                if fill_price is not None and fill_price > Decimal("0"):
-                    synthetic_fill = synthetic_fill.model_copy(update={
-                        "price": fill_price,
-                    })
             await self.handle_fill(synthetic_fill)
 
         return ack
@@ -800,13 +787,7 @@ class ExecutionEngine:
         Used when the adapter reports an immediate fill (PaperAdapter,
         or a live market order that filled instantly).
         """
-        fill_price = intent.price or Decimal("0")
-        # Try to extract fill price from the response
-        if response.get("avg_fill_price"):
-            try:
-                fill_price = Decimal(str(response["avg_fill_price"]))
-            except Exception:
-                pass
+        fill_price = self._resolve_fill_price(intent, ack, response)
 
         return FillEvent(
             fill_id=str(uuid.uuid4()),
@@ -823,6 +804,82 @@ class ExecutionEngine:
             trace_id=intent.trace_id,
             timestamp=datetime.now(timezone.utc),
         )
+
+    def _resolve_fill_price(
+        self,
+        intent: OrderIntent,
+        ack: OrderAck,
+        response: dict[str, Any] | None,
+    ) -> Decimal:
+        """Resolve the actual fill price from all available sources.
+
+        Checks (in priority order):
+        1. Response ``avg_fill_price`` (from ToolGateway/CP path).
+        2. PaperAdapter order record (``_orders[order_id].avg_fill_price``).
+        3. CCXTAdapter last fill price (``_last_fill_price``).
+        4. Intent ``price`` (limit orders only).
+        5. Adapter ``get_market_price`` (latest candle price).
+
+        Logs a warning if none of the above produce a valid price.
+        """
+        # 1. Response avg_fill_price (CP path)
+        if response and response.get("avg_fill_price"):
+            try:
+                price = Decimal(str(response["avg_fill_price"]))
+                if price > Decimal("0"):
+                    return price
+            except Exception:
+                pass
+
+        # 2. PaperAdapter order record
+        try:
+            if hasattr(self._adapter, "_orders"):
+                paper_order = self._adapter._orders.get(ack.order_id)
+                if paper_order is not None:
+                    fp = paper_order.avg_fill_price
+                    if isinstance(fp, Decimal) and fp > Decimal("0"):
+                        return fp
+        except Exception:
+            pass
+
+        # 3. CCXTAdapter last fill price
+        try:
+            if hasattr(self._adapter, "_last_fill_price"):
+                last_price = self._adapter._last_fill_price
+                if isinstance(last_price, Decimal) and last_price > Decimal("0"):
+                    return last_price
+        except Exception:
+            pass
+
+        # 4. Intent price (limit orders)
+        if intent.price is not None and intent.price > Decimal("0"):
+            return intent.price
+
+        # 5. Adapter market price (latest candle)
+        try:
+            if hasattr(self._adapter, "get_market_price"):
+                market_price = self._adapter.get_market_price(intent.symbol)
+                if isinstance(market_price, Decimal) and market_price > Decimal("0"):
+                    logger.warning(
+                        "Fill price resolved from market price for %s: %s "
+                        "(order_id=%s, trace_id=%s)",
+                        intent.symbol,
+                        market_price,
+                        ack.order_id,
+                        intent.trace_id[:8] if intent.trace_id else "?",
+                    )
+                    return market_price
+        except Exception:
+            pass
+
+        logger.warning(
+            "Could not resolve fill price for %s — defaulting to 0 "
+            "(order_id=%s, trace_id=%s). TP/SL will use fallback.",
+            intent.symbol,
+            ack.order_id,
+            intent.trace_id[:8] if intent.trace_id else "?",
+        )
+        return Decimal("0")
 
     async def _refresh_portfolio_for_post_trade(self) -> PortfolioState:
         """Refresh portfolio state from exchange for post-trade risk check.

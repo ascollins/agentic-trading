@@ -2,6 +2,12 @@
 
 This is the main entry point that wires together all modules
 and starts the trading loop for the selected mode.
+
+Construction of the clock, event bus, TradingContext, and all layer
+managers is delegated to :class:`Orchestrator`.  This module handles
+settings loading, safety validation, Prometheus metrics, and
+mode-specific runtime logic (backtest engine, live-trading event
+handlers, narration, UI, etc.).
 """
 
 from __future__ import annotations
@@ -13,11 +19,10 @@ import sys
 from datetime import datetime, timezone
 from typing import Any
 
-from .core.clock import SimClock, WallClock
 from .core.config import Settings, load_settings
 from .core.enums import Exchange, Mode, OrderType, Side, Timeframe, TimeInForce
 from .core.interfaces import PortfolioState, TradingContext
-from .event_bus.bus import create_event_bus
+from .orchestrator import Orchestrator
 
 logger = logging.getLogger(__name__)
 
@@ -46,28 +51,15 @@ async def run(
         },
     )
 
-    # 4. Create clock
-    if settings.mode == Mode.BACKTEST:
-        clock = SimClock()
-    else:
-        clock = WallClock()
+    # 4. Build Orchestrator (clock, bus, context, all layer managers)
+    orch = Orchestrator.from_config(settings)
+    ctx = orch.ctx
+    event_bus = orch.bus.legacy_bus
 
-    # 5. Create event bus
-    event_bus = create_event_bus(settings.mode, settings.redis_url)
+    # 5. Start event bus
+    await orch.bus.start()
 
-    # 6. Build trading context
-    ctx = TradingContext(
-        clock=clock,
-        event_bus=event_bus,
-        instruments={},  # Populated after exchange metadata fetch
-        portfolio_state=PortfolioState(),
-        risk_limits=settings.risk.model_dump(),
-    )
-
-    # 7. Start event bus
-    await event_bus.start()
-
-    # 7.5 Start Prometheus metrics server (all modes)
+    # 5.5 Start Prometheus metrics server (all modes)
     try:
         from .observability.metrics import start_metrics_server
 
@@ -77,16 +69,16 @@ async def run(
     except Exception:
         logger.warning("Failed to start metrics server", exc_info=True)
 
-    # 8. Route to mode-specific loop
+    # 6. Route to mode-specific loop
     try:
         if settings.mode == Mode.BACKTEST:
             await _run_backtest(settings, ctx)
         else:
-            await _run_live_or_paper(settings, ctx)
+            await _run_live_or_paper(settings, ctx, orch)
     except KeyboardInterrupt:
         logger.info("Shutting down (keyboard interrupt)")
     finally:
-        await event_bus.stop()
+        await orch.bus.stop()
         logger.info("Shutdown complete")
 
 
@@ -187,30 +179,23 @@ async def _run_backtest(settings: Settings, ctx: TradingContext) -> None:
     print()
 
 
-async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
+async def _run_live_or_paper(
+    settings: Settings,
+    ctx: TradingContext,
+    orch: Orchestrator,
+) -> None:
     """Run paper or live trading loop.
 
     Wires: FeedManager -> FeatureEngine -> Strategies -> Execution.
     For paper mode, uses PaperAdapter for simulated fills.
+
+    Component sourcing (PR 15):
+    - Feature engine, strategies, portfolio manager, signal manager come
+      from the Orchestrator's layer managers.
+    - Adapter, execution engine, journal + analytics, narration, TP/SL,
+      and governance are still constructed locally.
     """
     from decimal import Decimal
-
-    from .features.engine import FeatureEngine
-    from .strategies.registry import create_strategy
-
-    # Import strategy modules to trigger @register_strategy decorators
-    import agentic_trading.strategies.trend_following  # noqa: F401
-    import agentic_trading.strategies.mean_reversion  # noqa: F401
-    import agentic_trading.strategies.breakout  # noqa: F401
-    import agentic_trading.strategies.funding_arb  # noqa: F401
-    import agentic_trading.strategies.multi_tf_ma  # noqa: F401
-    import agentic_trading.strategies.rsi_divergence  # noqa: F401
-    import agentic_trading.strategies.stochastic_macd  # noqa: F401
-    import agentic_trading.strategies.bb_squeeze  # noqa: F401
-    import agentic_trading.strategies.mean_reversion_enhanced  # noqa: F401
-    import agentic_trading.strategies.fibonacci_confluence  # noqa: F401
-    import agentic_trading.strategies.obv_divergence  # noqa: F401
-    import agentic_trading.strategies.supply_demand  # noqa: F401
 
     logger.info("Starting %s trading loop", settings.mode.value)
 
@@ -266,20 +251,18 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, _signal_handler)
 
-    # Create feature engine with event bus integration
-    feature_engine = FeatureEngine(event_bus=ctx.event_bus)
+    # Feature engine and strategies come from the Orchestrator.
+    feature_engine = orch.intelligence.feature_engine
     await feature_engine.start()
 
-    # Create strategies
-    strategies = []
-    for strat_cfg in settings.strategies:
-        if strat_cfg.enabled:
-            strategy = create_strategy(strat_cfg.strategy_id, strat_cfg.params)
-            strategies.append(strategy)
-            logger.info("Loaded strategy: %s", strat_cfg.strategy_id)
-
-    if not strategies:
-        from .strategies.trend_following import TrendFollowingStrategy
+    strategies = orch.signal.strategies
+    if strategies:
+        for strat in strategies:
+            logger.info("Loaded strategy: %s", getattr(strat, "strategy_id", "?"))
+    else:
+        from .strategies.registry import create_strategy
+        from .strategies.trend_following import TrendFollowingStrategy  # noqa: F401
+        import agentic_trading.strategies.trend_following  # noqa: F401
         strategies = [TrendFollowingStrategy()]
         logger.info("No strategies configured, using default trend_following")
 
@@ -618,8 +601,6 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
     # ---------------------------------------------------------------
     from .risk.manager import RiskManager
     from .execution.engine import ExecutionEngine
-    from .portfolio.manager import PortfolioManager
-    from .portfolio.intent_converter import build_order_intents
     from .core.events import FillEvent, OrderAck
 
     # Read-only guard: skip execution pipeline when observing only
@@ -702,26 +683,6 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
         instruments=ctx.instruments,
     )
 
-    # Portfolio manager
-    gov_sizing_fn = None
-    if governance_gate is not None:
-        try:
-            gov_sizing_fn = governance_gate.get_sizing_multiplier
-        except AttributeError:
-            pass
-    # Apply safe_mode sizing multiplier if enabled
-    sizing_mult = 1.0
-    if settings.safe_mode.enabled:
-        sizing_mult = settings.safe_mode.position_size_multiplier
-        logger.info(
-            "Safe mode active: sizing_multiplier=%.2f", sizing_mult,
-        )
-    portfolio_manager = PortfolioManager(
-        max_position_pct=settings.risk.max_single_position_pct,
-        sizing_multiplier=sizing_mult,
-        governance_sizing_fn=gov_sizing_fn,
-    )
-
     # Institutional control plane: ToolGateway
     # All exchange side effects MUST go through the ToolGateway.
     from agentic_trading.control_plane.audit_log import AuditLog
@@ -753,6 +714,7 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
     # Signal cache — maps trace_id → Signal for fill-time narration
     _signal_cache: dict[str, Any] = {}
     _SIGNAL_CACHE_MAX = 500
+    _SIGNAL_CACHE_TTL = 300  # 5 minutes — evict stale entries first
 
     # Track exit orders: maps exit trace_id → original entry trace_id
     _exit_map: dict[str, str] = {}
@@ -761,6 +723,15 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
     _capital = 100_000.0
     _initial_equity = 0.0  # Set on startup for drawdown calculation
     _daily_equity_base = 0.0  # Set on startup for daily PnL calculation
+
+    # Signal and reconciliation layer facades — sourced from Orchestrator.
+    # Inject the locally-created journal (which carries the analytics
+    # _on_trade_closed callback and DB persistence wrapper) into the
+    # Orchestrator's ReconciliationManager so fills and reconciliation
+    # operate on the same journal that drives Prometheus metrics.
+    _signal_mgr = orch.signal
+    _recon_mgr = orch.reconciliation
+    _recon_mgr._journal = journal
 
     logger.info(
         "Execution pipeline wired: %s adapter → RiskManager → ExecutionEngine",
@@ -796,17 +767,8 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
             return
 
         # Alias indicator keys for strategy compatibility
-        aliased = dict(event.features)
-        if "adx_14" in aliased and "adx" not in aliased:
-            aliased["adx"] = aliased["adx_14"]
-        if "atr_14" in aliased and "atr" not in aliased:
-            aliased["atr"] = aliased["atr_14"]
-        if "rsi_14" in aliased and "rsi" not in aliased:
-            aliased["rsi"] = aliased["rsi_14"]
-        if "donchian_upper_20" in aliased and "donchian_upper" not in aliased:
-            aliased["donchian_upper"] = aliased["donchian_upper_20"]
-        if "donchian_lower_20" in aliased and "donchian_lower" not in aliased:
-            aliased["donchian_lower"] = aliased["donchian_lower_20"]
+        from .signal.manager import SignalManager as _SM
+        aliased = _SM.alias_features(event.features)
 
         patched_fv = FeatureVector(
             symbol=event.symbol,
@@ -841,67 +803,39 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
 
                 # Cache signal for fill-time narration lookup
                 _signal_cache[sig.trace_id] = sig
+
+                # Evict stale entries (TTL-first, then count-cap)
+                _cache_now = ctx.clock.now()
+                _stale = [
+                    k for k, v in _signal_cache.items()
+                    if hasattr(v, "timestamp")
+                    and (_cache_now - v.timestamp).total_seconds() > _SIGNAL_CACHE_TTL
+                ]
+                for _k in _stale:
+                    _signal_cache.pop(_k, None)
                 if len(_signal_cache) > _SIGNAL_CACHE_MAX:
-                    # Evict oldest entries
                     excess = len(_signal_cache) - _SIGNAL_CACHE_MAX
                     for _k in list(_signal_cache)[:excess]:
                         _signal_cache.pop(_k, None)
 
-                # Feed portfolio manager → execution pipeline
-                if sig.direction.value == "flat":
-                    # FLAT signal = exit any open position for this strategy+symbol
-                    open_trade = journal.get_trade_by_position(sig.strategy_id, sig.symbol)
-                    if open_trade is not None and open_trade.entry_fills:
-                        # Build exit intent: reverse the entry direction
-                        exit_side = Side.SELL if open_trade.direction == "long" else Side.BUY
-                        exit_qty = open_trade.remaining_qty
-                        if exit_qty > Decimal("0"):
-                            import hashlib as _hashlib
-                            ts_bucket = int(ctx.clock.now().timestamp()) // 60
-                            raw_key = f"exit:{sig.strategy_id}:{sig.symbol}:{ts_bucket}"
-                            dedupe_key = _hashlib.sha256(raw_key.encode()).hexdigest()[:16]
-                            exit_intent = OrderIntent(
-                                dedupe_key=dedupe_key,
-                                strategy_id=sig.strategy_id,
-                                symbol=sig.symbol,
-                                exchange=active_exchange,
-                                side=exit_side,
-                                order_type=OrderType.MARKET,
-                                time_in_force=TimeInForce.GTC,
-                                qty=exit_qty,
-                                price=None,
-                                reduce_only=True,
-                                trace_id=sig.trace_id,
-                            )
-                            _exit_map[sig.trace_id] = open_trade.trace_id
-                            _signal_cache[sig.trace_id] = sig
-                            if not _read_only:
-                                await ctx.event_bus.publish("execution", exit_intent)
-                            logger.info(
-                                "%sExit intent: %s %s %s qty=%s (trace=%s)",
-                                "[READ-ONLY] " if _read_only else "",
-                                sig.strategy_id, exit_side.value, sig.symbol,
-                                exit_qty, sig.trace_id[:8],
-                            )
-                else:
-                    # Directional signal → entry via portfolio manager
-                    portfolio_manager.on_signal(sig)
-                    targets = portfolio_manager.generate_targets(ctx, _capital)
-                    if targets:
-                        intents = build_order_intents(
-                            targets,
-                            exchange=active_exchange,
-                            timestamp=ctx.clock.now(),
+                # Feed signal → portfolio manager → execution pipeline
+                sig_result = _signal_mgr.process_signal(
+                    sig, journal, ctx, active_exchange, _capital,
+                    signal_cache=_signal_cache,
+                    exit_map=_exit_map,
+                )
+
+                for intent in sig_result.intents:
+                    if not _read_only:
+                        await ctx.event_bus.publish("execution", intent)
+                    else:
+                        logger.info(
+                            "[READ-ONLY] %s: %s %s %s qty=%s (trace=%s)",
+                            "Exit intent" if sig_result.is_exit else "Would submit",
+                            intent.strategy_id, intent.side.value,
+                            intent.symbol, intent.qty,
+                            intent.trace_id[:8] if intent.trace_id else "?",
                         )
-                        for intent in intents:
-                            if not _read_only:
-                                await ctx.event_bus.publish("execution", intent)
-                            else:
-                                logger.info(
-                                    "[READ-ONLY] Would submit: %s %s %s qty=%s",
-                                    intent.strategy_id, intent.side.value,
-                                    intent.symbol, intent.qty,
-                                )
 
                 # Narration: for NO_TRADE/HOLD narrate immediately;
                 # for directional signals, narrate on confirmed fill (see on_fill below)
@@ -978,60 +912,7 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
 
     await ctx.event_bus.subscribe("feature.vector", "strategy_runner", on_feature_vector)
 
-    # ---------------------------------------------------------------
-    # Journal ↔ exchange position reconciliation
-    # ---------------------------------------------------------------
-
-    def _reconcile_journal_positions(
-        j: TradeJournal, exchange_positions: list,
-    ) -> None:
-        """Force-close journal trades whose positions no longer exist on exchange.
-
-        Compares journal open trades against actual exchange positions.
-        If an open trade's symbol has no corresponding exchange position,
-        the trade is force-closed at the last known mark price (or entry
-        price as fallback).  This handles cases where a position was
-        closed externally (manual close, exchange stop-loss, liquidation)
-        and the fill event never reached the journal.
-        """
-        open_trades = j.get_open_trades()
-        if not open_trades:
-            return
-
-        # Build set of symbols with active exchange positions.
-        # Exchange positions use CCXT format (e.g. "BTC/USDT:USDT"),
-        # journal trades use spot-style format (e.g. "BTC/USDT").
-        # Normalise by stripping the settle suffix for comparison.
-        active_symbols: set[str] = set()
-        for p in exchange_positions:
-            sym = p.symbol
-            # Strip ":USDT" settle suffix for comparison
-            base_sym = sym.split(":")[0] if ":" in sym else sym
-            active_symbols.add(base_sym)
-            active_symbols.add(sym)  # Also keep original form
-
-        for trade in open_trades:
-            if trade.symbol in active_symbols:
-                continue
-            # This trade's position no longer exists on the exchange.
-            # Use latest mark sample, or average entry as fallback.
-            close_price = Decimal("0")
-            if trade.mark_samples:
-                close_price = trade.mark_samples[-1].mark_price
-            if close_price == Decimal("0"):
-                close_price = trade.avg_entry_price
-            if close_price == Decimal("0") and trade.entry_fills:
-                close_price = trade.entry_fills[0].price
-
-            logger.warning(
-                "Journal reconciliation: force-closing orphaned trade "
-                "%s %s %s (trace=%s) — position absent on exchange",
-                trade.strategy_id,
-                trade.direction.upper(),
-                trade.symbol,
-                trade.trace_id[:8],
-            )
-            j.force_close(trade.trace_id, close_price)
+    # _reconcile_journal_positions — now delegated to _recon_mgr.reconcile_positions()
 
     # ---------------------------------------------------------------
     # Fill handler: journal + fill-time narration
@@ -1049,61 +930,25 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
         except Exception:
             pass
 
+        # Classify and record the fill via ReconciliationManager
+        fill_result = _recon_mgr.handle_fill(
+            event,
+            _signal_cache,
+            _exit_map,
+            fallback_strategy_ids=[
+                "trend_following", "mean_reversion", "breakout", "funding_arb",
+            ],
+        )
+
         trace_id = event.trace_id
         cached_sig = _signal_cache.get(trace_id)
-        strategy_id = cached_sig.strategy_id if cached_sig else "unknown"
-        is_exit = trace_id in _exit_map
-        entry_trace_id: str | None = None
-
-        if is_exit:
-            entry_trace_id = _exit_map.pop(trace_id)
-        else:
-            # Fallback: detect exit fills by checking for an open trade
-            # with the opposite direction on the same symbol.
-            open_trade = journal.get_trade_by_position(strategy_id, event.symbol)
-            if open_trade is None and strategy_id == "unknown":
-                # Try all strategies if strategy_id is unknown
-                for _sid in ("trend_following", "mean_reversion", "breakout", "funding_arb"):
-                    open_trade = journal.get_trade_by_position(_sid, event.symbol)
-                    if open_trade is not None:
-                        strategy_id = _sid
-                        break
-            if open_trade is not None:
-                # If the fill side opposes the open trade direction, treat as exit
-                fill_side = event.side.value if hasattr(event.side, "value") else str(event.side)
-                open_direction = open_trade.direction
-                is_opposing = (
-                    (open_direction == "long" and fill_side == "sell")
-                    or (open_direction == "short" and fill_side == "buy")
-                )
-                if is_opposing:
-                    is_exit = True
-                    entry_trace_id = open_trade.trace_id
+        strategy_id = fill_result.strategy_id
+        is_exit = fill_result.is_exit
+        entry_trace_id = fill_result.entry_trace_id
+        direction = fill_result.direction
 
         if is_exit and entry_trace_id:
-            # ---- EXIT FILL ----
-            side_str = event.side.value if hasattr(event.side, "value") else str(event.side)
-
-            journal.record_exit_fill(
-                trace_id=entry_trace_id,
-                fill_id=event.fill_id,
-                order_id=event.order_id,
-                side=side_str,
-                price=event.price,
-                qty=event.qty,
-                fee=event.fee,
-                fee_currency=event.fee_currency,
-                is_maker=event.is_maker,
-                timestamp=event.timestamp,
-            )
-
-            logger.info(
-                "Exit fill recorded: %s %s %s qty=%s price=%s (entry_trace=%s)",
-                strategy_id, side_str, event.symbol,
-                event.qty, event.price, entry_trace_id[:8],
-            )
-
-            # Narrate the exit
+            # ---- EXIT FILL — narration (journal recording done by handle_fill) ----
             if narration_service is not None and narration_store is not None:
                 try:
                     from .narration.schema import (
@@ -1152,43 +997,7 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
                     logger.debug("Exit narration failed", exc_info=True)
 
         else:
-            # ---- ENTRY FILL ----
-            direction = "long"
-            if cached_sig:
-                direction = cached_sig.direction.value
-            elif event.side.value == "sell":
-                direction = "short"
-
-            # Open trade in journal (idempotent — returns existing if already open)
-            journal.open_trade(
-                trace_id=trace_id,
-                strategy_id=strategy_id,
-                symbol=event.symbol,
-                direction=direction,
-                exchange=event.exchange.value if hasattr(event.exchange, "value") else str(event.exchange),
-                signal_confidence=cached_sig.confidence if cached_sig else 0.0,
-                signal_rationale=cached_sig.rationale if cached_sig else "",
-            )
-
-            # Record entry fill
-            journal.record_entry_fill(
-                trace_id=trace_id,
-                fill_id=event.fill_id,
-                order_id=event.order_id,
-                side=event.side.value if hasattr(event.side, "value") else str(event.side),
-                price=event.price,
-                qty=event.qty,
-                fee=event.fee,
-                fee_currency=event.fee_currency,
-                is_maker=event.is_maker,
-                timestamp=event.timestamp,
-            )
-
-            logger.info(
-                "Entry fill recorded: %s %s %s qty=%s price=%s (trace=%s)",
-                strategy_id, event.side.value if hasattr(event.side, "value") else event.side,
-                event.symbol, event.qty, event.price, trace_id[:8],
-            )
+            # ---- ENTRY FILL — TP/SL + narration (journal recording done by handle_fill) ----
 
             # ---- Set server-side TP/SL on exchange ----
             _exit_cfg = settings.exits
@@ -1207,7 +1016,7 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
                         _sl = cached_sig.stop_loss
                         _trail = cached_sig.trailing_stop
 
-                    # Fallback: compute from risk_constraints if signal lacks TP/SL
+                    # Fallback 1: compute from risk_constraints ATR if signal lacks TP/SL
                     if (_tp is None or _sl is None) and cached_sig is not None:
                         _rc = cached_sig.risk_constraints
                         _fill_price = event.price
@@ -1226,6 +1035,27 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
                                 _sl = _sl or (_fill_price + _sl_dist)
                                 _tp = _tp or (_fill_price - _tp_dist)
 
+                    # Fallback 2 (last resort): estimate ATR as 0.4% of fill price.
+                    # Covers: signal cache miss (trace_id bug), strategies that
+                    # produce signals without ATR (9 of 12), or any other path
+                    # where both signal-level and risk_constraints TP/SL are absent.
+                    # Uses the same formula as startup reconciliation.
+                    if _tp is None or _sl is None:
+                        _fill_price_fb = event.price
+                        _atr_est = _fill_price_fb * Decimal("0.004")
+                        _sl_dist_fb = _atr_est * Decimal(str(_exit_cfg.sl_atr_multiplier))
+                        _tp_dist_fb = _atr_est * Decimal(str(_exit_cfg.tp_atr_multiplier))
+                        if direction == "long":
+                            _sl = _sl or (_fill_price_fb - _sl_dist_fb)
+                            _tp = _tp or (_fill_price_fb + _tp_dist_fb)
+                        else:
+                            _sl = _sl or (_fill_price_fb + _sl_dist_fb)
+                            _tp = _tp or (_fill_price_fb - _tp_dist_fb)
+                        logger.info(
+                            "TP/SL fallback (0.4%% ATR est) for %s: tp=%s sl=%s",
+                            event.symbol, _tp, _sl,
+                        )
+
                     # Trailing stop for trend strategies
                     if (
                         _trail is None
@@ -1240,35 +1070,70 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
                             )
 
                     if _tp is not None or _sl is not None or _trail is not None:
-                        if tool_gateway is not None:
-                            from agentic_trading.control_plane.action_types import (
-                                ActionScope as _AS,
-                                ProposedAction as _PA,
-                                ToolName as _TN,
+                        _tpsl_ok = False
+                        _tpsl_max_attempts = 2
+                        for _tpsl_attempt in range(1, _tpsl_max_attempts + 1):
+                            try:
+                                if tool_gateway is not None:
+                                    from agentic_trading.control_plane.action_types import (
+                                        ActionScope as _AS,
+                                        ProposedAction as _PA,
+                                        ToolName as _TN,
+                                    )
+                                    _tp_params: dict[str, Any] = {"symbol": event.symbol}
+                                    if _tp is not None:
+                                        _tp_params["take_profit"] = str(_tp)
+                                    if _sl is not None:
+                                        _tp_params["stop_loss"] = str(_sl)
+                                    if _trail is not None:
+                                        _tp_params["trailing_stop"] = str(_trail)
+                                    _tpsl_result = await tool_gateway.call(_PA(
+                                        tool_name=_TN.SET_TRADING_STOP,
+                                        scope=_AS(strategy_id=strategy_id, symbol=event.symbol, actor="main:fill_handler"),
+                                        request_params=_tp_params,
+                                    ))
+                                    if _tpsl_result.success:
+                                        _tpsl_ok = True
+                                    else:
+                                        logger.warning(
+                                            "TP/SL attempt %d/%d FAILED on %s via tool_gateway: %s",
+                                            _tpsl_attempt, _tpsl_max_attempts,
+                                            event.symbol, _tpsl_result.error,
+                                        )
+                                else:
+                                    await adapter.set_trading_stop(
+                                        event.symbol,
+                                        take_profit=_tp,
+                                        stop_loss=_sl,
+                                        trailing_stop=_trail,
+                                    )
+                                    _tpsl_ok = True
+                            except Exception:
+                                logger.warning(
+                                    "TP/SL attempt %d/%d raised for %s",
+                                    _tpsl_attempt, _tpsl_max_attempts,
+                                    event.symbol, exc_info=True,
+                                )
+
+                            if _tpsl_ok:
+                                break
+                            if _tpsl_attempt < _tpsl_max_attempts:
+                                await asyncio.sleep(1.0)
+
+                        if _tpsl_ok:
+                            logger.info(
+                                "TP/SL set on %s: tp=%s sl=%s trail=%s (strategy=%s)",
+                                event.symbol, _tp, _sl, _trail, strategy_id,
                             )
-                            _tp_params: dict[str, Any] = {"symbol": event.symbol}
-                            if _tp is not None:
-                                _tp_params["take_profit"] = str(_tp)
-                            if _sl is not None:
-                                _tp_params["stop_loss"] = str(_sl)
-                            if _trail is not None:
-                                _tp_params["trailing_stop"] = str(_trail)
-                            await tool_gateway.call(_PA(
-                                tool_name=_TN.SET_TRADING_STOP,
-                                scope=_AS(strategy_id=strategy_id, symbol=event.symbol, actor="main:fill_handler"),
-                                request_params=_tp_params,
-                            ))
                         else:
-                            await adapter.set_trading_stop(
-                                event.symbol,
-                                take_profit=_tp,
-                                stop_loss=_sl,
-                                trailing_stop=_trail,
+                            logger.error(
+                                "TP/SL FAILED on %s after %d attempts "
+                                "(tp=%s sl=%s trail=%s strategy=%s). "
+                                "Position has NO stop protection!",
+                                event.symbol, _tpsl_max_attempts,
+                                _tp, _sl, _trail, strategy_id,
                             )
-                        logger.info(
-                            "TP/SL set on %s: tp=%s sl=%s trail=%s (strategy=%s)",
-                            event.symbol, _tp, _sl, _trail, strategy_id,
-                        )
+
                         # Emit metric
                         try:
                             from .observability.metrics import TRADING_STOPS_SET
@@ -1382,7 +1247,7 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
 
                 # Reconcile journal: force-close open trades whose
                 # positions no longer exist on the exchange.
-                _reconcile_journal_positions(journal, positions)
+                _recon_mgr.reconcile_positions(positions)
             except Exception:
                 logger.debug("Portfolio state reconciliation failed", exc_info=True)
 
@@ -1452,7 +1317,7 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
                 positions={p.symbol: p for p in positions},
                 balances={b.currency: b for b in balances},
             )
-            _reconcile_journal_positions(journal, positions)
+            _recon_mgr.reconcile_positions(positions)
 
             # Set initial equity baseline for drawdown and daily PnL calculation
             _initial_equity = sum(
@@ -1539,21 +1404,31 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
                                     _stp_params["take_profit"] = str(_tp_price)
                                 if not _has_sl:
                                     _stp_params["stop_loss"] = str(_sl_price)
-                                await tool_gateway.call(_PA(
+                                _stp_result = await tool_gateway.call(_PA(
                                     tool_name=_TN.SET_TRADING_STOP,
                                     scope=_AS(symbol=_pos.symbol, actor="main:startup_recon"),
                                     request_params=_stp_params,
                                 ))
+                                if not _stp_result.success:
+                                    logger.error(
+                                        "Startup TP/SL FAILED for %s: %s",
+                                        _pos.symbol, _stp_result.error,
+                                    )
+                                else:
+                                    logger.info(
+                                        "Startup TP/SL set for %s (%s): tp=%s sl=%s",
+                                        _pos.symbol, _dir, _tp_price, _sl_price,
+                                    )
                             else:
                                 await adapter.set_trading_stop(
                                     _pos.symbol,
                                     take_profit=_tp_price if not _has_tp else None,
                                     stop_loss=_sl_price if not _has_sl else None,
                                 )
-                            logger.info(
-                                "Startup TP/SL set for %s (%s): tp=%s sl=%s",
-                                _pos.symbol, _dir, _tp_price, _sl_price,
-                            )
+                                logger.info(
+                                    "Startup TP/SL set for %s (%s): tp=%s sl=%s",
+                                    _pos.symbol, _dir, _tp_price, _sl_price,
+                                )
                     except Exception:
                         logger.warning(
                             "Failed to set startup TP/SL for %s",
@@ -1563,6 +1438,84 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
 
         except Exception:
             logger.warning("Startup position reconciliation failed", exc_info=True)
+
+    # ---------------------------------------------------------------
+    # Refurb components: AgentRegistry, ApprovalManager,
+    # ExecutionQualityTracker, StrategyLifecycleManager,
+    # IncidentManager, DailyEffectivenessScorecard
+    # ---------------------------------------------------------------
+    from .agents.registry import AgentRegistry
+    from .governance.approval_manager import ApprovalManager
+    from .execution.quality_tracker import ExecutionQualityTracker
+    from .governance.strategy_lifecycle import StrategyLifecycleManager
+    from .governance.incident_manager import IncidentManager
+    from .observability.daily_scorecard import DailyEffectivenessScorecard
+
+    agent_registry = AgentRegistry()
+
+    # ApprovalManager (uses existing approval rules from governance config)
+    approval_rules = []
+    if settings.governance.enabled:
+        try:
+            from .governance.approval_models import ApprovalRule
+            # Use governance-configured rules if available
+            approval_cfg = getattr(settings.governance, "approval", None)
+            if approval_cfg and hasattr(approval_cfg, "rules"):
+                approval_rules = approval_cfg.rules
+        except Exception:
+            pass
+    approval_manager = ApprovalManager(
+        rules=approval_rules,
+        event_bus=ctx.event_bus,
+        auto_approve_l1=True,
+    )
+
+    # ExecutionQualityTracker
+    quality_tracker = ExecutionQualityTracker(window_size=500)
+
+    # IncidentManager (extends BaseAgent — subscribes to risk/system topics)
+    incident_manager = IncidentManager(
+        event_bus=ctx.event_bus,
+        interval=30.0,
+    )
+    agent_registry.register(incident_manager)
+
+    # StrategyLifecycleManager (extends BaseAgent — periodic evidence checks)
+    lifecycle_manager = StrategyLifecycleManager(
+        event_bus=ctx.event_bus,
+        journal=journal,
+        governance_gate=governance_gate,
+        interval=60.0,
+    )
+    agent_registry.register(lifecycle_manager)
+
+    # Register strategies with lifecycle manager
+    for strat in strategies:
+        try:
+            lifecycle_manager.register_strategy(strat.strategy_id)
+        except Exception:
+            logger.debug(
+                "Could not register strategy %s with lifecycle manager",
+                getattr(strat, "strategy_id", "?"),
+            )
+
+    # DailyEffectivenessScorecard
+    scorecard = DailyEffectivenessScorecard(
+        journal=journal,
+        quality_tracker=quality_tracker,
+        risk_manager=risk_manager,
+        agent_registry=agent_registry,
+        event_bus=ctx.event_bus,
+    )
+
+    # Start all registered agents (IncidentManager, StrategyLifecycleManager)
+    await agent_registry.start_all()
+    logger.info(
+        "Refurb components wired: AgentRegistry(%d agents), ApprovalManager, "
+        "ExecutionQualityTracker, StrategyLifecycleManager, IncidentManager, "
+        "DailyEffectivenessScorecard",
+        agent_registry.count,
+    )
 
     # ---------------------------------------------------------------
     # Supervision UI (HTMX dashboard)
@@ -1576,13 +1529,13 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
 
             ui_app = create_ui_app(
                 journal=journal,
-                agent_registry=None,  # TODO: wire AgentRegistry when available
+                agent_registry=agent_registry,
                 governance_gate=governance_gate,
-                approval_manager=None,  # TODO: wire ApprovalManager when available
-                incident_manager=None,  # TODO: wire IncidentManager when available
-                scorecard=None,  # TODO: wire DailyEffectivenessScorecard when available
-                lifecycle_manager=None,  # TODO: wire StrategyLifecycleManager when available
-                quality_tracker=None,  # TODO: wire ExecutionQualityTracker when available
+                approval_manager=approval_manager,
+                incident_manager=incident_manager,
+                scorecard=scorecard,
+                lifecycle_manager=lifecycle_manager,
+                quality_tracker=quality_tracker,
                 event_bus=ctx.event_bus,
                 settings=settings,
                 risk_manager=risk_manager,
@@ -1640,6 +1593,11 @@ async def _run_live_or_paper(settings: Settings, ctx: TradingContext) -> None:
     if narration_runner is not None:
         await narration_runner.cleanup()
         logger.info("Narration server stopped")
+    # Stop refurb agents (IncidentManager, StrategyLifecycleManager)
+    try:
+        await agent_registry.stop_all()
+    except Exception:
+        logger.warning("Agent registry shutdown failed", exc_info=True)
     if governance_canary is not None:
         await governance_canary.stop()
     if optimizer_scheduler is not None:

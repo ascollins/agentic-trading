@@ -364,8 +364,12 @@ class TestSetTradingStop:
         call_args = mock_ccxt_exchange.privatePostV5PositionTradingStop.call_args[0][0]
         assert call_args["category"] == "linear"
         assert call_args["symbol"] == "BTCUSDT"
-        assert call_args["takeProfit"] == "55000"
-        assert call_args["stopLoss"] == "48000"
+        # positionIdx and tpslMode are now required Bybit V5 params
+        assert call_args["positionIdx"] == 0
+        assert call_args["tpslMode"] == "Full"
+        # Values are rounded to instrument tick precision (fallback 4dp)
+        assert Decimal(call_args["takeProfit"]) == Decimal("55000")
+        assert Decimal(call_args["stopLoss"]) == Decimal("48000")
 
     @pytest.mark.asyncio
     async def test_set_trading_stop_trailing(self, adapter_bybit, mock_ccxt_exchange):
@@ -378,7 +382,7 @@ class TestSetTradingStop:
         )
 
         call_args = mock_ccxt_exchange.privatePostV5PositionTradingStop.call_args[0][0]
-        assert call_args["trailingStop"] == "50"
+        assert Decimal(call_args["trailingStop"]) == Decimal("50")
 
     @pytest.mark.asyncio
     async def test_set_trading_stop_no_params_raises(self, adapter_bybit):

@@ -778,19 +778,42 @@ class CCXTAdapter:
                 )
 
             if self._exchange_name == "bybit":
-                # Bybit V5: use the private endpoint via CCXT's implicit API
+                # Bybit V5: use the private endpoint via CCXT's implicit API.
+                # Required params: category, symbol, positionIdx, tpslMode.
+                # positionIdx=0 for one-way mode (our default).
+                # tpslMode="Full" applies TP/SL to the entire position.
+
+                # Round TP/SL/trailing to the instrument's tick size so Bybit
+                # doesn't reject for invalid precision.
+                try:
+                    _swap_sym = self._to_swap_symbol(symbol)
+                    _mkt = self._ccxt.market(_swap_sym)
+                    _prec = _mkt.get("precision", {}) if _mkt else {}
+                    _price_prec = _prec.get("price", 4)
+                    if isinstance(_price_prec, float) and _price_prec < 1:
+                        _dp = abs(Decimal(str(_price_prec)).as_tuple().exponent)
+                    else:
+                        _dp = int(_price_prec)
+                except Exception:
+                    _dp = 4  # safe fallback
+
+                def _round_price(v: Decimal) -> Decimal:
+                    return v.quantize(Decimal(10) ** -_dp)
+
                 request_params: dict[str, Any] = {
                     "category": "linear",
                     "symbol": self._to_bybit_symbol(symbol),
+                    "positionIdx": 0,
+                    "tpslMode": "Full",
                     "tpTriggerBy": "LastPrice",
                     "slTriggerBy": "LastPrice",
                 }
                 if take_profit is not None:
-                    request_params["takeProfit"] = str(take_profit)
+                    request_params["takeProfit"] = str(_round_price(take_profit))
                 if stop_loss is not None:
-                    request_params["stopLoss"] = str(stop_loss)
+                    request_params["stopLoss"] = str(_round_price(stop_loss))
                 if trailing_stop is not None:
-                    request_params["trailingStop"] = str(trailing_stop)
+                    request_params["trailingStop"] = str(_round_price(trailing_stop))
 
                 result = await self._ccxt.privatePostV5PositionTradingStop(
                     request_params

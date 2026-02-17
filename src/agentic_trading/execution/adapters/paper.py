@@ -39,6 +39,24 @@ def _uid() -> str:
     return str(uuid.uuid4())
 
 
+class _TradingStop:
+    """Stores active TP/SL/trailing levels for a symbol."""
+
+    __slots__ = ("take_profit", "stop_loss", "trailing_stop", "trailing_ref")
+
+    def __init__(
+        self,
+        take_profit: Decimal | None = None,
+        stop_loss: Decimal | None = None,
+        trailing_stop: Decimal | None = None,
+    ) -> None:
+        self.take_profit = take_profit
+        self.stop_loss = stop_loss
+        self.trailing_stop = trailing_stop
+        #: Best price seen since trailing was set (used for trailing logic)
+        self.trailing_ref: Decimal | None = None
+
+
 class PaperAdapter:
     """Simulated exchange adapter for paper trading.
 
@@ -67,6 +85,7 @@ class PaperAdapter:
         fees: FeeSchedule | None = None,
         slippage: SlippageConfig | None = None,
         instruments: dict[str, Instrument] | None = None,
+        event_bus: Any | None = None,
     ) -> None:
         self._exchange = exchange
         self._fees = fees or FeeSchedule()
@@ -80,6 +99,10 @@ class PaperAdapter:
 
         # Current market prices (must be fed externally)
         self._market_prices: dict[str, Decimal] = {}  # symbol -> price
+
+        # TP/SL simulation
+        self._trading_stops: dict[str, _TradingStop] = {}  # symbol -> stops
+        self._event_bus: Any | None = event_bus
 
         # Asyncio lock for thread safety
         self._lock = asyncio.Lock()
@@ -106,8 +129,14 @@ class PaperAdapter:
     # ------------------------------------------------------------------
 
     def set_market_price(self, symbol: str, price: Decimal) -> None:
-        """Update the simulated market price for a symbol."""
+        """Update the simulated market price for a symbol.
+
+        Also checks whether the new price triggers any active TP/SL
+        levels.  When triggered, a synthetic close fill is created
+        and the stop is cleared.
+        """
         self._market_prices[symbol] = price
+        self._check_trading_stops(symbol, price)
 
     def get_market_price(self, symbol: str) -> Decimal | None:
         """Return the current simulated market price."""
@@ -382,7 +411,7 @@ class PaperAdapter:
         return Decimal("0")
 
     # ------------------------------------------------------------------
-    # IExchangeAdapter: set_trading_stop (no-op for paper)
+    # IExchangeAdapter: set_trading_stop
     # ------------------------------------------------------------------
 
     async def set_trading_stop(
@@ -393,12 +422,175 @@ class PaperAdapter:
         stop_loss: Decimal | None = None,
         trailing_stop: Decimal | None = None,
     ) -> dict[str, Any]:
-        """No-op for paper mode — TP/SL are server-side exchange features."""
+        """Store TP/SL levels for paper-mode simulation.
+
+        On each subsequent ``set_market_price`` call, the adapter checks
+        whether the new price crosses any active TP/SL level.  When
+        triggered, a synthetic close fill is generated.
+        """
+        existing = self._trading_stops.get(symbol)
+        if existing is not None:
+            # Merge: only update non-None values
+            if take_profit is not None:
+                existing.take_profit = take_profit
+            if stop_loss is not None:
+                existing.stop_loss = stop_loss
+            if trailing_stop is not None:
+                existing.trailing_stop = trailing_stop
+                # Reset trailing ref to current market price
+                existing.trailing_ref = self._market_prices.get(symbol)
+        else:
+            stop = _TradingStop(
+                take_profit=take_profit,
+                stop_loss=stop_loss,
+                trailing_stop=trailing_stop,
+            )
+            if trailing_stop is not None:
+                stop.trailing_ref = self._market_prices.get(symbol)
+            self._trading_stops[symbol] = stop
+
         logger.info(
-            "PaperAdapter TP/SL (no-op): %s tp=%s sl=%s trail=%s",
+            "PaperAdapter TP/SL stored: %s tp=%s sl=%s trail=%s",
             symbol, take_profit, stop_loss, trailing_stop,
         )
-        return {"result": "paper_mode_noop"}
+        return {"result": "paper_stop_stored"}
+
+    # ------------------------------------------------------------------
+    # TP/SL simulation
+    # ------------------------------------------------------------------
+
+    def _check_trading_stops(self, symbol: str, price: Decimal) -> None:
+        """Check if *price* triggers any active TP/SL for *symbol*.
+
+        When triggered:
+        1. Closes the position at the trigger price.
+        2. Publishes a synthetic ``FillEvent`` on the event bus.
+        3. Clears the stop for that symbol.
+
+        Called synchronously from ``set_market_price``.  If there is
+        an event bus, fill publication is scheduled as a fire-and-forget
+        task.
+        """
+        stop = self._trading_stops.get(symbol)
+        if stop is None:
+            return
+
+        pos = self._positions.get(symbol)
+        if pos is None or pos.qty == Decimal("0"):
+            # No position → clear orphan stop
+            self._trading_stops.pop(symbol, None)
+            return
+
+        is_long = pos.qty > Decimal("0")
+        triggered = False
+        trigger_reason = ""
+        trigger_price = price
+
+        # --- Trailing stop: update reference price ---
+        if stop.trailing_stop is not None:
+            if stop.trailing_ref is None:
+                stop.trailing_ref = price
+            elif is_long and price > stop.trailing_ref:
+                stop.trailing_ref = price
+            elif not is_long and price < stop.trailing_ref:
+                stop.trailing_ref = price
+
+            # Check trailing trigger
+            if is_long and stop.trailing_ref is not None:
+                trail_sl = stop.trailing_ref - stop.trailing_stop
+                if price <= trail_sl:
+                    triggered = True
+                    trigger_reason = "trailing_stop"
+                    trigger_price = trail_sl
+            elif not is_long and stop.trailing_ref is not None:
+                trail_sl = stop.trailing_ref + stop.trailing_stop
+                if price >= trail_sl:
+                    triggered = True
+                    trigger_reason = "trailing_stop"
+                    trigger_price = trail_sl
+
+        # --- Take profit ---
+        if not triggered and stop.take_profit is not None:
+            if is_long and price >= stop.take_profit:
+                triggered = True
+                trigger_reason = "take_profit"
+                trigger_price = stop.take_profit
+            elif not is_long and price <= stop.take_profit:
+                triggered = True
+                trigger_reason = "take_profit"
+                trigger_price = stop.take_profit
+
+        # --- Stop loss ---
+        if not triggered and stop.stop_loss is not None:
+            if is_long and price <= stop.stop_loss:
+                triggered = True
+                trigger_reason = "stop_loss"
+                trigger_price = stop.stop_loss
+            elif not is_long and price >= stop.stop_loss:
+                triggered = True
+                trigger_reason = "stop_loss"
+                trigger_price = stop.stop_loss
+
+        if not triggered:
+            return
+
+        # ---- Execute the close ----
+        close_qty = abs(pos.qty)
+        close_side = Side.SELL if is_long else Side.BUY
+
+        logger.info(
+            "PaperAdapter %s triggered for %s at %s (pos=%s qty=%s): "
+            "closing at %s",
+            trigger_reason,
+            symbol,
+            price,
+            "long" if is_long else "short",
+            close_qty,
+            trigger_price,
+        )
+
+        self._update_position(
+            symbol=symbol,
+            side=close_side,
+            qty=close_qty,
+            fill_price=trigger_price,
+        )
+
+        # Clear the stop
+        self._trading_stops.pop(symbol, None)
+
+        # Publish synthetic fill on event bus
+        if self._event_bus is not None:
+            from agentic_trading.core.events import FillEvent
+
+            fill = FillEvent(
+                fill_id=_uid(),
+                order_id=f"paper_tpsl_{_uid()[:8]}",
+                client_order_id=f"tpsl_{trigger_reason}",
+                symbol=symbol,
+                exchange=self._exchange,
+                side=close_side,
+                price=trigger_price,
+                qty=close_qty,
+                fee=Decimal("0"),
+                fee_currency="USDT",
+                is_maker=False,
+                trace_id=f"tpsl_{trigger_reason}_{symbol}",
+            )
+
+            import asyncio
+
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(
+                    self._event_bus.publish("execution.fill", fill),
+                    name=f"paper-tpsl-{symbol}",
+                )
+            except RuntimeError:
+                # No running event loop (e.g. in sync tests)
+                logger.debug(
+                    "No event loop for TP/SL fill publish: %s", symbol,
+                )
 
     # ------------------------------------------------------------------
     # Position management
@@ -517,10 +709,11 @@ class PaperAdapter:
     # ------------------------------------------------------------------
 
     async def reset(self) -> None:
-        """Clear all state: orders, positions, balances, prices."""
+        """Clear all state: orders, positions, balances, prices, stops."""
         async with self._lock:
             self._orders.clear()
             self._positions.clear()
             self._balances.clear()
             self._market_prices.clear()
+            self._trading_stops.clear()
             logger.info("PaperAdapter state reset")

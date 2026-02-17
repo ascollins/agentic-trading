@@ -225,7 +225,7 @@ class TestPaperAdapterTradingStop:
             stop_loss=Decimal("95000"),
             trailing_stop=Decimal("500"),
         )
-        assert result == {"result": "paper_mode_noop"}
+        assert result == {"result": "paper_stop_stored"}
 
     @pytest.mark.asyncio
     async def test_paper_adapter_set_trading_stop_partial(self):
@@ -237,7 +237,7 @@ class TestPaperAdapterTradingStop:
             "ETH/USDT",
             stop_loss=Decimal("2800"),
         )
-        assert result == {"result": "paper_mode_noop"}
+        assert result == {"result": "paper_stop_stored"}
 
 
 # ---------------------------------------------------------------------------
