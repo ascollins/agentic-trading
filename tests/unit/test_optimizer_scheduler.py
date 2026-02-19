@@ -16,6 +16,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from agentic_trading.core.config import OptimizerSchedulerConfig
+from agentic_trading.core.enums import OptimizationRecommendation
+from agentic_trading.optimizer.report import StrategyRecommendation
 from agentic_trading.optimizer.scheduler import OptimizerScheduler
 
 
@@ -31,7 +33,9 @@ class TestOptimizerSchedulerConfig:
         cfg = OptimizerSchedulerConfig()
         assert cfg.enabled is False
         assert cfg.interval_hours == 24.0
-        assert "trend_following" in cfg.strategies
+        assert "multi_tf_ma" in cfg.strategies
+        assert "bb_squeeze" in cfg.strategies
+        assert len(cfg.strategies) == 8  # All 8 CMT strategies
         assert cfg.data_window_days == 90
         assert cfg.n_samples == 30
         assert cfg.auto_apply is False
@@ -248,11 +252,15 @@ class TestResultsCallback:
                 on_results_callback=callback,
             )
 
-            # Mock the actual optimization to avoid needing data
+            mock_rec = StrategyRecommendation(
+                strategy_id="trend_following",
+                recommendation=OptimizationRecommendation.KEEP,
+                rationale="test",
+            )
             with patch.object(
                 scheduler,
-                "_optimize_strategy",
-                return_value={"best_sharpe": 1.0},
+                "_optimize_and_recommend",
+                return_value=mock_rec,
             ):
                 await scheduler._run_optimization_cycle()
 
@@ -275,10 +283,15 @@ class TestResultsCallback:
                 on_results_callback=callback,
             )
 
+            mock_rec = StrategyRecommendation(
+                strategy_id="trend_following",
+                recommendation=OptimizationRecommendation.KEEP,
+                rationale="test",
+            )
             with patch.object(
                 scheduler,
-                "_optimize_strategy",
-                return_value={"best_sharpe": 1.0},
+                "_optimize_and_recommend",
+                return_value=mock_rec,
             ):
                 await scheduler._run_optimization_cycle()
 
@@ -302,10 +315,15 @@ class TestOptimizationCycle:
             )
             scheduler = OptimizerScheduler(cfg)
 
+            mock_rec = StrategyRecommendation(
+                strategy_id="trend_following",
+                recommendation=OptimizationRecommendation.KEEP,
+                rationale="test",
+            )
             with patch.object(
                 scheduler,
-                "_optimize_strategy",
-                return_value={"best_sharpe": 1.0, "best_params": {}},
+                "_optimize_and_recommend",
+                return_value=mock_rec,
             ):
                 await scheduler._run_optimization_cycle()
 
@@ -324,10 +342,14 @@ class TestOptimizationCycle:
             async def mock_optimize(strategy_id):
                 if strategy_id == "trend_following":
                     raise RuntimeError("No data!")
-                return {"best_sharpe": 1.0}
+                return StrategyRecommendation(
+                    strategy_id=strategy_id,
+                    recommendation=OptimizationRecommendation.KEEP,
+                    rationale="test",
+                )
 
             with patch.object(
-                scheduler, "_optimize_strategy", side_effect=mock_optimize
+                scheduler, "_optimize_and_recommend", side_effect=mock_optimize
             ):
                 await scheduler._run_optimization_cycle()
 
@@ -346,19 +368,23 @@ class TestOptimizationCycle:
             )
             scheduler = OptimizerScheduler(cfg)
 
+            mock_rec = StrategyRecommendation(
+                strategy_id="breakout",
+                recommendation=OptimizationRecommendation.UPDATE,
+                optimized_score=2.5,
+                improvement_pct=50.0,
+                optimized_params={"donchian_period": 25},
+                rationale="test improvement",
+            )
             with patch.object(
                 scheduler,
-                "_optimize_strategy",
-                return_value={
-                    "best_sharpe": 2.5,
-                    "best_return": 15.0,
-                    "best_params": {"donchian_period": 25},
-                },
+                "_optimize_and_recommend",
+                return_value=mock_rec,
             ):
                 await scheduler._run_optimization_cycle()
 
             results = OptimizerScheduler.load_latest_results(tmpdir)
-            assert results["strategies"]["breakout"]["best_sharpe"] == 2.5
+            assert results["strategies"]["breakout"]["optimized_score"] == 2.5
 
     @pytest.mark.asyncio
     async def test_multiple_cycles_rotate(self):

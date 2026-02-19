@@ -1,5 +1,12 @@
 {% set stage_order = ['candidate', 'backtest', 'eval_pack', 'paper', 'limited', 'scale'] %}
-{% set stage_labels = {'candidate': 'C', 'backtest': 'BT', 'eval_pack': 'EV', 'paper': 'PA', 'limited': 'LIM', 'scale': 'SCALE'} %}
+{% set stage_labels = {
+  'candidate': 'Candidate',
+  'backtest': 'Backtested',
+  'eval_pack': 'Evaluation',
+  'paper': 'Paper Testing',
+  'limited': 'Limited Live',
+  'scale': 'Scaling'
+} %}
 
 {% if promotion_result is defined and promotion_result %}
   <div class="card" style="margin-bottom: 16px; padding: 12px 16px;
@@ -11,9 +18,9 @@
   ">
     <span style="font-size: 0.875rem; font-weight: 500;">
       {% if promotion_result.approved %}
-        Promotion approved: {{ promotion_result.reason }}
+        ✓ Promotion approved: {{ promotion_result.reason }}
       {% else %}
-        Promotion denied: {{ promotion_result.reason }}
+        ✗ Promotion denied: {{ promotion_result.reason }}
       {% endif %}
     </span>
   </div>
@@ -21,15 +28,43 @@
 
 {% for strategy in strategies %}
   {% set current_idx = stage_order.index(strategy.stage) if strategy.stage in stage_order else 0 %}
+  {% set current_label = stage_labels.get(strategy.stage, strategy.stage) %}
   <div class="strategy-card">
     <div class="strategy-header">
-      <div class="strategy-name">{{ strategy.strategy_id }}</div>
-      <div class="strategy-grade {{ 'score-good' if strategy.quality_score >= 70 else ('score-ok' if strategy.quality_score >= 50 else 'score-bad') }}">
-        {{ strategy.quality_grade }} {{ strategy.quality_score }}
+      <div>
+        <div class="strategy-name">{{ strategy.strategy_id | replace('_', ' ') | title }}</div>
+        <div style="font-size: 0.8125rem; color: var(--text-muted); margin-top: 2px;">
+          Stage: <span style="color: var(--accent-cyan);">{{ current_label }}</span>
+        </div>
+      </div>
+      <div class="tooltip-wrap">
+        <div class="strategy-grade {{ 'score-good' if strategy.quality_score >= 70 else ('score-ok' if strategy.quality_score >= 50 else 'score-bad') }}">
+          {{ strategy.quality_grade }} {{ strategy.quality_score }}
+        </div>
+        <div class="tooltip-text">
+          <strong>Quality Score: {{ strategy.quality_score }}/100</strong><br><br>
+          {% if strategy.quality_breakdown is defined and strategy.quality_breakdown.win_rate_pct > 0 %}
+          Win Rate: {{ strategy.quality_breakdown.win_rate_pct }}%
+            &nbsp;({{ strategy.quality_breakdown.win_rate_score }}/25 · target &gt;50%)<br>
+          Profit Factor: {{ strategy.quality_breakdown.profit_factor_val }}
+            &nbsp;({{ strategy.quality_breakdown.profit_factor_score }}/25 · target &gt;1.5)<br>
+          Sharpe Ratio: {{ strategy.quality_breakdown.sharpe_val }}
+            &nbsp;({{ strategy.quality_breakdown.sharpe_score }}/25 · target &gt;1.0)<br>
+          Trade Efficiency: {{ strategy.quality_breakdown.efficiency_pct }}%
+            &nbsp;({{ strategy.quality_breakdown.efficiency_score }}/25 · target &gt;60%)<br>
+          {% else %}
+          Win Rate (up to 25 pts)<br>
+          Profit Factor (up to 25 pts)<br>
+          Sharpe Ratio (up to 25 pts)<br>
+          Trade Efficiency (up to 25 pts)<br>
+          {% endif %}
+          <br>
+          <em>≥70 = Good · ≥50 = OK · &lt;50 = Needs improvement</em>
+        </div>
       </div>
     </div>
 
-    <!-- Stage Ribbon -->
+    <!-- Stage Progress Ribbon -->
     <div class="stage-ribbon">
       {% for stage in stage_order %}
         {% set idx = loop.index0 %}
@@ -42,8 +77,9 @@
     <div class="stage-labels">
       {% for stage in stage_order %}
         {% set idx = loop.index0 %}
-        <span class="stage-label {{ 'current' if idx == current_idx else '' }}">
-          {{ stage_labels[stage] }}
+        <span class="stage-label {{ 'current' if idx == current_idx else '' }}"
+              title="{{ stage_labels.get(stage, stage) }}">
+          {{ stage_labels.get(stage, stage)[:3] | upper if idx != current_idx else stage_labels.get(stage, stage) }}
         </span>
       {% endfor %}
     </div>
@@ -60,25 +96,42 @@
         <span class="stat-value">{{ strategy.total_trades }}</span> trades
       </div>
       <div>
-        WR <span class="stat-value">{{ strategy.win_rate }}%</span>
+        Win Rate <span class="stat-value">{{ strategy.win_rate }}%</span>
       </div>
       {% if strategy.stage in ['paper', 'limited'] %}
       <div>
-        <button class="btn btn-primary" style="font-size: 0.75rem; padding: 2px 12px;"
-                hx-post="/actions/promote/{{ strategy.strategy_id }}"
-                hx-target="#strategies-list"
-                hx-swap="innerHTML">
-          Promote
-        </button>
+        {% if strategy.quality_score >= 60 %}
+          <button class="btn btn-primary" style="font-size: 0.75rem; padding: 2px 12px;"
+                  onclick="confirmPromotion('{{ strategy.strategy_id }}', '{{ current_label }}', {{ strategy.quality_score }})"
+                  type="button">
+            Promote →
+          </button>
+          <form id="promote-form-{{ strategy.strategy_id }}" style="display:none;">
+            <button hx-post="/actions/promote/{{ strategy.strategy_id }}"
+                    hx-target="#strategies-list"
+                    hx-swap="innerHTML"
+                    id="promote-submit-{{ strategy.strategy_id }}">
+            </button>
+          </form>
+        {% else %}
+          <span class="tooltip-wrap">
+            <button class="btn btn-ghost" style="font-size: 0.75rem; padding: 2px 12px; opacity: 0.5; cursor: not-allowed;" disabled>
+              Promote →
+            </button>
+            <span class="tooltip-text">Score too low to promote ({{ strategy.quality_score }}/100). Minimum required: 60.</span>
+          </span>
+        {% endif %}
       </div>
       {% endif %}
     </div>
 
-    {% if strategy.quality_score < 60 and strategy.stage in ['paper', 'limited', 'scale'] %}
-    <div style="margin-top: 12px; font-size: 0.8125rem; color: var(--color-warning);">
-      Below promotion threshold
+    <!-- Grafana deep link -->
+    <div style="margin-top: 10px; display: flex; justify-content: flex-end;">
+      <a href="http://localhost:3001/d/strategy-performance/strategy-performance?orgId=1&var-strategy={{ strategy.strategy_id }}&from=now-7d&to=now"
+         target="_blank" class="grafana-link" style="font-size: 0.75rem;">
+        ↗ View charts in Grafana
+      </a>
     </div>
-    {% endif %}
   </div>
 {% endfor %}
 
@@ -88,3 +141,45 @@
     <div class="empty-detail">Configure strategies in your TOML config file</div>
   </div>
 {% endif %}
+
+<!-- Promotion confirmation modal -->
+<div class="modal-overlay hidden" id="promote-modal">
+  <div class="modal-box">
+    <div class="modal-title">Promote Strategy?</div>
+    <div class="modal-body" id="promote-modal-body">
+      This will request promotion for this strategy to the next stage.
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closePromoteModal()">Cancel</button>
+      <button class="btn btn-primary" id="promote-modal-confirm" onclick="submitPromotion()">Confirm Promotion</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  let _pendingStrategyId = null;
+
+  function confirmPromotion(strategyId, currentStage, score) {
+    _pendingStrategyId = strategyId;
+    document.getElementById('promote-modal-body').innerHTML =
+      '<strong>' + strategyId.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) + '</strong> is currently in <em>' + currentStage + '</em> with a quality score of <strong>' + score + '/100</strong>.<br><br>Request promotion to the next stage?';
+    document.getElementById('promote-modal').classList.remove('hidden');
+  }
+
+  function closePromoteModal() {
+    document.getElementById('promote-modal').classList.add('hidden');
+    _pendingStrategyId = null;
+  }
+
+  function submitPromotion() {
+    if (_pendingStrategyId) {
+      document.getElementById('promote-submit-' + _pendingStrategyId).click();
+      closePromoteModal();
+    }
+  }
+
+  // Close on overlay click
+  document.getElementById('promote-modal').addEventListener('click', function(e) {
+    if (e.target === this) closePromoteModal();
+  });
+</script>

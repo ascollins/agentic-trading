@@ -1,0 +1,242 @@
+"""Test UI route status codes, content types, and key HTML elements.
+
+Uses create_ui_app() with all-None parameters (graceful degradation mode).
+"""
+
+from __future__ import annotations
+
+import pytest
+from starlette.testclient import TestClient
+
+from agentic_trading.ui.app import create_ui_app
+
+
+def _make_app():
+    """Create a UI app with no dependencies (graceful degradation)."""
+    return create_ui_app()
+
+
+# ------------------------------------------------------------------
+# Full-page routes
+# ------------------------------------------------------------------
+
+
+class TestUIPageRoutes:
+    def test_home_returns_200(self):
+        client = TestClient(_make_app())
+        resp = client.get("/")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+
+    def test_home_contains_dashboard_heading(self):
+        client = TestClient(_make_app())
+        resp = client.get("/")
+        assert "Dashboard" in resp.text
+
+    def test_strategies_returns_200(self):
+        client = TestClient(_make_app())
+        resp = client.get("/strategies")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+
+    def test_activity_returns_200(self):
+        client = TestClient(_make_app())
+        resp = client.get("/activity")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+
+    def test_risk_returns_200(self):
+        client = TestClient(_make_app())
+        resp = client.get("/risk")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+
+    def test_settings_returns_200(self):
+        client = TestClient(_make_app())
+        resp = client.get("/settings")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+
+    def test_backtest_returns_200(self):
+        client = TestClient(_make_app())
+        resp = client.get("/backtest")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+
+    def test_health_returns_ok(self):
+        client = TestClient(_make_app())
+        resp = client.get("/health")
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "ok"}
+
+
+# ------------------------------------------------------------------
+# HTMX partial routes
+# ------------------------------------------------------------------
+
+
+class TestUIPartialRoutes:
+    def test_partial_scorecard(self):
+        client = TestClient(_make_app())
+        resp = client.get("/partials/home/scorecard")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+
+    def test_partial_portfolio(self):
+        client = TestClient(_make_app())
+        resp = client.get("/partials/home/portfolio")
+        assert resp.status_code == 200
+
+    def test_partial_positions(self):
+        client = TestClient(_make_app())
+        resp = client.get("/partials/home/positions")
+        assert resp.status_code == 200
+
+    def test_partial_system(self):
+        client = TestClient(_make_app())
+        resp = client.get("/partials/home/system")
+        assert resp.status_code == 200
+
+    def test_partial_approvals(self):
+        client = TestClient(_make_app())
+        resp = client.get("/partials/home/approvals")
+        assert resp.status_code == 200
+
+    def test_partial_banner(self):
+        client = TestClient(_make_app())
+        resp = client.get("/partials/home/banner")
+        assert resp.status_code == 200
+
+    def test_partial_status_bar(self):
+        client = TestClient(_make_app())
+        resp = client.get("/partials/status-bar")
+        assert resp.status_code == 200
+
+    def test_partial_strategies_list(self):
+        client = TestClient(_make_app())
+        resp = client.get("/partials/strategies/list")
+        assert resp.status_code == 200
+
+    def test_partial_activity_timeline_all(self):
+        client = TestClient(_make_app())
+        resp = client.get("/partials/activity/timeline?type=all")
+        assert resp.status_code == 200
+
+    def test_partial_activity_timeline_trades(self):
+        client = TestClient(_make_app())
+        resp = client.get("/partials/activity/timeline?type=trades")
+        assert resp.status_code == 200
+
+    def test_partial_risk_gauges(self):
+        client = TestClient(_make_app())
+        resp = client.get("/partials/risk/gauges")
+        assert resp.status_code == 200
+
+    def test_partial_kill_switch(self):
+        client = TestClient(_make_app())
+        resp = client.get("/partials/risk/kill-switch")
+        assert resp.status_code == 200
+
+    def test_equity_curve_api(self):
+        client = TestClient(_make_app())
+        resp = client.get("/api/equity-curve")
+        assert resp.status_code == 200
+        assert isinstance(resp.json(), list)
+
+
+# ------------------------------------------------------------------
+# Action routes (graceful degradation — no backend components)
+# ------------------------------------------------------------------
+
+
+class TestUIActionRoutes:
+    def test_approve_without_manager_returns_200(self):
+        client = TestClient(_make_app())
+        resp = client.post("/actions/approve/fake-id")
+        assert resp.status_code == 200
+
+    def test_deny_without_manager_returns_200(self):
+        client = TestClient(_make_app())
+        resp = client.post("/actions/deny/fake-id")
+        assert resp.status_code == 200
+
+    def test_kill_switch_activate_without_manager(self):
+        client = TestClient(_make_app())
+        resp = client.post("/actions/kill-switch/activate")
+        assert resp.status_code == 200
+
+    def test_kill_switch_deactivate_without_manager(self):
+        client = TestClient(_make_app())
+        resp = client.post("/actions/kill-switch/deactivate")
+        assert resp.status_code == 200
+
+    def test_close_position_without_adapter(self):
+        client = TestClient(_make_app())
+        resp = client.post("/actions/positions/close/BTC%2FUSDT")
+        assert resp.status_code == 200
+        # Should contain an error message about missing adapter
+        assert "No adapter" in resp.text or "positions" in resp.text.lower()
+
+    def test_promote_without_lifecycle(self):
+        client = TestClient(_make_app())
+        resp = client.post("/actions/promote/trend_following")
+        assert resp.status_code == 200
+
+    def test_resolve_incident_without_manager(self):
+        client = TestClient(_make_app())
+        resp = client.post("/actions/resolve-incident/fake-id")
+        assert resp.status_code == 200
+
+    def test_action_routes_return_toast_headers(self):
+        """All action routes should include HX-Trigger toast headers."""
+        client = TestClient(_make_app())
+        # Test a sample of action routes for HX-Trigger header
+        resp = client.post("/actions/approve/fake-id")
+        assert "HX-Trigger" in resp.headers
+        assert "showToast" in resp.headers["HX-Trigger"]
+
+        resp = client.post("/actions/deny/fake-id")
+        assert "HX-Trigger" in resp.headers
+
+        resp = client.post("/actions/kill-switch/activate")
+        assert "HX-Trigger" in resp.headers
+
+        resp = client.post("/actions/positions/close/BTC%2FUSDT")
+        assert "HX-Trigger" in resp.headers
+
+
+# ------------------------------------------------------------------
+# Error pages
+# ------------------------------------------------------------------
+
+
+class TestUIErrorPages:
+    def test_404_returns_html(self):
+        client = TestClient(_make_app(), raise_server_exceptions=False)
+        resp = client.get("/nonexistent-page")
+        assert resp.status_code == 404
+        assert "text/html" in resp.headers["content-type"]
+        assert "Page Not Found" in resp.text
+
+    def test_404_contains_back_link(self):
+        client = TestClient(_make_app(), raise_server_exceptions=False)
+        resp = client.get("/nonexistent-page")
+        assert 'href="/"' in resp.text
+
+
+# ------------------------------------------------------------------
+# Circuit breakers route
+# ------------------------------------------------------------------
+
+
+class TestCircuitBreakersRoute:
+    def test_circuit_breakers_partial_returns_200(self):
+        client = TestClient(_make_app())
+        resp = client.get("/partials/risk/circuit-breakers")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+
+    def test_circuit_breakers_shows_empty_state(self):
+        client = TestClient(_make_app())
+        resp = client.get("/partials/risk/circuit-breakers")
+        assert "No circuit breakers configured" in resp.text

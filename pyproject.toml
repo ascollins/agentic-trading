@@ -24,6 +24,7 @@ dependencies = [
     "tomli>=2.0",
     "aiohttp>=3.9",
     "click>=8.1",
+    "python-multipart>=0.0.9",
     "uvloop>=0.19; sys_platform != 'win32'",
 ]
 
@@ -37,6 +38,7 @@ dev = [
     "mypy>=1.8",
     "types-redis>=4.6",
     "pre-commit>=3.6",
+    "httpx>=0.27",
 ]
 viz = [
     "lightweight-charts>=2.0",

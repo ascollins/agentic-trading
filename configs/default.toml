@@ -6,7 +6,20 @@ mode = "live"
 read_only = false
 
 [symbols]
-symbols = ["BTC/USDT", "ETH/USDT"]
+symbols = [
+    "BTC/USDT",
+    "ETH/USDT",
+    "SOL/USDT",
+    "XRP/USDT",
+    "BNB/USDT",
+    "DOGE/USDT",
+    "TRX/USDT",
+    "SUI/USDT",
+    "ADA/USDT",
+    "AAVE/USDT",
+    "ZEC/USDT",
+    "PEPE/USDT",
+]
 max_symbols = 200
 
 [symbols.filters]

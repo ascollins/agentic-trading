@@ -51,15 +51,30 @@ async def run(
         },
     )
 
-    # 4. Build Orchestrator (clock, bus, context, all layer managers)
+    # 4. Import strategy modules to trigger @register_strategy decorators.
+    # Must happen before Orchestrator.from_config() which calls create_strategy().
+    import agentic_trading.strategies.trend_following  # noqa: F401
+    import agentic_trading.strategies.mean_reversion  # noqa: F401
+    import agentic_trading.strategies.breakout  # noqa: F401
+    import agentic_trading.strategies.funding_arb  # noqa: F401
+    import agentic_trading.strategies.multi_tf_ma  # noqa: F401
+    import agentic_trading.strategies.rsi_divergence  # noqa: F401
+    import agentic_trading.strategies.stochastic_macd  # noqa: F401
+    import agentic_trading.strategies.bb_squeeze  # noqa: F401
+    import agentic_trading.strategies.mean_reversion_enhanced  # noqa: F401
+    import agentic_trading.strategies.fibonacci_confluence  # noqa: F401
+    import agentic_trading.strategies.obv_divergence  # noqa: F401
+    import agentic_trading.strategies.supply_demand  # noqa: F401
+
+    # 5. Build Orchestrator (clock, bus, context, all layer managers)
     orch = Orchestrator.from_config(settings)
     ctx = orch.ctx
     event_bus = orch.bus.legacy_bus
 
-    # 5. Start event bus
+    # 6. Start event bus
     await orch.bus.start()
 
-    # 5.5 Start Prometheus metrics server (all modes)
+    # 6.5 Start Prometheus metrics server (all modes)
     try:
         from .observability.metrics import start_metrics_server
 
@@ -80,6 +95,43 @@ async def run(
     finally:
         await orch.bus.stop()
         logger.info("Shutdown complete")
+
+
+def _aggregate_candles(candles: list, target_tf: Timeframe) -> list:
+    """Aggregate 1m candles to a higher timeframe for backtesting.
+
+    Groups candles by UTC-aligned timeframe windows and produces one
+    aggregated OHLCV candle per window.
+    """
+    from .core.models import Candle
+    from .intelligence.candle_builder import _align_timestamp
+
+    if not candles:
+        return []
+
+    buckets: dict[datetime, list] = {}
+    for c in candles:
+        aligned = _align_timestamp(c.timestamp, target_tf)
+        buckets.setdefault(aligned, []).append(c)
+
+    result = []
+    for open_time in sorted(buckets.keys()):
+        group = buckets[open_time]
+        result.append(Candle(
+            symbol=group[0].symbol,
+            exchange=group[0].exchange,
+            timeframe=target_tf,
+            timestamp=open_time,
+            open=group[0].open,
+            high=max(c.high for c in group),
+            low=min(c.low for c in group),
+            close=group[-1].close,
+            volume=sum(c.volume for c in group),
+            quote_volume=sum(c.quote_volume for c in group),
+            trades=sum(c.trades for c in group),
+            is_closed=True,
+        ))
+    return result
 
 
 async def _run_backtest(settings: Settings, ctx: TradingContext) -> None:
@@ -150,6 +202,18 @@ async def _run_backtest(settings: Settings, ctx: TradingContext) -> None:
         logger.error("No historical data found. Run download_historical.py first.")
         return
 
+    # Aggregate to target timeframe if configured (default: 1m = no aggregation)
+    input_tf_str = getattr(bt, "input_timeframe", "1m")
+    if input_tf_str != "1m":
+        target_tf = Timeframe(input_tf_str)
+        for symbol in list(candles_by_symbol.keys()):
+            raw = candles_by_symbol[symbol]
+            candles_by_symbol[symbol] = _aggregate_candles(raw, target_tf)
+            logger.info(
+                "Aggregated %s to %s: %d candles",
+                symbol, target_tf.value, len(candles_by_symbol[symbol]),
+            )
+
     # Create and run backtest engine
     engine = BacktestEngine(
         strategies=strategies,
@@ -163,6 +227,9 @@ async def _run_backtest(settings: Settings, ctx: TradingContext) -> None:
         partial_fills=bt.partial_fills,
         latency_ms=bt.latency_ms,
         seed=bt.random_seed,
+        max_concurrent_positions=4,
+        max_daily_entries=6,
+        portfolio_cooldown_seconds=3600,
     )
 
     result = await engine.run(candles_by_symbol)
@@ -176,6 +243,25 @@ async def _run_backtest(settings: Settings, ctx: TradingContext) -> None:
         print(f"  {key:30s}: {value!s:>12}")
     print("=" * 60)
     print(f"  {'deterministic_hash':30s}: {result.deterministic_hash:>12}")
+
+    # Print per-strategy breakdown
+    if result.per_strategy:
+        print()
+        print("PER-STRATEGY BREAKDOWN")
+        print("-" * 76)
+        print(
+            f"  {'Strategy':<25s} {'Trades':>7s} {'WinRate':>8s} "
+            f"{'PF':>6s} {'AvgRet':>8s} {'PnL%':>8s}"
+        )
+        print("-" * 76)
+        for s in sorted(result.per_strategy, key=lambda x: x.total_pnl_pct, reverse=True):
+            print(
+                f"  {s.strategy_id:<25s} {s.total_trades:>7d} "
+                f"{s.win_rate:>7.1%} {s.profit_factor:>6.2f} "
+                f"{s.avg_return:>+7.2%} {s.total_pnl_pct:>+7.2f}%"
+            )
+        print("-" * 76)
+
     print()
 
 
@@ -574,11 +660,14 @@ async def _run_live_or_paper(
                 tavus=tavus_adapter,
                 port=settings.narration.server_port,
                 service=narration_service,
+                pipeline_log=orch.pipeline_log,
+                context_manager=orch.context_manager,
             )
             logger.info(
-                "Narration server started on port %d (mock_tavus=%s)",
+                "Narration server started on port %d (mock_tavus=%s, reasoning=%s)",
                 settings.narration.server_port,
                 settings.narration.tavus_mock,
+                orch.pipeline_log is not None,
             )
         except Exception:
             logger.warning("Failed to start narration server", exc_info=True)
@@ -738,6 +827,68 @@ async def _run_live_or_paper(
         settings.mode.value,
     )
 
+    # ---------------------------------------------------------------
+    # Consensus Gate: multi-agent consultation before trade execution
+    # ---------------------------------------------------------------
+    from .reasoning.consensus import ConsensusGate, ConsensusVerdict
+    from .reasoning.message_bus import ReasoningMessageBus
+
+    _reasoning_bus = ReasoningMessageBus()
+    _consensus_store = None
+    try:
+        from .reasoning.conversation_store import JsonFileConversationStore
+        import os
+        _store_path = os.path.join(
+            settings.backtest.data_dir if hasattr(settings.backtest, "data_dir") else "data",
+            "conversations.jsonl",
+        )
+        _consensus_store = JsonFileConversationStore(path=_store_path)
+        logger.info("Consensus conversation store: %s", _store_path)
+    except Exception:
+        logger.debug("Consensus store init failed, using in-memory", exc_info=True)
+
+    _risk_params = {}
+    if hasattr(settings, "risk") and settings.risk:
+        _risk_params = {
+            "max_position_pct": getattr(settings.risk, "max_position_pct", 0.10),
+            "max_gross_exposure_pct": getattr(settings.risk, "max_gross_exposure_pct", 1.0),
+            "max_drawdown_pct": getattr(settings.risk, "max_drawdown_pct", 0.15),
+        }
+
+    from .reasoning.consensus import (
+        MarketStructureDesk,
+        SMCAnalystDesk,
+        CMTTechnicianDesk,
+        RiskManagerDesk,
+    )
+
+    _consensus_gate = ConsensusGate(
+        message_bus=_reasoning_bus,
+        participants=[
+            MarketStructureDesk(),
+            SMCAnalystDesk(),
+            CMTTechnicianDesk(),
+            RiskManagerDesk(**_risk_params),
+        ],
+        min_approval_ratio=0.5,
+        require_risk_approval=True,
+        conversation_store=_consensus_store,
+    )
+    logger.info(
+        "ConsensusGate initialized: 4 desk participants, "
+        "min_approval=50%%, risk_veto=True"
+    )
+
+    # Inject consensus gate + reasoning bus into narration server app
+    # (narration server starts earlier, consensus gate created later)
+    if narration_runner is not None:
+        try:
+            narration_runner.app["consensus_gate"] = _consensus_gate
+            narration_runner.app["reasoning_bus"] = _reasoning_bus
+            logger.info("Consensus gate injected into narration server")
+        except Exception:
+            logger.debug("Could not inject consensus gate into narration server", exc_info=True)
+
     # Wire feature vectors to strategy signals → execution pipeline
     from .core.events import FeatureVector
     from .narration.humanizer import humanize_rationale
@@ -779,6 +930,13 @@ async def _run_live_or_paper(
 
         latest_candle = candle_buffer[-1]
         import time as _time_mod
+
+        # ============================================================
+        # Phase 1: Collect ALL strategy signals for this candle cycle
+        # ============================================================
+        _candle_flat_signals: list = []    # FLAT (exit) signals
+        _candle_dir_signals: list = []     # Directional (LONG/SHORT) signals
+
         for strategy in strategies:
             _t_sig_start = _time_mod.monotonic()
             sig = strategy.on_candle(ctx, latest_candle, patched_fv)
@@ -795,7 +953,6 @@ async def _run_live_or_paper(
                 # Emit metrics
                 try:
                     record_signal(sig.strategy_id, sig.symbol, sig.direction.value)
-                    # Decision latency: time from candle reception to signal emission
                     _decision_elapsed = _time_mod.monotonic() - _t_sig_start
                     record_decision_latency(_decision_elapsed)
                 except Exception:
@@ -804,111 +961,219 @@ async def _run_live_or_paper(
                 # Cache signal for fill-time narration lookup
                 _signal_cache[sig.trace_id] = sig
 
-                # Evict stale entries (TTL-first, then count-cap)
-                _cache_now = ctx.clock.now()
-                _stale = [
-                    k for k, v in _signal_cache.items()
-                    if hasattr(v, "timestamp")
-                    and (_cache_now - v.timestamp).total_seconds() > _SIGNAL_CACHE_TTL
-                ]
-                for _k in _stale:
-                    _signal_cache.pop(_k, None)
-                if len(_signal_cache) > _SIGNAL_CACHE_MAX:
-                    excess = len(_signal_cache) - _SIGNAL_CACHE_MAX
-                    for _k in list(_signal_cache)[:excess]:
-                        _signal_cache.pop(_k, None)
+                # Separate FLAT from directional
+                if sig.direction.value == "flat":
+                    _candle_flat_signals.append(sig)
+                else:
+                    _candle_dir_signals.append(sig)
 
-                # Feed signal → portfolio manager → execution pipeline
-                sig_result = _signal_mgr.process_signal(
-                    sig, journal, ctx, active_exchange, _capital,
-                    signal_cache=_signal_cache,
-                    exit_map=_exit_map,
+        # Cache eviction — once per candle cycle, not per signal
+        _cache_now = ctx.clock.now()
+        _stale = [
+            k for k, v in _signal_cache.items()
+            if hasattr(v, "timestamp")
+            and (_cache_now - v.timestamp).total_seconds() > _SIGNAL_CACHE_TTL
+        ]
+        for _k in _stale:
+            _signal_cache.pop(_k, None)
+        if len(_signal_cache) > _SIGNAL_CACHE_MAX:
+            excess = len(_signal_cache) - _SIGNAL_CACHE_MAX
+            for _k in list(_signal_cache)[:excess]:
+                _signal_cache.pop(_k, None)
+
+        # ============================================================
+        # Phase 2a: Process FLAT (exit) signals — record exit + route
+        # ============================================================
+        for sig in _candle_flat_signals:
+            # Record exit in consensus gate for cooldown tracking
+            _consensus_gate.record_exit(
+                sig.symbol,
+                when=ctx.clock.now(),
+            )
+            # Log the exit conversation
+            _consensus_gate.consult_exit(sig, {"now": ctx.clock.now()})
+
+            sig_result = _signal_mgr.process_signal(
+                sig, journal, ctx, active_exchange, _capital,
+                signal_cache=_signal_cache,
+                exit_map=_exit_map,
+            )
+            for intent in sig_result.intents:
+                if not _read_only:
+                    await ctx.event_bus.publish("execution", intent)
+                else:
+                    logger.info(
+                        "[READ-ONLY] Exit intent: %s %s %s qty=%s (trace=%s)",
+                        intent.strategy_id, intent.side.value,
+                        intent.symbol, intent.qty,
+                        intent.trace_id[:8] if intent.trace_id else "?",
+                    )
+
+        # ============================================================
+        # Phase 2b: Directional signals → Consensus Gate → Execution
+        # ============================================================
+        # Instead of routing signals directly to PortfolioManager,
+        # each signal goes through the desk consultation:
+        #   Market Structure → SMC → CMT → Risk → Verdict
+        # Only APPROVED signals proceed to sizing and execution.
+        _approved_dir_signals: list = []
+        for sig in _candle_dir_signals:
+            # Build the context for desk consultation
+            _desk_context: dict = {
+                "features": patched_fv.features if patched_fv else {},
+                "regime": (
+                    getattr(ctx.regime, "regime", None)
+                    if ctx.regime else None
+                ),
+                "portfolio_state": ctx.portfolio_state,
+                "risk_state": None,
+                "cmt_assessment": None,
+                "kill_switch_active": (
+                    await risk_manager.kill_switch.is_active()
+                    if hasattr(risk_manager, "kill_switch")
+                    else False
+                ),
+                "now": ctx.clock.now(),
+            }
+
+            consensus = _consensus_gate.consult(sig, _desk_context)
+
+            if consensus.is_approved:
+                _approved_dir_signals.append(sig)
+                logger.info(
+                    "Consensus APPROVED: %s %s %s (score=%.2f, %dms)",
+                    sig.direction.value,
+                    sig.symbol,
+                    sig.strategy_id,
+                    consensus.weighted_score,
+                    consensus.elapsed_ms,
+                )
+            else:
+                logger.info(
+                    "Consensus %s: %s %s %s — %s",
+                    consensus.verdict.value.upper(),
+                    sig.direction.value,
+                    sig.symbol,
+                    sig.strategy_id,
+                    consensus.reasoning,
                 )
 
+        # Process only approved signals through portfolio sizing
+        if _approved_dir_signals:
+            _batch_results = _signal_mgr.process_signal_batch(
+                _approved_dir_signals, journal, ctx, active_exchange, _capital,
+                signal_cache=_signal_cache,
+                exit_map=_exit_map,
+            )
+            for sig_result in _batch_results:
                 for intent in sig_result.intents:
                     if not _read_only:
                         await ctx.event_bus.publish("execution", intent)
                     else:
                         logger.info(
-                            "[READ-ONLY] %s: %s %s %s qty=%s (trace=%s)",
-                            "Exit intent" if sig_result.is_exit else "Would submit",
+                            "[READ-ONLY] Would submit: %s %s %s qty=%s (trace=%s)",
                             intent.strategy_id, intent.side.value,
                             intent.symbol, intent.qty,
                             intent.trace_id[:8] if intent.trace_id else "?",
                         )
 
-                # Narration: for NO_TRADE/HOLD narrate immediately;
-                # for directional signals, narrate on confirmed fill (see on_fill below)
-                if narration_service is not None and narration_store is not None:
-                    try:
-                        from .narration.schema import (
-                            DecisionExplanation,
-                            RiskSummary,
-                            PositionSnapshot,
+        # ============================================================
+        # Phase 3: Narration for all collected signals
+        # ============================================================
+        # Build set of approved signal trace IDs for narration
+        _approved_trace_ids = {s.trace_id for s in _approved_dir_signals}
+
+        _all_candle_signals = _candle_flat_signals + _candle_dir_signals
+        for sig in _all_candle_signals:
+            if narration_service is not None and narration_store is not None:
+                try:
+                    from .narration.schema import (
+                        DecisionExplanation,
+                        RiskSummary,
+                        PositionSnapshot,
+                    )
+
+                    # Determine action based on consensus outcome
+                    if sig.direction.value == "flat":
+                        action = "NO_TRADE"
+                    elif sig.trace_id in _approved_trace_ids:
+                        action = "HOLD"  # Will narrate ENTER on fill
+                    else:
+                        action = "NO_TRADE"  # Rejected by consensus
+
+                    regime_str = ""
+                    if ctx.regime:
+                        regime_str = getattr(ctx.regime, "regime", "unknown")
+                        if hasattr(regime_str, "value"):
+                            regime_str = regime_str.value
+
+                    pos_snap = PositionSnapshot()
+                    if ctx.portfolio_state:
+                        pos_snap = PositionSnapshot(
+                            open_positions=len(ctx.portfolio_state.positions),
+                            gross_exposure_usd=float(ctx.portfolio_state.gross_exposure),
+                            net_exposure_usd=float(ctx.portfolio_state.net_exposure),
                         )
 
-                        # Only narrate at signal-time for non-execution actions
-                        if sig.direction.value == "flat":
-                            action = "NO_TRADE"
-                        else:
-                            action = "HOLD"  # Will narrate ENTER on fill
+                    risk_sum = RiskSummary(
+                        health_score=1.0,
+                        maturity_level="",
+                    )
+                    if governance_gate is not None:
+                        try:
+                            risk_sum.governance_action = "active"
+                        except Exception:
+                            pass
 
-                        regime_str = ""
-                        if ctx.regime:
-                            regime_str = getattr(ctx.regime, "regime", "unknown")
-                            if hasattr(regime_str, "value"):
-                                regime_str = regime_str.value
+                    reasons = humanize_rationale(
+                        sig.rationale, sig.features_used,
+                    ) if sig.rationale else []
 
-                        pos_snap = PositionSnapshot()
-                        if ctx.portfolio_state:
-                            pos_snap = PositionSnapshot(
-                                open_positions=len(ctx.portfolio_state.positions),
-                                gross_exposure_usd=float(ctx.portfolio_state.gross_exposure),
-                                net_exposure_usd=float(ctx.portfolio_state.net_exposure),
-                            )
-
-                        risk_sum = RiskSummary(
-                            health_score=1.0,
-                            maturity_level="",
+                    # Build market summary with consensus info
+                    if sig.direction.value != "flat" and sig.trace_id not in _approved_trace_ids:
+                        _market_summary = (
+                            f"{sig.symbol}: {sig.direction.value.upper()} signal from "
+                            f"{sig.strategy_id} was evaluated by the desk but not approved. "
+                            f"The trading desk consulted Market Structure, SMC, CMT, and Risk "
+                            f"before making this decision."
                         )
-                        if governance_gate is not None:
-                            try:
-                                risk_sum.governance_action = "active"
-                            except Exception:
-                                pass
-
-                        reasons = humanize_rationale(
-                            sig.rationale, sig.features_used,
-                        ) if sig.rationale else []
-
-                        explanation = DecisionExplanation(
-                            symbol=sig.symbol,
-                            timeframe=event.timeframe.value if hasattr(event.timeframe, "value") else str(event.timeframe),
-                            market_summary=f"{sig.symbol} is currently being analysed.",
-                            active_strategy=sig.strategy_id,
-                            active_regime=regime_str,
-                            action=action,
-                            reasons=reasons,
-                            reason_confidences=[sig.confidence],
-                            why_not=(
-                                reasons if action == "NO_TRADE" else []
-                            ),
-                            risk=risk_sum,
-                            position=pos_snap,
-                            trace_id=sig.trace_id,
-                            signal_id=sig.event_id,
+                    elif sig.trace_id in _approved_trace_ids:
+                        _market_summary = (
+                            f"{sig.symbol}: {sig.direction.value.upper()} signal from "
+                            f"{sig.strategy_id} was approved by the desk after consultation "
+                            f"with Market Structure, SMC, CMT, and Risk managers."
                         )
+                    else:
+                        _market_summary = f"{sig.symbol} is currently being analysed."
 
-                        item = narration_service.generate(explanation)
-                        if item is not None:
-                            item.metadata = {
-                                "action": action,
-                                "symbol": sig.symbol,
-                                "regime": regime_str,
-                            }
-                            narration_store.add(item, explanation=explanation)
-                    except Exception:
-                        logger.debug("Narration generation failed", exc_info=True)
+                    explanation = DecisionExplanation(
+                        symbol=sig.symbol,
+                        timeframe=event.timeframe.value if hasattr(event.timeframe, "value") else str(event.timeframe),
+                        market_summary=_market_summary,
+                        active_strategy=sig.strategy_id,
+                        active_regime=regime_str,
+                        action=action,
+                        reasons=reasons,
+                        reason_confidences=[sig.confidence],
+                        why_not=(
+                            reasons if action == "NO_TRADE" else []
+                        ),
+                        risk=risk_sum,
+                        position=pos_snap,
+                        trace_id=sig.trace_id,
+                        signal_id=sig.event_id,
+                    )
+
+                    item = narration_service.generate(explanation)
+                    if item is not None:
+                        item.metadata = {
+                            "action": action,
+                            "symbol": sig.symbol,
+                            "regime": regime_str,
+                        }
+                        narration_store.add(item, explanation=explanation)
+                except Exception:
+                    logger.debug("Narration generation failed", exc_info=True)
 
     await ctx.event_bus.subscribe("feature.vector", "strategy_runner", on_feature_vector)
 
@@ -1011,6 +1276,19 @@ async def _run_live_or_paper(
                     _sl: Decimal | None = None
                     _trail: Decimal | None = None
 
+                    # Ensure direction is always "long" or "short".
+                    # fill_result.direction is "" when the signal cache missed
+                    # (strategy_id="unknown") and the recon manager couldn't
+                    # classify the fill from the journal.  Fall back to the fill
+                    # side: BUY → long entry, SELL → short entry.
+                    if not direction:
+                        _side_val = (
+                            event.side.value
+                            if hasattr(event.side, "value")
+                            else str(event.side)
+                        ).lower()
+                        direction = "long" if _side_val == "buy" else "short"
+
                     if cached_sig is not None:
                         _tp = cached_sig.take_profit
                         _sl = cached_sig.stop_loss
@@ -1057,6 +1335,7 @@ async def _run_live_or_paper(
                         )
 
                     # Trailing stop for trend strategies
+                    _active_price: Decimal | None = None
                     if (
                         _trail is None
                         and strategy_id in _exit_cfg.trailing_strategies
@@ -1069,9 +1348,70 @@ async def _run_live_or_paper(
                                 str(_exit_cfg.trailing_stop_atr_multiplier)
                             )
 
+                    # Preserve existing trailing stop: Bybit's set-trading-stop
+                    # API replaces ALL fields, so if we send TP/SL without
+                    # trailing, any existing trailing stop gets wiped.  When
+                    # _trail is still None (non-trailing strategy), query
+                    # the exchange and carry forward the active trailing stop.
+                    if _trail is None:
+                        try:
+                            _raw_pos = await adapter._ccxt.fetch_positions(
+                                [event.symbol]
+                            )
+                            _pos_match = next(
+                                (p for p in _raw_pos
+                                 if (
+                                     p.get("symbol") == event.symbol
+                                     or p.get("symbol", "").split(":")[0] == event.symbol
+                                 )),
+                                None,
+                            )
+                            if _pos_match:
+                                _pos_info = _pos_match.get("info") or {}
+                                _existing_trail = float(
+                                    _pos_info.get("trailingStop") or 0
+                                )
+                                _existing_active = float(
+                                    _pos_info.get("activePrice") or 0
+                                )
+                                if _existing_trail > 0:
+                                    _trail = Decimal(str(_existing_trail))
+                                    if _existing_active > 0:
+                                        _active_price = Decimal(
+                                            str(_existing_active)
+                                        )
+                                    logger.debug(
+                                        "Preserving existing trailing for %s: "
+                                        "trail=%s active=%s",
+                                        event.symbol, _trail, _active_price,
+                                    )
+                        except Exception:
+                            logger.debug(
+                                "Could not query existing trailing for %s",
+                                event.symbol, exc_info=True,
+                            )
+
+                    # Breakeven activation: trailing stop only arms after price
+                    # moves ≥1× SL distance in profit from the fill price.
+                    # active_price = fill_price ± SL distance.
+                    if _trail is not None and _sl is not None and _active_price is None:
+                        _fill_price_for_trail = event.price
+                        _sl_dist_for_trail = abs(_fill_price_for_trail - _sl)
+                        if direction == "long":
+                            _active_price = _fill_price_for_trail + _sl_dist_for_trail
+                        else:
+                            _active_price = _fill_price_for_trail - _sl_dist_for_trail
+                        logger.debug(
+                            "Trailing active_price computed for %s: direction=%s fill=%s sl=%s active=%s",
+                            event.symbol, direction, _fill_price_for_trail, _sl, _active_price,
+                        )
+
                     if _tp is not None or _sl is not None or _trail is not None:
                         _tpsl_ok = False
-                        _tpsl_max_attempts = 2
+                        _tpsl_max_attempts = 5
+                        # Brief initial delay: Bybit may not yet reflect the
+                        # position server-side immediately after a fill ACK.
+                        await asyncio.sleep(0.5)
                         for _tpsl_attempt in range(1, _tpsl_max_attempts + 1):
                             try:
                                 if tool_gateway is not None:
@@ -1087,6 +1427,8 @@ async def _run_live_or_paper(
                                         _tp_params["stop_loss"] = str(_sl)
                                     if _trail is not None:
                                         _tp_params["trailing_stop"] = str(_trail)
+                                    if _active_price is not None:
+                                        _tp_params["active_price"] = str(_active_price)
                                     _tpsl_result = await tool_gateway.call(_PA(
                                         tool_name=_TN.SET_TRADING_STOP,
                                         scope=_AS(strategy_id=strategy_id, symbol=event.symbol, actor="main:fill_handler"),
@@ -1106,6 +1448,7 @@ async def _run_live_or_paper(
                                         take_profit=_tp,
                                         stop_loss=_sl,
                                         trailing_stop=_trail,
+                                        active_price=_active_price,
                                     )
                                     _tpsl_ok = True
                             except Exception:
@@ -1118,12 +1461,14 @@ async def _run_live_or_paper(
                             if _tpsl_ok:
                                 break
                             if _tpsl_attempt < _tpsl_max_attempts:
-                                await asyncio.sleep(1.0)
+                                # Exponential backoff: 1s, 2s, 4s, 8s
+                                _backoff = min(2 ** (_tpsl_attempt - 1), 8)
+                                await asyncio.sleep(float(_backoff))
 
                         if _tpsl_ok:
                             logger.info(
-                                "TP/SL set on %s: tp=%s sl=%s trail=%s (strategy=%s)",
-                                event.symbol, _tp, _sl, _trail, strategy_id,
+                                "TP/SL set on %s: tp=%s sl=%s trail=%s active_price=%s (strategy=%s)",
+                                event.symbol, _tp, _sl, _trail, _active_price, strategy_id,
                             )
                         else:
                             logger.error(
@@ -1234,7 +1579,10 @@ async def _run_live_or_paper(
                         update_drawdown(0.0)
 
                     # Kill switch status
-                    ks_active = risk_manager.kill_switch.is_active if hasattr(risk_manager, "kill_switch") else False
+                    if hasattr(risk_manager, "kill_switch"):
+                        ks_active = await risk_manager.kill_switch.is_active()
+                    else:
+                        ks_active = False
                     update_kill_switch(ks_active)
 
                     # Daily PnL: equity change since daily baseline
@@ -1254,13 +1602,20 @@ async def _run_live_or_paper(
     await ctx.event_bus.subscribe("execution", "fill_handler", on_execution_event)
 
     # Start live market data feeds if exchange configs are available
-    # Default to top 5 USDT perpetuals by volume on Bybit
+    # Default to top USDT perpetuals by volume on Bybit
     _DEFAULT_SYMBOLS = [
         "BTC/USDT",
         "ETH/USDT",
         "SOL/USDT",
         "XRP/USDT",
+        "BNB/USDT",
         "DOGE/USDT",
+        "TRX/USDT",
+        "SUI/USDT",
+        "ADA/USDT",
+        "AAVE/USDT",
+        "ZEC/USDT",
+        "PEPE/USDT",
     ]
     symbols = settings.symbols.symbols or _DEFAULT_SYMBOLS
     if settings.exchanges:
@@ -1330,7 +1685,10 @@ async def _run_live_or_paper(
                 update_equity(_initial_equity)
                 update_gross_exposure(float(ctx.portfolio_state.gross_exposure))
                 update_drawdown(0.0)
-                ks_active = risk_manager.kill_switch.is_active if hasattr(risk_manager, "kill_switch") else False
+                if hasattr(risk_manager, "kill_switch"):
+                    ks_active = await risk_manager.kill_switch.is_active()
+                else:
+                    ks_active = False
                 update_kill_switch(ks_active)
                 update_daily_pnl(0.0)
 
@@ -1356,28 +1714,37 @@ async def _run_live_or_paper(
                     if float(_pos.qty) == 0:
                         continue
                     try:
-                        # Check if position already has TP/SL via raw Bybit data
-                        # Use adapter.get_positions() which returns structured data.
-                        # For raw TP/SL fields we still need underlying exchange data;
-                        # route through adapter for now (non-mutating query).
+                        # Check if position already has TP/SL via CCXT normalized data.
+                        # fetch_positions() returns CCXT-normalized objects where
+                        # takeProfitPrice / stopLossPrice are top-level numeric fields
+                        # (CCXT's parse_position maps Bybit's takeProfit/stopLoss to these).
+                        # Symbol matching handles both unified CCXT format ('BTC/USDT:USDT')
+                        # and plain format ('BTC/USDT').
                         _raw_positions = await adapter._ccxt.fetch_positions(  # TODO(Day6): abstract raw position query
                             [_pos.symbol]
                         )
                         _bybit_pos = next(
                             (p for p in _raw_positions
-                             if p.get("symbol") == _pos.symbol),
+                             if (
+                                 p.get("symbol") == _pos.symbol
+                                 or p.get("symbol", "").split(":")[0] == _pos.symbol
+                             )),
                             None,
                         )
-                        _has_tp = (
-                            _bybit_pos
-                            and float(_bybit_pos.get("takeProfitPrice", 0) or 0) > 0
-                        )
-                        _has_sl = (
-                            _bybit_pos
-                            and float(_bybit_pos.get("stopLossPrice", 0) or 0) > 0
-                        )
+                        # takeProfitPrice / stopLossPrice are CCXT-normalized top-level
+                        # numeric fields (None or 0.0 when unset).
+                        _has_tp = float((_bybit_pos or {}).get("takeProfitPrice") or 0) > 0
+                        _has_sl = float((_bybit_pos or {}).get("stopLossPrice") or 0) > 0
+                        _recon_info = (_bybit_pos or {}).get("info") or {}
+                        _has_trail = float(_recon_info.get("trailingStop") or 0) > 0
+                        _wants_trail = bool(_exit_cfg.trailing_strategies)
 
-                        if not _has_tp or not _has_sl:
+                        _needs_update = (
+                            not _has_tp
+                            or not _has_sl
+                            or (_wants_trail and not _has_trail)
+                        )
+                        if _needs_update:
                             _entry = _pos.entry_price
                             # Estimate ATR as ~0.4% of price for startup fallback
                             _atr_est = _entry * Decimal("0.004")
@@ -1392,6 +1759,19 @@ async def _run_live_or_paper(
                                 _sl_price = _entry + _sl_d
                                 _tp_price = _entry - _tp_d
 
+                            # Trailing stop + breakeven active_price
+                            _recon_trail: Decimal | None = None
+                            _recon_active: Decimal | None = None
+                            if _wants_trail and not _has_trail:
+                                _trail_mult = Decimal(
+                                    str(_exit_cfg.trailing_stop_atr_multiplier)
+                                )
+                                _recon_trail = _atr_est * _trail_mult
+                                if _dir == "long":
+                                    _recon_active = _entry + _sl_d
+                                else:
+                                    _recon_active = _entry - _sl_d
+
                             # Route TP/SL through ToolGateway (B3 fix)
                             if tool_gateway is not None:
                                 from agentic_trading.control_plane.action_types import (
@@ -1404,6 +1784,10 @@ async def _run_live_or_paper(
                                     _stp_params["take_profit"] = str(_tp_price)
                                 if not _has_sl:
                                     _stp_params["stop_loss"] = str(_sl_price)
+                                if _recon_trail is not None:
+                                    _stp_params["trailing_stop"] = str(_recon_trail)
+                                if _recon_active is not None:
+                                    _stp_params["active_price"] = str(_recon_active)
                                 _stp_result = await tool_gateway.call(_PA(
                                     tool_name=_TN.SET_TRADING_STOP,
                                     scope=_AS(symbol=_pos.symbol, actor="main:startup_recon"),
@@ -1416,18 +1800,30 @@ async def _run_live_or_paper(
                                     )
                                 else:
                                     logger.info(
-                                        "Startup TP/SL set for %s (%s): tp=%s sl=%s",
-                                        _pos.symbol, _dir, _tp_price, _sl_price,
+                                        "Startup TP/SL set for %s (%s): "
+                                        "tp=%s sl=%s trail=%s active=%s",
+                                        _pos.symbol, _dir,
+                                        _tp_price if not _has_tp else "kept",
+                                        _sl_price if not _has_sl else "kept",
+                                        _recon_trail or "none",
+                                        _recon_active or "none",
                                     )
                             else:
                                 await adapter.set_trading_stop(
                                     _pos.symbol,
                                     take_profit=_tp_price if not _has_tp else None,
                                     stop_loss=_sl_price if not _has_sl else None,
+                                    trailing_stop=_recon_trail,
+                                    active_price=_recon_active,
                                 )
                                 logger.info(
-                                    "Startup TP/SL set for %s (%s): tp=%s sl=%s",
-                                    _pos.symbol, _dir, _tp_price, _sl_price,
+                                    "Startup TP/SL set for %s (%s): "
+                                    "tp=%s sl=%s trail=%s active=%s",
+                                    _pos.symbol, _dir,
+                                    _tp_price if not _has_tp else "kept",
+                                    _sl_price if not _has_sl else "kept",
+                                    _recon_trail or "none",
+                                    _recon_active or "none",
                                 )
                     except Exception:
                         logger.warning(
@@ -1508,12 +1904,25 @@ async def _run_live_or_paper(
         event_bus=ctx.event_bus,
     )
 
-    # Start all registered agents (IncidentManager, StrategyLifecycleManager)
+    # TpSlWatchdog — runs every 5 minutes, re-applies missing TP/SL on open positions
+    from .execution.tpsl_watchdog import TpSlWatchdog
+
+    tpsl_watchdog = TpSlWatchdog(
+        adapter=adapter,
+        exit_cfg=settings.exits,
+        interval=300.0,
+        tool_gateway=tool_gateway if not _read_only else None,
+        trailing_strategies=list(settings.exits.trailing_strategies),
+        read_only=_read_only,
+    )
+    agent_registry.register(tpsl_watchdog)
+
+    # Start all registered agents (IncidentManager, StrategyLifecycleManager, TpSlWatchdog)
     await agent_registry.start_all()
     logger.info(
         "Refurb components wired: AgentRegistry(%d agents), ApprovalManager, "
         "ExecutionQualityTracker, StrategyLifecycleManager, IncidentManager, "
-        "DailyEffectivenessScorecard",
+        "DailyEffectivenessScorecard, TpSlWatchdog",
         agent_registry.count,
     )
 

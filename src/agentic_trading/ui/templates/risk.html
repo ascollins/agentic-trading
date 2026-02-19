@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% set active_tab = "risk" %}
+{% block title %}Risk &amp; Controls{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h2>Risk &amp; Controls</h2>
+  <div class="breadcrumb">Risk / Live Monitoring</div>
+</div>
+
+<div class="risk-controls-grid">
+
+  <!-- Kill Switch -->
+  <div class="kill-switch-card {{ 'active' if risk_controls.kill_switch_active else '' }}"
+       id="kill-switch-card"
+       hx-get="/partials/risk/kill-switch"
+       hx-trigger="every 10s"
+       hx-swap="outerHTML">
+    <div class="kill-switch-info">
+      <h3 style="color: {{ 'var(--color-critical)' if risk_controls.kill_switch_active else 'var(--text-primary)' }};">
+        {% if risk_controls.kill_switch_active %}
+          🛑 Emergency Stop — ACTIVE
+        {% else %}
+          Emergency Stop
+        {% endif %}
+      </h3>
+      <p>
+        {% if risk_controls.kill_switch_active %}
+          All new orders are halted. Existing positions remain open.
+        {% else %}
+          Activating will halt all new orders immediately. Use in emergencies only.
+        {% endif %}
+      </p>
+    </div>
+    {% if risk_controls.kill_switch_active %}
+      <button class="btn-kill-switch deactivate"
+              onclick="showKillSwitchModal('deactivate')">
+        Resume Trading
+      </button>
+    {% else %}
+      <button class="btn-kill-switch activate"
+              onclick="showKillSwitchModal('activate')">
+        Activate Emergency Stop
+      </button>
+    {% endif %}
+  </div>
+
+  <!-- Risk Limit Gauges -->
+  <div class="card">
+    <div class="card-label">Risk Limit Utilisation</div>
+    <div style="margin-top: var(--space-md);"
+         id="risk-gauges"
+         hx-get="/partials/risk/gauges"
+         hx-trigger="every 15s"
+         hx-swap="innerHTML">
+      {% include "partials/risk_gauges.html" %}
+    </div>
+  </div>
+
+  <!-- Circuit Breakers -->
+  <div class="card"
+       id="circuit-breakers-card"
+       hx-get="/partials/risk/circuit-breakers"
+       hx-trigger="every 10s"
+       hx-swap="innerHTML">
+    {% include "partials/circuit_breakers_card.html" %}
+  </div>
+
+  <!-- Governance Status -->
+  <div class="card">
+    <div class="card-label">Governance</div>
+    <div style="margin-top: var(--space-md);">
+      <div class="governance-status-row">
+        <span class="settings-label">Policy Engine</span>
+        <span class="settings-value">
+          {% if risk_controls.policy_engine_enabled %}
+            <span class="badge badge-positive">Active</span>
+            <span style="color: var(--text-muted); font-size: 0.8125rem; margin-left: 8px;">
+              {{ risk_controls.policy_rules_count }} rules enforced
+            </span>
+          {% else %}
+            <span class="badge badge-warning">Disabled</span>
+          {% endif %}
+        </span>
+      </div>
+      <div class="governance-status-row">
+        <span class="settings-label">Approval Workflow</span>
+        <span class="settings-value">
+          {% if risk_controls.approval_workflow %}
+            <span class="badge badge-positive">Enabled</span>
+            {% if risk_controls.auto_approve_l1 %}
+              <span style="color: var(--text-muted); font-size: 0.8125rem; margin-left: 8px;">auto L1</span>
+            {% endif %}
+          {% else %}
+            <span class="badge badge-warning">Disabled</span>
+          {% endif %}
+        </span>
+      </div>
+      <div class="governance-status-row">
+        <span class="settings-label">Shadow Mode</span>
+        <span class="settings-value">
+          {% if risk_controls.shadow_mode %}
+            <span class="badge badge-warning">On — violations tracked, not blocking</span>
+          {% else %}
+            <span style="color: var(--text-muted);">Off (enforcing)</span>
+          {% endif %}
+        </span>
+      </div>
+      <div class="governance-status-row">
+        <span class="settings-label">Pending Approvals</span>
+        <span class="settings-value">
+          {% if risk_controls.pending_approvals > 0 %}
+            <a href="/" style="color: var(--color-warning); font-weight: 600;">
+              {{ risk_controls.pending_approvals }} awaiting action →
+            </a>
+          {% else %}
+            <span style="color: var(--text-muted);">None</span>
+          {% endif %}
+        </span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Kill Switch Confirmation Modal -->
+<div class="modal-overlay hidden" id="kill-switch-modal" role="dialog" aria-modal="true">
+  <div class="modal-box">
+    <div class="modal-title" id="ks-modal-title">Confirm Action</div>
+    <div class="modal-body" id="ks-modal-body"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeKillSwitchModal()">Cancel</button>
+      <button class="btn" id="ks-modal-confirm" onclick="submitKillSwitch()">Confirm</button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  let _ksAction = null;
+
+  function showKillSwitchModal(action) {
+    _ksAction = action;
+    const modal = document.getElementById('kill-switch-modal');
+    const title = document.getElementById('ks-modal-title');
+    const body = document.getElementById('ks-modal-body');
+    const confirm = document.getElementById('ks-modal-confirm');
+
+    if (action === 'activate') {
+      title.textContent = 'Activate Emergency Stop?';
+      body.innerHTML = '<strong style="color: var(--color-critical);">This will immediately halt ALL new orders.</strong><br><br>Existing open positions will remain. Only activate in a genuine emergency. This action is logged in the audit trail.';
+      confirm.className = 'btn btn-kill-switch activate';
+      confirm.textContent = 'Yes, Activate Emergency Stop';
+    } else {
+      title.textContent = 'Resume Trading?';
+      body.innerHTML = 'This will deactivate the emergency stop and allow new orders to be placed again. Confirm only when the situation is resolved.';
+      confirm.className = 'btn btn-kill-switch deactivate';
+      confirm.textContent = 'Yes, Resume Trading';
+    }
+    modal.classList.remove('hidden');
+  }
+
+  function closeKillSwitchModal() {
+    document.getElementById('kill-switch-modal').classList.add('hidden');
+    _ksAction = null;
+  }
+
+  function submitKillSwitch() {
+    if (!_ksAction) return;
+    const endpoint = _ksAction === 'activate'
+      ? '/actions/kill-switch/activate'
+      : '/actions/kill-switch/deactivate';
+
+    fetch(endpoint, { method: 'POST' })
+      .then(r => r.text())
+      .then(html => {
+        const card = document.getElementById('kill-switch-card');
+        if (card) card.outerHTML = html;
+        closeKillSwitchModal();
+      })
+      .catch(() => closeKillSwitchModal());
+  }
+
+  document.getElementById('kill-switch-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeKillSwitchModal();
+  });
+</script>
+{% endblock %}

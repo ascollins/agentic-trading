@@ -1,0 +1,18 @@
+{% set active = risk_controls.kill_switch_active | default(false) %}
+<div class="kill-switch-card {{ 'active' if active else '' }}" id="kill-switch-card"
+     hx-get="/partials/risk/kill-switch" hx-trigger="every 10s" hx-swap="outerHTML">
+  <div class="kill-switch-info">
+    {% if active %}
+      <h3 style="color: var(--color-critical);">&#x1F6D1; Emergency Stop — ACTIVE</h3>
+      <p>All new orders are halted. Existing positions remain open.</p>
+    {% else %}
+      <h3>Emergency Stop</h3>
+      <p>Activating will halt all new orders immediately. Use in emergencies only.</p>
+    {% endif %}
+  </div>
+  {% if active %}
+    <button class="btn-kill-switch deactivate" onclick="showKillSwitchModal('deactivate')">Resume Trading</button>
+  {% else %}
+    <button class="btn-kill-switch activate" onclick="showKillSwitchModal('activate')">Activate Emergency Stop</button>
+  {% endif %}
+</div>

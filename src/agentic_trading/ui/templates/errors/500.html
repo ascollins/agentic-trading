@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% set active_tab = "" %}
+{% block title %}Something Went Wrong{% endblock %}
+
+{% block content %}
+<div class="error-page">
+  <div class="error-code">500</div>
+  <div class="error-title">Something Went Wrong</div>
+  <div class="error-detail">
+    An unexpected error occurred. The team has been notified.
+    Try refreshing the page or head back to the dashboard.
+  </div>
+  <a href="/" class="btn btn-primary">← Back to Overview</a>
+</div>
+{% endblock %}

@@ -22,7 +22,11 @@
             <svg class="nav-icon" viewBox="0 0 20 20" fill="currentColor">
               <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z"/>
             </svg>
-            Home
+            Overview
+            <span class="nav-badge" id="nav-approval-badge"
+                  style="{{ '' if pending_approvals_count and pending_approvals_count > 0 else 'display:none;' }}">
+              {{ pending_approvals_count or 0 }}
+            </span>
           </a>
         </li>
         <li>
@@ -34,11 +38,28 @@
           </a>
         </li>
         <li>
+          <a href="/backtest" class="{% if active_tab == 'backtest' %}active{% endif %}"
+             style="font-size: 0.8125rem; padding-left: 2.75rem; opacity: 0.85;">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="currentColor" style="width: 14px; height: 14px;">
+              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"/>
+            </svg>
+            Backtest
+          </a>
+        </li>
+        <li>
           <a href="/activity" class="{% if active_tab == 'activity' %}active{% endif %}">
             <svg class="nav-icon" viewBox="0 0 20 20" fill="currentColor">
               <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"/>
             </svg>
             Activity
+          </a>
+        </li>
+        <li>
+          <a href="/risk" class="{% if active_tab == 'risk' %}active{% endif %}">
+            <svg class="nav-icon" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M10 1.944A11.954 11.954 0 012.166 5C2.056 5.649 2 6.319 2 7c0 5.225 3.34 9.67 8 11.317C14.66 16.67 18 12.225 18 7c0-.682-.057-1.35-.166-2.001A11.954 11.954 0 0110 1.944zM11 14a1 1 0 11-2 0 1 1 0 012 0zm0-7a1 1 0 10-2 0v3a1 1 0 102 0V7z" clip-rule="evenodd"/>
+            </svg>
+            Risk &amp; Controls
           </a>
         </li>
         <li>
@@ -52,11 +73,108 @@
       </ul>
     </nav>
 
+    <!-- Persistent Status Bar -->
+    <div class="status-bar"
+         id="status-bar"
+         hx-get="/partials/status-bar"
+         hx-trigger="every 10s"
+         hx-swap="innerHTML">
+      {% if status_bar is defined %}
+        {% include "partials/status_bar.html" %}
+      {% else %}
+        <div class="status-bar-item">
+          <span class="status-bar-label">Loading...</span>
+        </div>
+      {% endif %}
+    </div>
+
     <!-- Main content -->
-    <main class="main-content">
+    <main class="main-content main-content-with-bar">
       {% block content %}{% endblock %}
     </main>
   </div>
+
+  <!-- Toast notification container -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- Global toast + modal utilities -->
+  <script>
+    // --- Toast notification system ---
+    function showToast(message, type) {
+      type = type || 'success';
+      var container = document.getElementById('toast-container');
+      if (!container) return;
+      var toast = document.createElement('div');
+      toast.className = 'toast toast-' + type;
+      var icon = type === 'success' ? '✓' : type === 'error' ? '✕' : '⚠';
+      toast.innerHTML = '<span>' + icon + '</span> <span>' + message + '</span>';
+      container.appendChild(toast);
+      // Auto-dismiss after 5 seconds
+      setTimeout(function () {
+        toast.classList.add('fade-out');
+        setTimeout(function () { toast.remove(); }, 400);
+      }, 5000);
+    }
+
+    // Listen for HX-Trigger showToast events from HTMX responses
+    document.body.addEventListener('showToast', function (evt) {
+      if (evt.detail && evt.detail.message) {
+        showToast(evt.detail.message, evt.detail.type || 'success');
+      }
+    });
+
+    // --- Global Escape key handler for modals ---
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        var modals = document.querySelectorAll('.modal-overlay:not(.hidden)');
+        if (modals.length > 0) {
+          // Close the topmost (last) open modal
+          var topModal = modals[modals.length - 1];
+          topModal.classList.add('hidden');
+          e.preventDefault();
+        }
+      }
+    });
+  </script>
+
+  <!-- Approval badge + tab title updater -->
+  <script>
+    (function () {
+      var BASE_TITLE = document.title;
+
+      function updateApprovalBadge(count) {
+        var badge = document.getElementById('nav-approval-badge');
+        if (!badge) return;
+        if (count > 0) {
+          badge.textContent = count;
+          badge.style.display = '';
+          document.title = '(' + count + ') ' + BASE_TITLE;
+        } else {
+          badge.style.display = 'none';
+          document.title = BASE_TITLE;
+        }
+      }
+
+      // Sync from server-rendered count on page load
+      var _initCount = {{ pending_approvals_count or 0 }};
+      if (_initCount > 0) {
+        document.title = '(' + _initCount + ') ' + BASE_TITLE;
+      }
+
+      // Re-sync whenever HTMX swaps the status bar (every 10s) or the approvals card
+      document.body.addEventListener('htmx:afterSwap', function (evt) {
+        // The status bar partial injects a hidden span with the authoritative count
+        var carrier = document.getElementById('status-bar-approval-count');
+        if (carrier) {
+          var count = parseInt(carrier.getAttribute('data-count') || '0', 10) || 0;
+          updateApprovalBadge(count);
+        }
+      });
+
+      // Expose for external callers (e.g. HTMX partial that knows new count)
+      window.updateApprovalBadge = updateApprovalBadge;
+    })();
+  </script>
 
   {% block scripts %}{% endblock %}
 </body>

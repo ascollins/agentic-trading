@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% set active_tab = "strategies" %}
+{% block title %}Backtest Launcher{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h2>Backtest Launcher</h2>
+    <div class="breadcrumb">Strategies / Backtest</div>
+  </div>
+</div>
+
+<div style="display: grid; grid-template-columns: 360px 1fr; gap: 24px; align-items: start;">
+
+  <!-- Left: form -->
+  <div class="card">
+    <div class="card-label" style="margin-bottom: 16px;">New Backtest</div>
+
+    <form hx-post="/actions/backtest/run"
+          hx-target="#backtest-results"
+          hx-swap="innerHTML"
+          hx-indicator="#bt-spinner">
+
+      <!-- Symbols -->
+      <div style="margin-bottom: 16px;">
+        <label style="display: block; font-size: 0.8125rem; color: var(--text-muted); margin-bottom: 6px;">
+          Symbols
+          <span class="tooltip-wrap" style="cursor: help; margin-left: 4px;">
+            ⓘ
+            <span class="tooltip-text" style="min-width: 200px;">
+              Comma-separated symbols to test, e.g. <em>BTC/USDT,ETH/USDT</em>.
+              Must match symbols available in the historical data directory.
+            </span>
+          </span>
+        </label>
+        <input type="text" name="symbols" value="BTC/USDT,ETH/USDT"
+               style="width: 100%; background: var(--bg-elevated); border: 1px solid var(--border-card);
+                      border-radius: var(--radius-sm); padding: 7px 10px; color: var(--text-primary);
+                      font-family: 'SF Mono', monospace; font-size: 0.8125rem;"
+               placeholder="BTC/USDT,ETH/USDT">
+      </div>
+
+      <!-- Date range -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+        <div>
+          <label style="display: block; font-size: 0.8125rem; color: var(--text-muted); margin-bottom: 6px;">Start Date</label>
+          <input type="date" name="start_date" value="2024-01-01"
+                 style="width: 100%; background: var(--bg-elevated); border: 1px solid var(--border-card);
+                        border-radius: var(--radius-sm); padding: 7px 10px; color: var(--text-primary);
+                        font-size: 0.8125rem; color-scheme: dark;">
+        </div>
+        <div>
+          <label style="display: block; font-size: 0.8125rem; color: var(--text-muted); margin-bottom: 6px;">End Date</label>
+          <input type="date" name="end_date" value="2024-06-30"
+                 style="width: 100%; background: var(--bg-elevated); border: 1px solid var(--border-card);
+                        border-radius: var(--radius-sm); padding: 7px 10px; color: var(--text-primary);
+                        font-size: 0.8125rem; color-scheme: dark;">
+        </div>
+      </div>
+
+      <!-- Strategy filter -->
+      <div style="margin-bottom: 20px;">
+        <label style="display: block; font-size: 0.8125rem; color: var(--text-muted); margin-bottom: 6px;">
+          Strategy
+          <span class="tooltip-wrap" style="cursor: help; margin-left: 4px;">
+            ⓘ
+            <span class="tooltip-text" style="min-width: 220px;">
+              Select a single strategy to run, or leave as <em>All Strategies</em>
+              to test all enabled strategies simultaneously.
+            </span>
+          </span>
+        </label>
+        <select name="strategy"
+                style="width: 100%; background: var(--bg-elevated); border: 1px solid var(--border-card);
+                       border-radius: var(--radius-sm); padding: 7px 10px; color: var(--text-primary);
+                       font-size: 0.8125rem;">
+          <option value="">All Strategies</option>
+          {% for s in strategies_opts %}
+          <option value="{{ s }}">{{ s | replace('_', ' ') | title }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <!-- Submit -->
+      <button type="submit" class="btn btn-primary"
+              style="width: 100%; padding: 9px; font-size: 0.875rem; font-weight: 600;">
+        <span id="bt-spinner" class="htmx-indicator" style="margin-right: 6px;">⟳</span>
+        Run Backtest
+      </button>
+
+    </form>
+
+    <!-- Info box -->
+    <div style="margin-top: 20px; padding: 10px 12px; background: rgba(139,92,246,0.07);
+                border: 1px solid rgba(139,92,246,0.2); border-radius: var(--radius-sm);
+                font-size: 0.75rem; color: var(--text-muted); line-height: 1.5;">
+      <strong style="color: var(--text-secondary);">How backtests work</strong><br>
+      The backtest engine replays historical candle data through your strategies using simulated
+      fills, slippage, and fees. Results appear in the output log as they are computed.
+      Historical data must be pre-downloaded to <code>data/historical/</code>.
+    </div>
+  </div>
+
+  <!-- Right: results area -->
+  <div>
+    <div id="backtest-results">
+      {% if recent_jobs %}
+        <div style="font-size: 0.8125rem; color: var(--text-muted); margin-bottom: 12px;">
+          Recent runs (last {{ recent_jobs | length }})
+        </div>
+        {% for job in recent_jobs | reverse %}
+          {% include "partials/backtest_job.html" %}
+        {% endfor %}
+      {% else %}
+        <div class="empty-state" style="margin-top: 0; padding: 48px 24px;">
+          <div class="empty-message">No backtest runs yet</div>
+          <div class="empty-detail">
+            Fill in the form and click <strong>Run Backtest</strong> to start your first simulation.
+          </div>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+{% endblock %}

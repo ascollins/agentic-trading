@@ -175,6 +175,7 @@ class TargetPosition(BaseEvent):
     side: Side
     reason: str = ""
     urgency: float = 0.5  # 0=passive, 1=aggressive
+    price_estimate: float = 0.0  # Latest price for notional calculation
 
 
 # ===========================================================================
@@ -269,6 +270,17 @@ class FundingPaymentEvent(BaseEvent):
     funding_rate: Decimal
     payment: Decimal
     position_qty: Decimal
+
+
+class OpenInterestEvent(BaseEvent):
+    """Snapshot of open interest for a perpetual futures contract."""
+
+    source_module: str = "state"
+    symbol: str
+    exchange: Exchange
+    open_interest: float  # contracts / base-asset units
+    open_interest_value: float = 0.0  # notional value in quote currency
+    timestamp_exchange: datetime | None = None  # exchange-reported time
 
 
 # ===========================================================================
@@ -495,3 +507,125 @@ class AgentHealthChanged(BaseEvent):
     agent_type: AgentType
     healthy: bool
     message: str = ""
+
+
+# ===========================================================================
+# Topic: governance (incident management)
+# ===========================================================================
+
+
+class IncidentDeclared(BaseEvent):
+    """Published when an incident is declared by the IncidentManager."""
+
+    source_module: str = "governance.incident"
+    incident_id: str
+    severity: str  # IncidentSeverity.value
+    trigger: str
+    trigger_event_id: str = ""
+    description: str = ""
+    affected_strategies: list[str] = Field(default_factory=list)
+    affected_symbols: list[str] = Field(default_factory=list)
+
+
+class DegradedModeEnabled(BaseEvent):
+    """Published when the system degraded mode changes."""
+
+    source_module: str = "control_plane"
+    mode: str  # DegradedMode.value
+    previous_mode: str = ""
+    reason: str = ""
+    triggered_by: str = ""
+    blocked_tools: list[str] = Field(default_factory=list)
+    allowed_tools: list[str] = Field(default_factory=list)
+
+
+class IncidentCreated(BaseEvent):
+    """Published when an incident is detected by the control plane."""
+
+    source_module: str = "control_plane"
+    incident_id: str = Field(default_factory=_uuid)
+    severity: str  # "warning", "critical", "emergency"
+    component: str
+    description: str
+    auto_action: str = ""  # "degraded_mode", "kill_switch", "none"
+    affected_symbols: list[str] = Field(default_factory=list)
+
+
+class ToolCallRecorded(BaseEvent):
+    """Published after every ToolGateway call (success or failure)."""
+
+    source_module: str = "control_plane.tool_gateway"
+    action_id: str
+    tool_name: str
+    success: bool
+    request_hash: str = ""
+    response_hash: str = ""
+    latency_ms: float = 0.0
+    error: str | None = None
+    was_idempotent_replay: bool = False
+
+
+# ===========================================================================
+# Topic: intelligence.cmt
+# ===========================================================================
+
+
+class CMTAssessment(BaseEvent):
+    """Structured 9-layer CMT analysis produced by CMTAnalystAgent."""
+
+    source_module: str = "intelligence.cmt"
+    symbol: str
+    timeframes_analyzed: list[str] = Field(default_factory=list)
+    layers: dict[str, Any] = Field(default_factory=dict)
+    confluence_score: dict[str, Any] = Field(default_factory=dict)
+    trade_plan: dict[str, Any] | None = None
+    thesis: str = ""
+    system_health: str = "green"  # green / amber / red
+    raw_llm_response: str = ""
+
+
+# ===========================================================================
+# Topic: optimizer.result
+# ===========================================================================
+
+
+class OptimizationCompleted(BaseEvent):
+    """Published when a full optimization cycle finishes."""
+
+    source_module: str = "optimizer"
+    run_number: int
+    strategies_optimized: int = 0
+    strategies_skipped: int = 0
+    strategies_failed: int = 0
+    duration_seconds: float = 0.0
+    recommendations: dict[str, Any] = Field(default_factory=dict)
+
+
+class StrategyOptimizationResult(BaseEvent):
+    """Published per strategy after optimization."""
+
+    source_module: str = "optimizer"
+    strategy_id: str
+    recommendation: str = ""  # OptimizationRecommendation.value
+    current_composite_score: float = 0.0
+    optimized_composite_score: float = 0.0
+    improvement_pct: float = 0.0
+    current_params: dict[str, Any] = Field(default_factory=dict)
+    optimized_params: dict[str, Any] = Field(default_factory=dict)
+    is_overfit: bool = False
+    walk_forward_passed: bool = False
+    auto_applied: bool = False
+    rationale: str = ""
+    metrics: dict[str, float] = Field(default_factory=dict)
+
+
+class ParameterChangeApplied(BaseEvent):
+    """Published when optimized parameters are auto-applied to a running strategy."""
+
+    source_module: str = "optimizer"
+    strategy_id: str
+    old_params: dict[str, Any] = Field(default_factory=dict)
+    new_params: dict[str, Any] = Field(default_factory=dict)
+    improvement_pct: float = 0.0
+    approval_required: bool = False
+    approval_id: str = ""

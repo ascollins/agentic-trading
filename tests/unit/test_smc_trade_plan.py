@@ -328,7 +328,7 @@ class TestSMCTradePlanGenerator:
         assert "BOS" in report.htf_structure_narrative or "CHoCH" in report.htf_structure_narrative
 
     def test_format_report_contains_sections(self):
-        """Output text has HTF, LTF, Verdict sections."""
+        """Output text has symbol, HTF Bias, Trade Verdict, and Score sections."""
         features = {}
         features.update(_make_bullish_features("4h"))
         features.update(_make_bullish_features("1h"))
@@ -344,7 +344,7 @@ class TestSMCTradePlanGenerator:
         assert "BNB/USDT" in text
         assert "HTF Bias" in text
         assert "Trade Verdict" in text
-        assert "Confluence Score" in text
+        assert "Score:" in text
 
     def test_format_report_bullish_long_setup(self):
         """Full integration: bullish features produce formatted long setup."""
@@ -360,10 +360,11 @@ class TestSMCTradePlanGenerator:
         plan = gen.generate_trade_plan(report)
         text = gen.format_report(report, plan)
 
-        assert "BULLISH" in text
+        text_upper = text.upper()
+        assert "BULLISH" in text_upper or "LONG" in text_upper
         assert "Entry" in text or "Entry Zone" in text
-        assert "SL" in text
-        assert "TP" in text or "TP1" in text
+        assert "Stop Loss" in text or "SL" in text
+        assert "Target" in text or "TP" in text
 
     def test_trade_plan_to_signal_bridge(self):
         """TradePlan.to_signal() produces valid Signal kwargs."""

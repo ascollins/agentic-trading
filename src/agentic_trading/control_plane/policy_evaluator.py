@@ -27,6 +27,7 @@ from agentic_trading.governance.policy_models import PolicyDecision, PolicyMode
 from .action_types import (
     ApprovalTier,
     CPPolicyDecision,
+    DegradedMode,
     MUTATING_TOOLS,
     ProposedAction,
     ToolName,
@@ -58,6 +59,22 @@ _PROTECTIVE_TOOLS = frozenset({
     ToolName.SET_TRADING_STOP,
 })
 
+# Degraded mode: tools allowed per mode
+_READ_ONLY_TOOLS = frozenset({
+    ToolName.GET_POSITIONS,
+    ToolName.GET_BALANCES,
+    ToolName.GET_OPEN_ORDERS,
+    ToolName.GET_INSTRUMENT,
+    ToolName.GET_FUNDING_RATE,
+    ToolName.GET_CLOSED_PNL,
+})
+
+_RISK_OFF_TOOLS = _READ_ONLY_TOOLS | frozenset({
+    ToolName.CANCEL_ORDER,
+    ToolName.CANCEL_ALL_ORDERS,
+    ToolName.SET_TRADING_STOP,
+})
+
 
 class CPPolicyEvaluator:
     """Deterministic policy evaluator implementing IPolicyEvaluator.
@@ -84,6 +101,9 @@ class CPPolicyEvaluator:
         self._context_builder = context_builder
         self._tier_overrides = tier_overrides or {}
         self._default_tier = default_tier
+        self._system_state: dict[str, str] = {
+            "degraded_mode": DegradedMode.NORMAL.value,
+        }
 
     # ------------------------------------------------------------------
     # IPolicyEvaluator interface
@@ -118,6 +138,11 @@ class CPPolicyEvaluator:
 
     def _do_evaluate(self, proposed: ProposedAction) -> CPPolicyDecision:
         """Core evaluation logic."""
+        # 0. Degraded mode pre-check — blocks before any policy evaluation
+        degraded_decision = self._check_degraded_mode(proposed)
+        if degraded_decision is not None:
+            return degraded_decision
+
         # 1. Build context from ProposedAction
         context = self._build_context(proposed)
 
@@ -254,6 +279,84 @@ class CPPolicyEvaluator:
         if action in _REDUCE_ACTIONS:
             return ApprovalTier.T1_NOTIFY
         return ApprovalTier.T0_AUTONOMOUS
+
+    # ------------------------------------------------------------------
+    # Degraded mode enforcement
+    # ------------------------------------------------------------------
+
+    def _check_degraded_mode(
+        self, proposed: ProposedAction,
+    ) -> CPPolicyDecision | None:
+        """Check if the current degraded mode blocks this tool.
+
+        Returns a BLOCK CPPolicyDecision if blocked, or None to continue.
+        """
+        mode_str = self._system_state.get("degraded_mode", "normal")
+        try:
+            mode = DegradedMode(mode_str)
+        except ValueError:
+            mode = DegradedMode.NORMAL
+
+        if mode == DegradedMode.NORMAL:
+            return None
+
+        tool = proposed.tool_name
+
+        if mode == DegradedMode.FULL_STOP:
+            return CPPolicyDecision(
+                action_id=proposed.action_id,
+                correlation_id=proposed.correlation_id,
+                allowed=False,
+                tier=ApprovalTier.T0_AUTONOMOUS,
+                sizing_multiplier=0.0,
+                reasons=[f"degraded_mode_full_stop: all tools blocked"],
+                policy_set_version="system",
+            )
+
+        if mode == DegradedMode.READ_ONLY:
+            if tool not in _READ_ONLY_TOOLS:
+                return CPPolicyDecision(
+                    action_id=proposed.action_id,
+                    correlation_id=proposed.correlation_id,
+                    allowed=False,
+                    tier=ApprovalTier.T0_AUTONOMOUS,
+                    sizing_multiplier=0.0,
+                    reasons=[f"degraded_mode_read_only: {tool.value} blocked"],
+                    policy_set_version="system",
+                )
+            return None  # Read-only tools allowed
+
+        if mode == DegradedMode.RISK_OFF_ONLY:
+            if tool not in _RISK_OFF_TOOLS:
+                return CPPolicyDecision(
+                    action_id=proposed.action_id,
+                    correlation_id=proposed.correlation_id,
+                    allowed=False,
+                    tier=ApprovalTier.T0_AUTONOMOUS,
+                    sizing_multiplier=0.0,
+                    reasons=[f"degraded_mode_risk_off: {tool.value} blocked"],
+                    policy_set_version="system",
+                )
+            return None  # Risk-off tools allowed
+
+        return None
+
+    # ------------------------------------------------------------------
+    # System state management
+    # ------------------------------------------------------------------
+
+    def set_system_state(self, key: str, value: str) -> None:
+        """Set a system state value (e.g., degraded_mode)."""
+        self._system_state[key] = value
+
+    def get_system_state(self, key: str) -> str:
+        """Get a system state value."""
+        return self._system_state.get(key, "")
+
+    @property
+    def degraded_mode(self) -> str:
+        """Current degraded mode level."""
+        return self._system_state.get("degraded_mode", DegradedMode.NORMAL.value)
 
     # ------------------------------------------------------------------
     # Introspection

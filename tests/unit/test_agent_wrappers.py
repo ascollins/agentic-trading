@@ -127,7 +127,8 @@ class TestExecutionAgent:
         assert not agent.is_running
 
     @pytest.mark.asyncio
-    async def test_adapter_accessible(self):
+    async def test_adapter_accessible_via_private(self):
+        """B8: .adapter property removed; adapter available via _adapter."""
         from agentic_trading.agents.execution import ExecutionAgent
 
         adapter = AsyncMock()
@@ -136,7 +137,9 @@ class TestExecutionAgent:
             event_bus=AsyncMock(),
             risk_manager=AsyncMock(),
         )
-        assert agent.adapter is adapter
+        # Public .adapter removed (B8 fix); use _adapter for internal access
+        assert agent._adapter is adapter
+        assert not hasattr(agent, "adapter")
 
 
 # ---------------------------------------------------------------------------
@@ -350,5 +353,5 @@ class TestAgentOrchestrator:
         orchestrator = AgentOrchestrator(settings, ctx)
         await orchestrator.setup()
 
-        # Paper mode should have created an adapter
-        assert orchestrator.adapter is not None
+        # Paper mode should have created an adapter (accessible via _adapter)
+        assert orchestrator._adapter is not None

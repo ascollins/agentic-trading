@@ -168,6 +168,9 @@ class AgentOrchestrator:
             optimizer = OptimizerScheduler(
                 config=settings.optimizer_scheduler,
                 data_dir=settings.backtest.data_dir,
+                event_bus=ctx.event_bus,
+                strategy_config=settings.strategies,
+                governance_gate=governance_gate,
                 agent_id="optimizer-scheduler",
             )
             self._registry.register(optimizer)

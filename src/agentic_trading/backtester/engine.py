@@ -31,7 +31,7 @@ from agentic_trading.event_bus.memory_bus import MemoryEventBus
 
 from .fee_model import FeeModel, FundingModel
 from .fill_simulator import FillSimulator
-from .results import BacktestResult, compute_metrics
+from .results import BacktestResult, compute_metrics, compute_per_strategy_metrics
 from .slippage import create_slippage_model
 
 logger = logging.getLogger(__name__)
@@ -72,6 +72,9 @@ class BacktestEngine:
         partial_fills: bool = True,
         latency_ms: int = 50,
         seed: int = 42,
+        max_concurrent_positions: int = 4,
+        max_daily_entries: int = 6,
+        portfolio_cooldown_seconds: int = 3600,
     ) -> None:
         self._strategies = strategies
         self._feature_engine = feature_engine
@@ -79,6 +82,11 @@ class BacktestEngine:
         self._instruments = instruments or {}
         self._initial_capital = initial_capital
         self._seed = seed
+
+        # Portfolio-wide trade limiting
+        self._max_concurrent_positions = max_concurrent_positions
+        self._max_daily_entries = max_daily_entries
+        self._portfolio_cooldown_seconds = portfolio_cooldown_seconds
 
         # Simulation components
         self._clock = SimClock()
@@ -100,10 +108,14 @@ class BacktestEngine:
         self._sim_positions: dict[str, _SimPosition] = {}  # symbol → position
         self._last_price: dict[str, float] = {}  # symbol → last known close
         self._equity_curve: list[float] = [initial_capital]
-        self._trade_returns: list[float] = []
+        self._trade_returns: list[tuple[str, float]] = []  # (strategy_id, return)
         self._total_fees = 0.0
         self._total_funding = 0.0
         self._event_log: list[dict[str, Any]] = []
+
+        # Trade limiting state
+        self._daily_entry_count: dict[str, int] = {}  # date_str → count
+        self._last_any_entry_time: datetime | None = None
 
     async def run(
         self,
@@ -202,10 +214,11 @@ class BacktestEngine:
 
         await self._event_bus.stop()
 
-        # Compute results
+        # Compute results — extract raw returns for aggregate metrics
+        raw_returns = [r for _, r in self._trade_returns]
         result = compute_metrics(
             equity_curve=self._equity_curve,
-            trade_returns=self._trade_returns,
+            trade_returns=raw_returns,
             fees=self._total_fees,
             funding=self._total_funding,
         )
@@ -213,6 +226,9 @@ class BacktestEngine:
             self._strategies[0].strategy_id if self._strategies else ""
         )
         result.deterministic_hash = self._compute_hash()
+
+        # Compute per-strategy breakdown
+        result.per_strategy = compute_per_strategy_metrics(self._trade_returns)
 
         logger.info("Backtest complete: %s", result.summary())
         return result
@@ -248,15 +264,45 @@ class BacktestEngine:
         if existing and existing.side == direction:
             return
 
-        # Opposite direction → close first
+        # Opposite direction → close first, then open new (reversal)
         if existing and existing.side != direction:
             self._close_position(existing, candle)
+            # Reset cooldown for reversal — same signal triggers both close and open
+            self._last_any_entry_time = None
 
         # Open new position
         self._open_position(signal, candle, direction)
 
     def _open_position(self, signal: Signal, candle: Candle, direction: str) -> None:
         """Open a new position via simulated fill."""
+        # --- Portfolio-wide trade limits ---
+        # 1. Max concurrent positions
+        if len(self._sim_positions) >= self._max_concurrent_positions:
+            logger.debug(
+                "Max concurrent positions (%d) reached, skipping %s",
+                self._max_concurrent_positions, signal.symbol,
+            )
+            return
+
+        # 2. Daily entry limit
+        date_key = self._clock.now().strftime("%Y-%m-%d")
+        if self._daily_entry_count.get(date_key, 0) >= self._max_daily_entries:
+            logger.debug(
+                "Daily entry limit (%d) reached for %s, skipping",
+                self._max_daily_entries, date_key,
+            )
+            return
+
+        # 3. Portfolio cooldown
+        if self._last_any_entry_time is not None:
+            elapsed = (self._clock.now() - self._last_any_entry_time).total_seconds()
+            if elapsed < self._portfolio_cooldown_seconds:
+                logger.debug(
+                    "Portfolio cooldown active (%.0fs of %ds), skipping",
+                    elapsed, self._portfolio_cooldown_seconds,
+                )
+                return
+
         qty = self._compute_qty(signal, candle)
         if qty <= 0:
             return
@@ -312,6 +358,11 @@ class BacktestEngine:
                 entry_time=self._clock.now(),
             )
 
+            # Track daily entries and portfolio cooldown
+            date_key = self._clock.now().strftime("%Y-%m-%d")
+            self._daily_entry_count[date_key] = self._daily_entry_count.get(date_key, 0) + 1
+            self._last_any_entry_time = self._clock.now()
+
     def _close_position(self, pos: _SimPosition, candle: Candle) -> None:
         """Close an existing position and record trade return."""
         close_side = Side.SELL if pos.side == "long" else Side.BUY
@@ -342,13 +393,13 @@ class BacktestEngine:
             else:
                 self._cash -= fill_price * fill_qty
 
-            # Record trade PnL
+            # Record trade PnL with strategy attribution
             if pos.entry_price > 0:
                 if pos.side == "long":
                     trade_ret = (fill_price - pos.entry_price) / pos.entry_price
                 else:
                     trade_ret = (pos.entry_price - fill_price) / pos.entry_price
-                self._trade_returns.append(trade_ret)
+                self._trade_returns.append((pos.strategy_id, trade_ret))
 
         # Remove position
         self._sim_positions.pop(pos.symbol, None)
@@ -375,13 +426,13 @@ class BacktestEngine:
         else:
             self._cash -= stop_price * pos.qty  # Buy to close
 
-        # Record trade PnL
+        # Record trade PnL with strategy attribution
         if pos.entry_price > 0:
             if pos.side == "long":
                 trade_ret = (stop_price - pos.entry_price) / pos.entry_price
             else:
                 trade_ret = (pos.entry_price - stop_price) / pos.entry_price
-            self._trade_returns.append(trade_ret)
+            self._trade_returns.append((pos.strategy_id, trade_ret))
 
         logger.debug(
             "Stop-loss hit: %s %s @ %.2f (entry %.2f, stop %.2f)",
@@ -494,7 +545,7 @@ class BacktestEngine:
         data = json.dumps(
             {
                 "equity_curve": [round(e, 6) for e in self._equity_curve],
-                "trade_returns": [round(r, 8) for r in self._trade_returns],
+                "trade_returns": [round(r, 8) for _, r in self._trade_returns],
                 "total_fees": round(self._total_fees, 6),
                 "seed": self._seed,
             },

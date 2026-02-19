@@ -81,6 +81,9 @@ class RiskConfig(BaseModel):
     circuit_breaker_cooldown_seconds: int = 300
     reconciliation_interval_seconds: int = 30
     kill_switch_cancel_all: bool = True
+    max_concurrent_positions: int = 8  # Max open positions at any time
+    max_daily_entries: int = 10  # Max new entries per calendar day
+    portfolio_cooldown_seconds: int = 3600  # Min seconds between any new entry
 
 
 class ExitConfig(BaseModel):
@@ -120,6 +123,7 @@ class BacktestConfig(BaseModel):
     latency_ms: int = 50
     random_seed: int = 42
     data_dir: str = "data/historical"
+    input_timeframe: str = "1m"  # Aggregate 1m candles to this TF (1m, 5m, 15m, 1h, 4h)
 
 
 class ObservabilityConfig(BaseModel):
@@ -225,8 +229,13 @@ class OptimizerSchedulerConfig(BaseModel):
     enabled: bool = False
     interval_hours: float = 24.0  # How often to run optimizer
     strategies: list[str] = Field(
-        default_factory=lambda: ["trend_following", "mean_reversion", "breakout"]
+        default_factory=lambda: [
+            "multi_tf_ma", "rsi_divergence", "stochastic_macd", "bb_squeeze",
+            "mean_reversion_enhanced", "supply_demand", "fibonacci_confluence",
+            "obv_divergence",
+        ]
     )
+    discover_all_strategies: bool = False  # Auto-discover from registry
     data_window_days: int = 90  # How many days of historical data to use
     n_samples: int = 30  # Parameter combinations to test per run
     top_n_for_wf: int = 3  # Top results for walk-forward validation
@@ -236,6 +245,38 @@ class OptimizerSchedulerConfig(BaseModel):
     results_dir: str = "data/optimizer_results"  # Where to store results JSON
     initial_delay_minutes: float = 5.0  # Delay before first run (allow warmup)
 
+    # Scoring weights (institutional priority ordering)
+    sortino_weight: float = 0.25
+    calmar_weight: float = 0.20
+    max_drawdown_penalty: float = 0.20
+    profit_factor_weight: float = 0.15
+    expectancy_weight: float = 0.10
+    sharpe_weight: float = 0.10
+
+    # Auto-apply guardrails
+    min_improvement_pct: float = 10.0  # Min composite score improvement for UPDATE
+    require_walk_forward_pass: bool = True
+    require_governance_approval: bool = True
+
+    # DISABLE thresholds
+    disable_max_drawdown: float = -0.30
+    disable_min_sharpe: float = -0.5
+
+
+class CMTConfig(BaseModel):
+    """CMT Autonomous Strategist Agent configuration."""
+
+    enabled: bool = False
+    api_key_env: str = "ANTHROPIC_API_KEY"  # Env var holding API key
+    model: str = "claude-sonnet-4-5-20250929"
+    analysis_interval_seconds: int = 14400  # 4 hours
+    min_confluence_score: int = 5  # Minimum CMT confluence for trade signal
+    max_daily_api_calls: int = 50  # Budget guard
+    skill_path: str = "skills/cmt-analyst"  # Path to CMT skill bundle
+    timeframes: list[str] = Field(
+        default_factory=lambda: ["5m", "15m", "1h", "4h", "1d"]
+    )
+
 
 class UIConfig(BaseModel):
     """Supervision dashboard configuration."""
@@ -243,6 +284,17 @@ class UIConfig(BaseModel):
     enabled: bool = True  # Start UI server alongside trading engine
     host: str = "0.0.0.0"  # Bind address
     port: int = 8080  # HTTP port for the supervision UI
+
+
+class ContextConfig(BaseModel):
+    """Context manager configuration."""
+
+    memory_ttl_hours: float = 24.0
+    max_memory_entries: int = 10_000
+    pipeline_log_dir: str = "data/pipeline_logs"
+    memory_store_path: str = "data/memory_store.jsonl"
+    enable_reasoning_capture: bool = True
+    enable_extended_thinking: bool = True
 
 
 # ---------------------------------------------------------------------------
@@ -278,6 +330,8 @@ class Settings(BaseSettings):
         default_factory=OptimizerSchedulerConfig
     )
     ui: UIConfig = Field(default_factory=UIConfig)
+    cmt: CMTConfig = Field(default_factory=CMTConfig)
+    context: ContextConfig = Field(default_factory=ContextConfig)
 
     # Infrastructure
     redis_url: str = "redis://localhost:6379/0"
@@ -325,6 +379,18 @@ def load_settings(
                 data = tomli.load(f)
 
     if overrides:
-        data.update(overrides)
+        _deep_merge(data, overrides)
 
     return Settings(**data)
+
+
+def _deep_merge(base: dict[str, Any], overrides: dict[str, Any]) -> None:
+    """Deep merge *overrides* into *base*, modifying *base* in place.
+
+    Only dicts are merged recursively; other types are replaced.
+    """
+    for key, value in overrides.items():
+        if key in base and isinstance(base[key], dict) and isinstance(value, dict):
+            _deep_merge(base[key], value)
+        else:
+            base[key] = value

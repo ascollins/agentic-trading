@@ -19,15 +19,76 @@
       <div class="system-stat">
         Last candle: <strong>{{ system.last_candle_seconds }}s</strong> ago
       </div>
-      {% if system.dlq_count > 0 %}
-      <div class="system-stat" style="color: var(--color-warning);">
-        DLQ: <strong>{{ system.dlq_count }}</strong>
+  {% if system.dlq_count > 0 %}
+      <div class="system-stat tooltip-wrap" style="color: var(--color-warning); cursor: help;">
+        ⚠ Processing errors: <strong>{{ system.dlq_count }}</strong>
+        <span class="tooltip-text" style="text-align: left; min-width: 220px;">
+          <strong>Processing Errors</strong><br><br>
+          {{ system.dlq_count }} event{{ 's' if system.dlq_count != 1 else '' }} could not be
+          processed after retries and were moved to the dead-letter queue.
+          Check the application logs for details.
+        </span>
       </div>
       {% endif %}
     </div>
+
+    <!-- Per-agent detail (expandable) -->
+    {% if system.agent_details %}
+    <div style="margin-top: var(--space-md);">
+      <button class="agent-expand-toggle" onclick="toggleAgentDetails(this)" type="button">
+        Show details ▶
+      </button>
+      <div class="agent-detail-panel" style="display: none; margin-top: var(--space-sm);">
+        <table class="agent-detail-table">
+          <thead>
+            <tr>
+              <th>Agent</th>
+              <th>Type</th>
+              <th>Status</th>
+              <th>Errors</th>
+              <th>Last Active</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for agent in system.agent_details %}
+            <tr class="agent-row {{ 'unhealthy' if not agent.healthy else '' }}">
+              <td style="font-weight: 500;">{{ agent.name }}</td>
+              <td>{{ agent.type }}</td>
+              <td>
+                <span class="status-dot {{ 'healthy' if agent.healthy else 'critical' }}"
+                      style="width: 8px; height: 8px;"></span>
+                {{ 'Healthy' if agent.healthy else 'Unhealthy' }}
+              </td>
+              <td style="font-family: 'SF Mono', monospace;">
+                {% if agent.error_count > 0 %}
+                  <span style="color: var(--color-warning);">{{ agent.error_count }}</span>
+                {% else %}
+                  <span style="color: var(--text-muted);">0</span>
+                {% endif %}
+              </td>
+              <td style="color: var(--text-muted);">{{ agent.last_work }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
   {% else %}
     <div class="empty-state">
       <div class="empty-message">System status unavailable</div>
+      <div class="empty-detail">The agent registry has not initialised yet — check application logs</div>
     </div>
   {% endif %}
 </div>
+
+<script>
+  function toggleAgentDetails(btn) {
+    var panel = btn.nextElementSibling;
+    if (!panel) return;
+    var visible = panel.style.display !== 'none';
+    panel.style.display = visible ? 'none' : 'block';
+    btn.textContent = visible ? 'Show details ▶' : 'Hide details ▼';
+  }
+</script>

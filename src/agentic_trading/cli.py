@@ -214,5 +214,151 @@ def _print_optimizer_result(
     click.echo(f"\n{'=' * 70}\n")
 
 
+# ---------------------------------------------------------------------------
+# Soteria reasoning CLI commands
+# ---------------------------------------------------------------------------
+
+
+@main.command()
+@click.argument("conversation_id")
+@click.option("--store-path", default="data/conversations.jsonl", help="Conversation store path")
+def explain(conversation_id: str, store_path: str) -> None:
+    """Explain a specific reasoning conversation in plain English."""
+    from .reasoning.conversation_store import JsonFileConversationStore
+
+    store = JsonFileConversationStore(store_path)
+    text = store.explain(conversation_id)
+    click.echo(text)
+
+
+@main.command()
+@click.argument("conversation_id")
+@click.option("--store-path", default="data/conversations.jsonl", help="Conversation store path")
+@click.option("--format", "fmt", type=click.Choice(["desk", "chain", "explain"]), default="desk")
+def replay(conversation_id: str, store_path: str, fmt: str) -> None:
+    """Replay a reasoning conversation (desk chat, chain of thought, or explanation)."""
+    from .reasoning.conversation_store import JsonFileConversationStore
+
+    store = JsonFileConversationStore(store_path)
+    conv = store.replay(conversation_id)
+
+    if conv is None:
+        click.echo(f"Conversation {conversation_id} not found.")
+        return
+
+    if fmt == "desk":
+        click.echo(conv.print_desk_conversation())
+    elif fmt == "chain":
+        click.echo(conv.print_chain_of_thought())
+    else:
+        click.echo(conv.explain())
+
+
+@main.command("show-disagreements")
+@click.option("--symbol", default=None, help="Filter by symbol")
+@click.option("--limit", default=10, type=int, help="Max conversations to show")
+@click.option("--store-path", default="data/conversations.jsonl", help="Conversation store path")
+def show_disagreements(symbol: str | None, limit: int, store_path: str) -> None:
+    """Show conversations where agents disagreed."""
+    from .reasoning.conversation_store import JsonFileConversationStore
+
+    store = JsonFileConversationStore(store_path)
+    convs = store.find_disagreements(symbol, limit=limit)
+
+    if not convs:
+        click.echo("No disagreements found.")
+        return
+
+    click.echo(f"\nFound {len(convs)} conversation(s) with disagreements:\n")
+    for conv in convs:
+        ts = conv.started_at.strftime("%Y-%m-%d %H:%M")
+        outcome = conv.outcome.value.upper()
+        msgs = len(conv.messages)
+        click.echo(f"  {conv.conversation_id[:12]}  {ts}  {conv.symbol:12s}  {outcome:15s}  {msgs} msgs")
+
+        # Show challenge/disagreement messages
+        for msg in conv.messages:
+            if msg.is_challenge:
+                click.echo(
+                    f"    ⚠️  {msg.sender.display_name}: {msg.content[:80]}"
+                )
+    click.echo()
+
+
+@main.command("agent-reasoning")
+@click.option("--symbol", default=None, help="Filter by symbol")
+@click.option("--strategy", default=None, help="Filter by strategy")
+@click.option("--limit", default=10, type=int, help="Max conversations to show")
+@click.option("--store-path", default="data/conversations.jsonl", help="Conversation store path")
+def agent_reasoning(
+    symbol: str | None, strategy: str | None, limit: int, store_path: str
+) -> None:
+    """List recent agent reasoning conversations."""
+    from .reasoning.conversation_store import JsonFileConversationStore
+
+    store = JsonFileConversationStore(store_path)
+    convs = store.query(symbol=symbol, strategy_id=strategy, limit=limit)
+
+    if not convs:
+        click.echo("No conversations found.")
+        return
+
+    click.echo(f"\n{'ID':14s} {'Time':18s} {'Symbol':12s} {'Outcome':15s} {'Msgs':>5s} {'Dur':>8s}")
+    click.echo("-" * 75)
+
+    for conv in convs:
+        ts = conv.started_at.strftime("%Y-%m-%d %H:%M")
+        outcome = conv.outcome.value
+        dur = f"{conv.duration_ms:.0f}ms" if conv.completed_at else "..."
+        flags = ""
+        if conv.has_veto:
+            flags += " 🚫"
+        if conv.has_disagreement:
+            flags += " ⚠️"
+        click.echo(
+            f"  {conv.conversation_id[:12]}  {ts}  {conv.symbol:12s}  "
+            f"{outcome:15s}  {len(conv.messages):>4d}  {dur:>7s}{flags}"
+        )
+
+    click.echo()
+
+
+@main.command("show-vetoes")
+@click.option("--symbol", default=None, help="Filter by symbol")
+@click.option("--limit", default=10, type=int, help="Max conversations to show")
+@click.option("--store-path", default="data/conversations.jsonl", help="Conversation store path")
+def show_vetoes(symbol: str | None, limit: int, store_path: str) -> None:
+    """Show conversations where Risk Manager vetoed a trade."""
+    from .reasoning.conversation_store import JsonFileConversationStore
+
+    store = JsonFileConversationStore(store_path)
+    convs = store.find_vetoed(symbol, limit=limit)
+
+    if not convs:
+        click.echo("No vetoed conversations found.")
+        return
+
+    click.echo(f"\nFound {len(convs)} vetoed conversation(s):\n")
+    for conv in convs:
+        ts = conv.started_at.strftime("%Y-%m-%d %H:%M")
+        click.echo(f"  {conv.conversation_id[:12]}  {ts}  {conv.symbol}")
+
+        # Show veto messages
+        for msg in conv.messages:
+            if msg.is_veto:
+                click.echo(
+                    f"    🚫 {msg.sender.display_name}: {msg.content[:100]}"
+                )
+
+        # Show what the signal was
+        for msg in conv.messages:
+            if msg.message_type.value == "signal":
+                click.echo(
+                    f"    📊 Signal from {msg.sender.display_name}: "
+                    f"{msg.content[:80]}"
+                )
+    click.echo()
+
+
 if __name__ == "__main__":
     main()

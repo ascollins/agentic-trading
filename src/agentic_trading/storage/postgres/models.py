@@ -442,3 +442,124 @@ class GovernanceLog(Base):
             f"<GovernanceLog(trace_id={self.trace_id!r}, "
             f"strategy={self.strategy_id!r}, action={self.action!r})>"
         )
+
+
+# ---------------------------------------------------------------------------
+# AgentConversationRecord (Soteria reasoning)
+# ---------------------------------------------------------------------------
+
+class AgentConversationRecord(Base):
+    """Persisted agent reasoning conversation.
+
+    Stores the full multi-agent conversation including outcome,
+    traces (as JSONB), and denormalized flags for fast querying.
+    """
+
+    __tablename__ = "agent_conversations"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=_new_uuid,
+    )
+    conversation_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    symbol: Mapped[str] = mapped_column(String(32), nullable=False, default="")
+    timeframe: Mapped[str] = mapped_column(String(8), nullable=False, default="")
+    trigger_event: Mapped[str] = mapped_column(String(128), nullable=False, default="")
+    strategy_id: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    outcome: Mapped[str] = mapped_column(String(32), nullable=False, default="no_trade")
+    outcome_details: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    context_snapshot: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    has_veto: Mapped[bool] = mapped_column(Boolean, default=False)
+    has_disagreement: Mapped[bool] = mapped_column(Boolean, default=False)
+    message_count: Mapped[int] = mapped_column(Integer, default=0)
+    trace_count: Mapped[int] = mapped_column(Integer, default=0)
+    duration_ms: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    traces_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False,
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, server_default=func.now(),
+    )
+
+    # Relationships
+    messages: Mapped[list[AgentMessageRecord]] = relationship(
+        "AgentMessageRecord",
+        back_populates="conversation",
+        foreign_keys="[AgentMessageRecord.conversation_id]",
+        primaryjoin="AgentConversationRecord.conversation_id == AgentMessageRecord.conversation_id",
+        lazy="selectin",
+    )
+
+    __table_args__ = (
+        Index("ix_agentconv_conversation_id", "conversation_id"),
+        Index("ix_agentconv_symbol", "symbol"),
+        Index("ix_agentconv_strategy_id", "strategy_id"),
+        Index("ix_agentconv_outcome", "outcome"),
+        Index("ix_agentconv_has_veto", "has_veto"),
+        Index("ix_agentconv_has_disagreement", "has_disagreement"),
+        Index("ix_agentconv_started_at", "started_at"),
+        Index("ix_agentconv_symbol_outcome", "symbol", "outcome"),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<AgentConversationRecord(conversation_id={self.conversation_id!r}, "
+            f"symbol={self.symbol!r}, outcome={self.outcome!r})>"
+        )
+
+
+# ---------------------------------------------------------------------------
+# AgentMessageRecord (Soteria reasoning)
+# ---------------------------------------------------------------------------
+
+class AgentMessageRecord(Base):
+    """Persisted inter-agent message from a Soteria reasoning conversation."""
+
+    __tablename__ = "agent_messages"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=_new_uuid,
+    )
+    message_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    conversation_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    sender: Mapped[str] = mapped_column(String(32), nullable=False)
+    recipients: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    message_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    structured_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    confidence: Mapped[Decimal] = mapped_column(Numeric(5, 4), default=Decimal("0"))
+    references: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    metadata_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, server_default=func.now(),
+    )
+
+    # Relationships
+    conversation: Mapped[AgentConversationRecord | None] = relationship(
+        "AgentConversationRecord",
+        back_populates="messages",
+        foreign_keys=[conversation_id],
+        primaryjoin="AgentMessageRecord.conversation_id == AgentConversationRecord.conversation_id",
+        lazy="selectin",
+    )
+
+    __table_args__ = (
+        Index("ix_agentmsg_message_id", "message_id"),
+        Index("ix_agentmsg_conversation_id", "conversation_id"),
+        Index("ix_agentmsg_sender", "sender"),
+        Index("ix_agentmsg_message_type", "message_type"),
+        Index("ix_agentmsg_timestamp", "timestamp"),
+        Index("ix_agentmsg_conv_sender", "conversation_id", "sender"),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<AgentMessageRecord(message_id={self.message_id!r}, "
+            f"sender={self.sender!r}, type={self.message_type!r})>"
+        )

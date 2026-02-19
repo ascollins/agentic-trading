@@ -105,7 +105,10 @@ class TestBybitTradingStopParams:
 
     @pytest.mark.asyncio
     async def test_trigger_types_always_present(self, adapter):
-        """tpTriggerBy and slTriggerBy must always be 'LastPrice'."""
+        """tpTriggerBy and slTriggerBy must always be 'MarkPrice' for USDT perps.
+
+        MarkPrice avoids wick-triggered stop hunts that can occur with LastPrice.
+        """
         adapter._ccxt.privatePostV5PositionTradingStop = AsyncMock(
             return_value={"retCode": 0, "retMsg": "OK"}
         )
@@ -114,8 +117,8 @@ class TestBybitTradingStopParams:
         )
         call_args = adapter._ccxt.privatePostV5PositionTradingStop.call_args
         params = call_args[0][0]
-        assert params["tpTriggerBy"] == "LastPrice"
-        assert params["slTriggerBy"] == "LastPrice"
+        assert params["tpTriggerBy"] == "MarkPrice"
+        assert params["slTriggerBy"] == "MarkPrice"
 
     @pytest.mark.asyncio
     async def test_tp_sl_values_as_strings(self, adapter):
@@ -196,6 +199,46 @@ class TestBybitTradingStopParams:
         assert params["symbol"] == "SOLUSDT"
         assert params["positionIdx"] == 0
         assert params["tpslMode"] == "Full"
+
+    @pytest.mark.asyncio
+    async def test_active_price_included_with_trailing(self, adapter):
+        """activePrice is sent alongside trailingStop when both are provided.
+
+        Bybit V5 uses activePrice to defer trailing stop activation until
+        the market reaches a specific level (breakeven activation pattern).
+        """
+        adapter._ccxt.privatePostV5PositionTradingStop = AsyncMock(
+            return_value={"retCode": 0, "retMsg": "OK"}
+        )
+        await adapter.set_trading_stop(
+            "BTC/USDT",
+            trailing_stop=Decimal("500"),
+            active_price=Decimal("97000"),
+        )
+        call_args = adapter._ccxt.privatePostV5PositionTradingStop.call_args
+        params = call_args[0][0]
+        assert params["trailingStop"] == "500.0000"
+        assert params["activePrice"] == "97000.0000"
+
+    @pytest.mark.asyncio
+    async def test_active_price_not_sent_without_trailing(self, adapter):
+        """activePrice is NOT sent when there is no trailingStop.
+
+        Sending activePrice without a trailing stop would be meaningless noise
+        in the Bybit API request.
+        """
+        adapter._ccxt.privatePostV5PositionTradingStop = AsyncMock(
+            return_value={"retCode": 0, "retMsg": "OK"}
+        )
+        await adapter.set_trading_stop(
+            "BTC/USDT",
+            take_profit=Decimal("110000"),
+            active_price=Decimal("97000"),  # ignored when no trailing_stop
+        )
+        call_args = adapter._ccxt.privatePostV5PositionTradingStop.call_args
+        params = call_args[0][0]
+        assert "takeProfit" in params
+        assert "activePrice" not in params
 
 
 class TestPriceRounding:

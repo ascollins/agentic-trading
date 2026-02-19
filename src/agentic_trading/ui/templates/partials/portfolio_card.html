@@ -1,19 +1,85 @@
 <div class="card">
   <div class="card-label">Portfolio</div>
   {% if portfolio %}
-    <div style="display: flex; align-items: baseline; gap: 12px; margin-bottom: 8px;">
+    <div style="display: flex; align-items: baseline; gap: 12px; margin-bottom: 12px;">
       <span class="portfolio-equity">${{ "{:,.0f}".format(portfolio.equity) }}</span>
+      <span style="color: var(--text-muted); font-size: 0.875rem;">total equity</span>
+    </div>
+
+    <!-- Period tabs -->
+    <div style="display: flex; gap: 4px; margin-bottom: 10px;" id="pnl-tabs">
+      <button onclick="switchPnlTab('today')" id="tab-today"
+              style="font-size: 0.75rem; padding: 2px 10px; border-radius: 4px; border: 1px solid var(--accent-cyan); background: var(--accent-cyan); color: #000; cursor: pointer; font-weight: 600;">
+        Today
+      </button>
+      <button onclick="switchPnlTab('7d')" id="tab-7d"
+              style="font-size: 0.75rem; padding: 2px 10px; border-radius: 4px; border: 1px solid var(--border-card); background: transparent; color: var(--text-muted); cursor: pointer;">
+        7 Days
+      </button>
+      <button onclick="switchPnlTab('30d')" id="tab-30d"
+              style="font-size: 0.75rem; padding: 2px 10px; border-radius: 4px; border: 1px solid var(--border-card); background: transparent; color: var(--text-muted); cursor: pointer;">
+        30 Days
+      </button>
+    </div>
+
+    <!-- Today panel -->
+    <div id="pnl-panel-today">
       <span class="portfolio-pnl {{ 'positive' if portfolio.pnl_positive else 'negative' }}">
         {{ "+" if portfolio.pnl_positive else "" }}{{ "{:,.2f}".format(portfolio.pnl_today) }}
         ({{ "+" if portfolio.pnl_positive else "" }}{{ "%.2f" | format(portfolio.pnl_today_pct) }}%)
       </span>
+      <div class="card-subtext" style="margin-top: 4px;">realized + unrealized today</div>
     </div>
-    <div class="card-subtext">
+
+    <!-- 7-day panel (hidden by default) -->
+    <div id="pnl-panel-7d" style="display: none;">
+      <span class="portfolio-pnl {{ 'positive' if portfolio.pnl_7d_positive else 'negative' }}">
+        {{ "+" if portfolio.pnl_7d_positive else "" }}{{ "{:,.2f}".format(portfolio.pnl_7d) }}
+        ({{ "+" if portfolio.pnl_7d_positive else "" }}{{ "%.2f" | format(portfolio.pnl_7d_pct) }}%)
+      </span>
+      <div class="card-subtext" style="margin-top: 4px;">realized P&amp;L — last 7 days</div>
+    </div>
+
+    <!-- 30-day panel (hidden by default) -->
+    <div id="pnl-panel-30d" style="display: none;">
+      <span class="portfolio-pnl {{ 'positive' if portfolio.pnl_30d_positive else 'negative' }}">
+        {{ "+" if portfolio.pnl_30d_positive else "" }}{{ "{:,.2f}".format(portfolio.pnl_30d) }}
+        ({{ "+" if portfolio.pnl_30d_positive else "" }}{{ "%.2f" | format(portfolio.pnl_30d_pct) }}%)
+      </span>
+      <div class="card-subtext" style="margin-top: 4px;">realized P&amp;L — last 30 days</div>
+    </div>
+
+    <div class="card-subtext" style="margin-top: 8px;">
       {{ portfolio.open_positions }} open position{{ "s" if portfolio.open_positions != 1 else "" }}
     </div>
+
   {% else %}
     <div class="empty-state">
       <div class="empty-message">No portfolio data</div>
+      <div class="empty-detail">Connect to an exchange in Settings or start a paper trading session to see your equity here.</div>
     </div>
   {% endif %}
 </div>
+
+<script>
+  function switchPnlTab(period) {
+    ['today', '7d', '30d'].forEach(function(p) {
+      var panel = document.getElementById('pnl-panel-' + p);
+      var tab = document.getElementById('tab-' + p);
+      if (panel) panel.style.display = (p === period) ? '' : 'none';
+      if (tab) {
+        if (p === period) {
+          tab.style.background = 'var(--accent-cyan)';
+          tab.style.color = '#000';
+          tab.style.borderColor = 'var(--accent-cyan)';
+          tab.style.fontWeight = '600';
+        } else {
+          tab.style.background = 'transparent';
+          tab.style.color = 'var(--text-muted)';
+          tab.style.borderColor = 'var(--border-card)';
+          tab.style.fontWeight = 'normal';
+        }
+      }
+    });
+  }
+</script>

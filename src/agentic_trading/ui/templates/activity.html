@@ -23,6 +23,18 @@
             hx-swap="innerHTML">
       Trades
     </button>
+    <button class="filter-btn {{ 'active' if filter_type == 'signals' else '' }}"
+            hx-get="/partials/activity/timeline?type=signals"
+            hx-target="#timeline-content"
+            hx-swap="innerHTML">
+      Signals
+    </button>
+    <button class="filter-btn {{ 'active' if filter_type == 'governance' else '' }}"
+            hx-get="/partials/activity/timeline?type=governance"
+            hx-target="#timeline-content"
+            hx-swap="innerHTML">
+      Policy Decisions
+    </button>
     <button class="filter-btn {{ 'active' if filter_type == 'approvals' else '' }}"
             hx-get="/partials/activity/timeline?type=approvals"
             hx-target="#timeline-content"

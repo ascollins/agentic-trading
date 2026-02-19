@@ -99,6 +99,50 @@ class TestPortfolioManagerOnSignal:
         assert "BTC/USDT" in symbols
         assert "ETH/USDT" in symbols
 
+    def test_target_inherits_signal_trace_id(self):
+        """Regression: TargetPosition must carry the Signal's trace_id so the
+        fill handler can look up TP/SL from the signal cache."""
+        pm = PortfolioManager()
+        signal = _make_signal(confidence=0.8)
+        pm.on_signal(signal)
+        ctx = _make_ctx()
+        targets = pm.generate_targets(ctx, capital=100_000.0)
+        assert len(targets) == 1
+        assert targets[0].trace_id == signal.trace_id
+
+    def test_target_inherits_best_signal_trace_id_multi(self):
+        """When multiple signals exist for the same symbol, the target
+        should carry the trace_id of the highest-confidence signal."""
+        pm = PortfolioManager()
+        low = _make_signal(confidence=0.5, strategy_id="strat_a")
+        high = _make_signal(confidence=0.9, strategy_id="strat_b")
+        pm.on_signal(low)
+        pm.on_signal(high)
+        ctx = _make_ctx()
+        targets = pm.generate_targets(ctx, capital=100_000.0)
+        assert len(targets) == 1
+        assert targets[0].trace_id == high.trace_id
+        assert targets[0].strategy_id == high.strategy_id
+
+    def test_trace_id_propagates_through_intent_converter(self):
+        """Full chain: Signal.trace_id -> TargetPosition -> OrderIntent."""
+        from datetime import datetime, timezone
+        from agentic_trading.signal.portfolio.intent_converter import build_order_intents
+
+        pm = PortfolioManager()
+        signal = _make_signal(confidence=0.8)
+        pm.on_signal(signal)
+        ctx = _make_ctx()
+        targets = pm.generate_targets(ctx, capital=100_000.0)
+
+        intents = build_order_intents(
+            targets,
+            exchange=Exchange.BYBIT,
+            timestamp=datetime.now(timezone.utc),
+        )
+        assert len(intents) == 1
+        assert intents[0].trace_id == signal.trace_id
+
     def test_sizing_multiplier(self):
         pm1 = PortfolioManager(sizing_multiplier=1.0)
         pm1.on_signal(_make_signal(confidence=0.8))

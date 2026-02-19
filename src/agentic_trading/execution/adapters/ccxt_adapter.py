@@ -763,6 +763,7 @@ class CCXTAdapter:
         take_profit: Decimal | None = None,
         stop_loss: Decimal | None = None,
         trailing_stop: Decimal | None = None,
+        active_price: Decimal | None = None,
     ) -> dict[str, Any]:
         """Set server-side TP/SL/trailing stop on an existing position.
 
@@ -805,8 +806,8 @@ class CCXTAdapter:
                     "symbol": self._to_bybit_symbol(symbol),
                     "positionIdx": 0,
                     "tpslMode": "Full",
-                    "tpTriggerBy": "LastPrice",
-                    "slTriggerBy": "LastPrice",
+                    "tpTriggerBy": "MarkPrice",
+                    "slTriggerBy": "MarkPrice",
                 }
                 if take_profit is not None:
                     request_params["takeProfit"] = str(_round_price(take_profit))
@@ -814,13 +815,25 @@ class CCXTAdapter:
                     request_params["stopLoss"] = str(_round_price(stop_loss))
                 if trailing_stop is not None:
                     request_params["trailingStop"] = str(_round_price(trailing_stop))
+                if active_price is not None and trailing_stop is not None:
+                    # activePrice defers trailing stop activation until price
+                    # reaches this level (breakeven activation pattern).
+                    request_params["activePrice"] = str(_round_price(active_price))
 
+                logger.debug(
+                    "Bybit set_trading_stop request: %s", request_params,
+                )
                 result = await self._ccxt.privatePostV5PositionTradingStop(
                     request_params
                 )
+                logger.debug(
+                    "Bybit set_trading_stop response: retCode=%s retMsg=%s",
+                    result.get("retCode") if isinstance(result, dict) else "?",
+                    result.get("retMsg") if isinstance(result, dict) else "?",
+                )
                 logger.info(
-                    "CCXT trading stop set: symbol=%s tp=%s sl=%s trail=%s",
-                    symbol, take_profit, stop_loss, trailing_stop,
+                    "CCXT trading stop set: symbol=%s tp=%s sl=%s trail=%s active_price=%s",
+                    symbol, take_profit, stop_loss, trailing_stop, active_price,
                 )
                 return result if isinstance(result, dict) else {"result": result}
 

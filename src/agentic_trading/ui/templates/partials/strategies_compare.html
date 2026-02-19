@@ -1,0 +1,171 @@
+{% if strategies and strategies | length >= 2 %}
+<div class="card" style="margin-bottom: 24px; overflow-x: auto;">
+  <div class="card-label" style="margin-bottom: 16px;">Strategy Comparison</div>
+
+  <table style="width: 100%; border-collapse: collapse; font-size: 0.875rem;">
+    <thead>
+      <tr>
+        <th style="text-align: left; padding: 8px 12px; color: var(--text-muted);
+                   font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;
+                   border-bottom: 1px solid var(--border-card); white-space: nowrap;">
+          Metric
+        </th>
+        {% for s in strategies %}
+        <th style="text-align: right; padding: 8px 12px; color: var(--accent-cyan);
+                   font-size: 0.875rem; border-bottom: 1px solid var(--border-card);
+                   white-space: nowrap; min-width: 140px;">
+          {{ s.strategy_id | replace('_', ' ') | title }}
+        </th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+
+      <!-- Grade / Score -->
+      <tr>
+        <td style="padding: 10px 12px; color: var(--text-muted); white-space: nowrap;
+                   border-bottom: 1px solid rgba(255,255,255,0.04);">Quality Grade</td>
+        {% for s in strategies %}
+        <td style="text-align: right; padding: 10px 12px;
+                   border-bottom: 1px solid rgba(255,255,255,0.04);">
+          <span class="strategy-grade {{ 'score-good' if s.quality_score >= 70 else ('score-ok' if s.quality_score >= 50 else 'score-bad') }}"
+                style="display: inline-block;">
+            {{ s.quality_grade }} {{ s.quality_score }}
+          </span>
+        </td>
+        {% endfor %}
+      </tr>
+
+      <!-- Stage -->
+      <tr>
+        {% set stage_labels = {'candidate': 'Candidate', 'backtest': 'Backtested', 'eval_pack': 'Evaluation', 'paper': 'Paper Testing', 'limited': 'Limited Live', 'scale': 'Scaling'} %}
+        <td style="padding: 10px 12px; color: var(--text-muted); white-space: nowrap;
+                   border-bottom: 1px solid rgba(255,255,255,0.04);">Stage</td>
+        {% for s in strategies %}
+        <td style="text-align: right; padding: 10px 12px;
+                   border-bottom: 1px solid rgba(255,255,255,0.04);
+                   color: var(--accent-cyan); font-size: 0.8125rem;">
+          {{ stage_labels.get(s.stage, s.stage) }}
+        </td>
+        {% endfor %}
+      </tr>
+
+      <!-- Today's P&L -->
+      <tr>
+        <td style="padding: 10px 12px; color: var(--text-muted); white-space: nowrap;
+                   border-bottom: 1px solid rgba(255,255,255,0.04);">P&amp;L Today</td>
+        {% for s in strategies %}
+        <td style="text-align: right; padding: 10px 12px;
+                   border-bottom: 1px solid rgba(255,255,255,0.04);">
+          <span class="{{ 'side-long' if s.pnl_positive else 'side-short' }}"
+                style="font-family: 'SF Mono', monospace; font-weight: 600;">
+            {{ "+" if s.pnl_positive else "" }}${{ "{:,.2f}".format(s.pnl_today) }}
+          </span>
+        </td>
+        {% endfor %}
+      </tr>
+
+      <!-- Win Rate -->
+      <tr>
+        <td style="padding: 10px 12px; color: var(--text-muted); white-space: nowrap;
+                   border-bottom: 1px solid rgba(255,255,255,0.04);">Win Rate</td>
+        {% for s in strategies %}
+        <td style="text-align: right; padding: 10px 12px;
+                   border-bottom: 1px solid rgba(255,255,255,0.04);">
+          {% if s.quality_breakdown.win_rate_pct > 0 %}
+            <span class="{{ 'side-long' if s.quality_breakdown.win_rate_pct >= 50 else 'side-short' }}">
+              {{ s.quality_breakdown.win_rate_pct }}%
+            </span>
+            <span style="color: var(--text-muted); font-size: 0.75rem;"> ({{ s.quality_breakdown.win_rate_score }}/25)</span>
+          {% else %}
+            <span style="color: var(--text-muted);">—</span>
+          {% endif %}
+        </td>
+        {% endfor %}
+      </tr>
+
+      <!-- Profit Factor -->
+      <tr>
+        <td style="padding: 10px 12px; color: var(--text-muted); white-space: nowrap;
+                   border-bottom: 1px solid rgba(255,255,255,0.04);">Profit Factor</td>
+        {% for s in strategies %}
+        <td style="text-align: right; padding: 10px 12px;
+                   border-bottom: 1px solid rgba(255,255,255,0.04);">
+          {% if s.quality_breakdown.profit_factor_val > 0 %}
+            <span class="{{ 'side-long' if s.quality_breakdown.profit_factor_val >= 1.5 else 'side-short' }}">
+              {{ s.quality_breakdown.profit_factor_val }}
+            </span>
+            <span style="color: var(--text-muted); font-size: 0.75rem;"> ({{ s.quality_breakdown.profit_factor_score }}/25)</span>
+          {% else %}
+            <span style="color: var(--text-muted);">—</span>
+          {% endif %}
+        </td>
+        {% endfor %}
+      </tr>
+
+      <!-- Sharpe Ratio -->
+      <tr>
+        <td style="padding: 10px 12px; color: var(--text-muted); white-space: nowrap;
+                   border-bottom: 1px solid rgba(255,255,255,0.04);">Sharpe Ratio</td>
+        {% for s in strategies %}
+        <td style="text-align: right; padding: 10px 12px;
+                   border-bottom: 1px solid rgba(255,255,255,0.04);">
+          {% if s.quality_breakdown.sharpe_val != 0 %}
+            <span class="{{ 'side-long' if s.quality_breakdown.sharpe_val >= 1.0 else 'side-short' }}">
+              {{ s.quality_breakdown.sharpe_val }}
+            </span>
+            <span style="color: var(--text-muted); font-size: 0.75rem;"> ({{ s.quality_breakdown.sharpe_score }}/25)</span>
+          {% else %}
+            <span style="color: var(--text-muted);">—</span>
+          {% endif %}
+        </td>
+        {% endfor %}
+      </tr>
+
+      <!-- Trade Efficiency -->
+      <tr>
+        <td style="padding: 10px 12px; color: var(--text-muted); white-space: nowrap;
+                   border-bottom: 1px solid rgba(255,255,255,0.04);">Trade Efficiency</td>
+        {% for s in strategies %}
+        <td style="text-align: right; padding: 10px 12px;
+                   border-bottom: 1px solid rgba(255,255,255,0.04);">
+          {% if s.quality_breakdown.efficiency_pct > 0 %}
+            <span class="{{ 'side-long' if s.quality_breakdown.efficiency_pct >= 60 else 'side-short' }}">
+              {{ s.quality_breakdown.efficiency_pct }}%
+            </span>
+            <span style="color: var(--text-muted); font-size: 0.75rem;"> ({{ s.quality_breakdown.efficiency_score }}/25)</span>
+          {% else %}
+            <span style="color: var(--text-muted);">—</span>
+          {% endif %}
+        </td>
+        {% endfor %}
+      </tr>
+
+      <!-- Total Trades -->
+      <tr>
+        <td style="padding: 10px 12px; color: var(--text-muted); white-space: nowrap;">Total Trades</td>
+        {% for s in strategies %}
+        <td style="text-align: right; padding: 10px 12px; color: var(--text-primary);">
+          {{ s.total_trades }}
+        </td>
+        {% endfor %}
+      </tr>
+
+    </tbody>
+  </table>
+
+  <div style="margin-top: 12px; font-size: 0.75rem; color: var(--text-muted);">
+    Green = at or above target · Red = below target · Score targets: Win Rate &gt;50% · Profit Factor &gt;1.5 · Sharpe &gt;1.0 · Efficiency &gt;60%
+  </div>
+</div>
+{% elif strategies and strategies | length == 1 %}
+<div class="card" style="margin-bottom: 24px; padding: 16px 20px;">
+  <div class="empty-message">Comparison requires 2 or more strategies</div>
+  <div class="empty-detail" style="margin-top: 4px;">Only 1 strategy is currently registered.</div>
+</div>
+{% else %}
+<div class="card" style="margin-bottom: 24px; padding: 16px 20px;">
+  <div class="empty-message">No strategy data yet</div>
+  <div class="empty-detail" style="margin-top: 4px;">Strategies appear here once they have recorded trades.</div>
+</div>
+{% endif %}

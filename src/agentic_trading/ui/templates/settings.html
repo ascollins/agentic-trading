@@ -5,7 +5,14 @@
 {% block content %}
 <div class="page-header">
   <h2>Settings</h2>
-  <div class="breadcrumb">Settings / Configuration</div>
+  <div class="breadcrumb">Settings / Infrastructure</div>
+</div>
+
+<div style="display: flex; align-items: center; gap: var(--space-md); margin-bottom: var(--space-lg);">
+  <p style="font-size: 0.875rem; color: var(--text-muted);">
+    Read-only infrastructure overview. Risk limits and controls are managed in
+    <a href="/risk" style="color: var(--accent-cyan);">Risk &amp; Controls →</a>
+  </p>
 </div>
 
 <div class="card">
@@ -17,81 +24,44 @@
       <span class="settings-value">
         {{ exchange }}
         {% if exchange_connected %}
-          <span class="status-dot healthy" style="margin-left: 8px;"></span>Connected
+          <span class="status-dot healthy" style="margin-left: 8px;"></span>
+          <span style="color: var(--color-positive); font-size: 0.875rem;">Connected</span>
         {% else %}
-          <span class="status-dot critical" style="margin-left: 8px;"></span>Disconnected
+          <span class="status-dot critical" style="margin-left: 8px;"></span>
+          <span style="color: var(--color-critical); font-size: 0.875rem;">Disconnected</span>
         {% endif %}
       </span>
     </div>
     <div class="settings-row">
-      <span class="settings-label">Mode</span>
+      <span class="settings-label">Trading Mode</span>
       <span class="settings-value">
-        <span class="badge badge-cyan">{{ mode | upper }}</span>
-      </span>
-    </div>
-  </div>
-
-  <!-- Risk Limits -->
-  <div class="settings-section">
-    <h3>Risk Limits</h3>
-    <div class="settings-row">
-      <span class="settings-label">Max position size</span>
-      <span class="settings-value">{{ risk_limits.max_position_pct }}</span>
-    </div>
-    <div class="settings-row">
-      <span class="settings-label">Max daily loss</span>
-      <span class="settings-value" style="color: var(--color-negative);">{{ risk_limits.max_daily_loss }}</span>
-    </div>
-    <div class="settings-row">
-      <span class="settings-label">Max drawdown</span>
-      <span class="settings-value" style="color: var(--color-negative);">{{ risk_limits.max_drawdown }}</span>
-    </div>
-    <div class="settings-row">
-      <span class="settings-label">Kill switch</span>
-      <span class="settings-value">
-        {% if risk_limits.kill_switch %}
-          <span class="badge badge-negative">ACTIVE</span>
-        {% else %}
-          <span style="color: var(--text-muted);">OFF</span>
-        {% endif %}
+        <span class="mode-badge {{ mode }}">{{ mode | upper }}</span>
       </span>
     </div>
   </div>
 
-  <!-- Governance -->
+  <!-- System Infrastructure -->
   <div class="settings-section">
-    <h3>Governance</h3>
+    <h3>System Infrastructure</h3>
     <div class="settings-row">
-      <span class="settings-label">Policy engine</span>
+      <span class="settings-label">Event Bus</span>
       <span class="settings-value">
-        {% if governance.policy_engine %}
-          Enabled ({{ governance.policy_rules_count }} rules)
-        {% else %}
-          <span style="color: var(--text-muted);">Disabled</span>
-        {% endif %}
+        <span class="status-dot healthy"></span>
+        {{ system.event_bus }}
       </span>
     </div>
     <div class="settings-row">
-      <span class="settings-label">Approval workflow</span>
+      <span class="settings-label">Metrics</span>
       <span class="settings-value">
-        {% if governance.approval_workflow %}
-          Enabled
-          {% if governance.auto_approve_l1 %}
-            <span style="color: var(--text-muted); font-family: inherit;"> (auto L1)</span>
-          {% endif %}
-        {% else %}
-          <span style="color: var(--text-muted);">Disabled</span>
-        {% endif %}
+        <span class="status-dot healthy"></span>
+        {{ system.metrics }}
       </span>
     </div>
     <div class="settings-row">
-      <span class="settings-label">Shadow mode</span>
+      <span class="settings-label">Database</span>
       <span class="settings-value">
-        {% if governance.shadow_mode %}
-          <span class="badge badge-warning">ON</span>
-        {% else %}
-          <span style="color: var(--text-muted);">OFF</span>
-        {% endif %}
+        <span class="status-dot healthy"></span>
+        {{ system.database }}
       </span>
     </div>
   </div>
@@ -100,29 +70,51 @@
   <div class="settings-section">
     <h3>Agents</h3>
     <div class="settings-row">
-      <span class="settings-label">Status</span>
+      <span class="settings-label">Running Agents</span>
       <span class="settings-value">
         <span class="status-dot {{ 'healthy' if agents.running == agents.total else 'warning' }}"></span>
-        {{ agents.running }}/{{ agents.total }} running
+        <strong>{{ agents.running }}/{{ agents.total }}</strong>
+        {% if agents.running < agents.total %}
+          <span style="color: var(--color-warning); font-size: 0.875rem; margin-left: 8px;">
+            {{ agents.total - agents.running }} not responding
+          </span>
+        {% endif %}
       </span>
     </div>
   </div>
 
-  <!-- System -->
+  <!-- Deep Analytics -->
   <div class="settings-section">
-    <h3>System</h3>
+    <h3>Deep Analytics</h3>
     <div class="settings-row">
-      <span class="settings-label">Event bus</span>
-      <span class="settings-value">{{ system.event_bus }}</span>
+      <span class="settings-label">Grafana Dashboards</span>
+      <span class="settings-value">
+        <a href="http://localhost:3001" target="_blank" class="grafana-link">
+          <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
+            <path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z"/>
+            <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z"/>
+          </svg>
+          Open Grafana →
+        </a>
+      </span>
     </div>
     <div class="settings-row">
-      <span class="settings-label">Metrics</span>
-      <span class="settings-value">{{ system.metrics }}</span>
+      <span class="settings-label">Strategy Performance</span>
+      <span class="settings-value">
+        <a href="http://localhost:3001/d/strategy-performance" target="_blank" class="grafana-link">
+          Strategy Charts →
+        </a>
+      </span>
     </div>
     <div class="settings-row">
-      <span class="settings-label">Database</span>
-      <span class="settings-value">{{ system.database }}</span>
+      <span class="settings-label">System Health</span>
+      <span class="settings-value">
+        <a href="http://localhost:3001/d/trading-overview" target="_blank" class="grafana-link">
+          System Overview →
+        </a>
+      </span>
     </div>
   </div>
+
 </div>
 {% endblock %}

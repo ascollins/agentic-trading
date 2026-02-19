@@ -2,10 +2,25 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
+
+
+@dataclass
+class StrategyBreakdown:
+    """Per-strategy backtest metrics."""
+
+    strategy_id: str = ""
+    total_trades: int = 0
+    winning_trades: int = 0
+    losing_trades: int = 0
+    win_rate: float = 0.0
+    profit_factor: float = 0.0
+    avg_return: float = 0.0
+    total_pnl_pct: float = 0.0  # Sum of all trade returns (%)
 
 
 @dataclass
@@ -52,6 +67,9 @@ class BacktestResult:
     strategy_id: str = ""
     config_hash: str = ""
     deterministic_hash: str = ""
+
+    # Per-strategy breakdown
+    per_strategy: list[StrategyBreakdown] = field(default_factory=list)
 
     def summary(self) -> dict[str, Any]:
         """Return summary dict for logging."""
@@ -173,3 +191,41 @@ def compute_metrics(
     result.equity_curve = equity_curve
 
     return result
+
+
+def compute_per_strategy_metrics(
+    trade_returns: list[tuple[str, float]],
+) -> list[StrategyBreakdown]:
+    """Compute per-strategy metrics from (strategy_id, return) tuples."""
+    if not trade_returns:
+        return []
+
+    by_strategy: dict[str, list[float]] = defaultdict(list)
+    for strategy_id, ret in trade_returns:
+        by_strategy[strategy_id].append(ret)
+
+    results = []
+    for strategy_id in sorted(by_strategy.keys()):
+        returns = by_strategy[strategy_id]
+        tr = np.array(returns)
+
+        wins = tr[tr > 0]
+        losses = tr[tr < 0]
+
+        gross_profit = float(np.sum(wins)) if len(wins) > 0 else 0.0
+        gross_loss = abs(float(np.sum(losses))) if len(losses) > 0 else 0.0
+
+        results.append(StrategyBreakdown(
+            strategy_id=strategy_id,
+            total_trades=len(tr),
+            winning_trades=int(np.sum(tr > 0)),
+            losing_trades=int(np.sum(tr < 0)),
+            win_rate=float(np.sum(tr > 0)) / len(tr) if len(tr) > 0 else 0.0,
+            profit_factor=round(
+                gross_profit / gross_loss if gross_loss > 0 else float("inf"), 4
+            ),
+            avg_return=float(np.mean(tr)),
+            total_pnl_pct=float(np.sum(tr)) * 100,
+        ))
+
+    return results

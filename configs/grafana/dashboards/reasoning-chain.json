@@ -1,0 +1,969 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": true,
+      "tags": [],
+      "targetBlank": true,
+      "title": "Live Narration",
+      "type": "link",
+      "url": "/d/narration-live"
+    },
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": true,
+      "tags": [],
+      "targetBlank": true,
+      "title": "Trading",
+      "type": "link",
+      "url": "/d/trading-main"
+    }
+  ],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "title": "System Overview",
+      "type": "row"
+    },
+    {
+      "title": "Total Pipelines",
+      "type": "stat",
+      "id": 1,
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "narration-json" },
+      "targets": [{
+        "refId": "A",
+        "type": "json",
+        "url": "http://trading:8099/reasoning/stats",
+        "url_options": { "method": "GET" },
+        "source": "url",
+        "format": "table",
+        "root_selector": "",
+        "columns": [{ "selector": "total_pipelines", "text": "Total Pipelines", "type": "number" }]
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [
+            { "color": "#888", "value": null },
+            { "color": "#00d4aa", "value": 1 }
+          ]}
+        }
+      },
+      "options": { "graphMode": "none", "textMode": "value", "colorMode": "value" }
+    },
+    {
+      "title": "Signals Emitted",
+      "type": "stat",
+      "id": 2,
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "narration-json" },
+      "targets": [{
+        "refId": "A",
+        "type": "json",
+        "url": "http://trading:8099/reasoning/stats",
+        "url_options": { "method": "GET" },
+        "source": "url",
+        "format": "table",
+        "root_selector": "",
+        "columns": [{ "selector": "signals_emitted", "text": "Signals", "type": "number" }]
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [
+            { "color": "#888", "value": null },
+            { "color": "green", "value": 1 }
+          ]}
+        }
+      },
+      "options": { "graphMode": "none", "textMode": "value", "colorMode": "value" }
+    },
+    {
+      "title": "Avg Confidence",
+      "type": "gauge",
+      "id": 3,
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "narration-json" },
+      "targets": [{
+        "refId": "A",
+        "type": "json",
+        "url": "http://trading:8099/reasoning/stats",
+        "url_options": { "method": "GET" },
+        "source": "url",
+        "format": "table",
+        "root_selector": "",
+        "columns": [{ "selector": "avg_confidence", "text": "Confidence", "type": "number" }]
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 1,
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [
+            { "color": "red", "value": null },
+            { "color": "orange", "value": 0.4 },
+            { "color": "yellow", "value": 0.6 },
+            { "color": "green", "value": 0.75 }
+          ]},
+          "unit": "percentunit"
+        }
+      },
+      "options": { "showThresholdLabels": false, "showThresholdMarkers": true }
+    },
+    {
+      "title": "Avg Pipeline Duration",
+      "type": "stat",
+      "id": 4,
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "narration-json" },
+      "targets": [{
+        "refId": "A",
+        "type": "json",
+        "url": "http://trading:8099/reasoning/stats",
+        "url_options": { "method": "GET" },
+        "source": "url",
+        "format": "table",
+        "root_selector": "",
+        "columns": [{ "selector": "avg_duration_ms", "text": "Avg Duration", "type": "number" }]
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [
+            { "color": "green", "value": null },
+            { "color": "yellow", "value": 5000 },
+            { "color": "red", "value": 15000 }
+          ]}
+        }
+      },
+      "options": { "graphMode": "none", "textMode": "value", "colorMode": "value" }
+    },
+    {
+      "title": "Memory Entries",
+      "type": "stat",
+      "id": 5,
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "narration-json" },
+      "targets": [{
+        "refId": "A",
+        "type": "json",
+        "url": "http://trading:8099/reasoning/stats",
+        "url_options": { "method": "GET" },
+        "source": "url",
+        "format": "table",
+        "root_selector": "",
+        "columns": [{ "selector": "total_memories", "text": "Memories", "type": "number" }]
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [
+            { "color": "#888", "value": null },
+            { "color": "#00d4aa", "value": 1 }
+          ]}
+        }
+      },
+      "options": { "graphMode": "none", "textMode": "value", "colorMode": "value" }
+    },
+    {
+      "title": "Active Agents",
+      "type": "stat",
+      "id": 6,
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "narration-json" },
+      "targets": [{
+        "refId": "A",
+        "type": "json",
+        "url": "http://trading:8099/reasoning/stats",
+        "url_options": { "method": "GET" },
+        "source": "url",
+        "format": "table",
+        "root_selector": "",
+        "columns": [{ "selector": "agents_active", "text": "Agents", "type": "number" }]
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [
+            { "color": "orange", "value": null },
+            { "color": "green", "value": 1 }
+          ]}
+        }
+      },
+      "options": { "graphMode": "none", "textMode": "value", "colorMode": "value" }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "id": 101,
+      "title": "Pipeline Reasoning Timeline",
+      "type": "row"
+    },
+    {
+      "title": "Recent Pipeline Decisions",
+      "description": "Every pipeline run with outcome, agents involved, and duration. Click a pipeline_id to drill down.",
+      "type": "table",
+      "id": 10,
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 6 },
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "narration-json" },
+      "targets": [{
+        "refId": "A",
+        "type": "json",
+        "url": "http://trading:8099/reasoning/pipelines?limit=25",
+        "url_options": { "method": "GET" },
+        "source": "url",
+        "format": "table",
+        "root_selector": "",
+        "columns": []
+      }],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "timestamp": 0,
+              "symbol": 1,
+              "outcome": 2,
+              "agents": 3,
+              "duration_ms": 4,
+              "trace_count": 5,
+              "signal_count": 6,
+              "pipeline_id": 7,
+              "timeframe": 8
+            },
+            "renameByName": {
+              "timestamp": "Time",
+              "symbol": "Symbol",
+              "outcome": "Outcome",
+              "agents": "Agents",
+              "duration_ms": "Duration (ms)",
+              "trace_count": "Traces",
+              "signal_count": "Signals",
+              "pipeline_id": "Pipeline ID",
+              "timeframe": "TF"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": { "type": "auto" },
+            "filterable": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Outcome" },
+            "properties": [
+              { "id": "custom.width", "value": 120 },
+              {
+                "id": "mappings",
+                "value": [
+                  { "type": "value", "options": { "signal_emitted": { "text": "SIGNAL", "color": "green" } } },
+                  { "type": "value", "options": { "no_signal": { "text": "NO SIGNAL", "color": "orange" } } },
+                  { "type": "value", "options": { "error": { "text": "ERROR", "color": "red" } } },
+                  { "type": "value", "options": { "skipped": { "text": "SKIPPED", "color": "#888" } } }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Agents" },
+            "properties": [{ "id": "custom.width", "value": 250 }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Pipeline ID" },
+            "properties": [
+              { "id": "custom.width", "value": 100 },
+              {
+                "id": "links",
+                "value": [{
+                  "title": "View Chain of Thought",
+                  "url": "http://trading:8099/reasoning/pipeline/${__value.text}",
+                  "targetBlank": true
+                }]
+              }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Time" },
+            "properties": [{ "id": "custom.width", "value": 180 }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Duration (ms)" },
+            "properties": [
+              { "id": "unit", "value": "ms" },
+              { "id": "custom.width", "value": 100 }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [{ "displayName": "Time", "desc": true }],
+        "footer": { "show": true, "reducer": ["count"], "fields": ["Pipeline ID"] }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 15 },
+      "id": 102,
+      "title": "Agent Reasoning Traces",
+      "type": "row"
+    },
+    {
+      "title": "Agent Chain of Thought",
+      "description": "Every agent's reasoning trace: what it perceived, hypothesised, evaluated, decided, and acted on. Confidence scores show conviction at each step.",
+      "type": "table",
+      "id": 20,
+      "gridPos": { "h": 11, "w": 24, "x": 0, "y": 16 },
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "narration-json" },
+      "targets": [{
+        "refId": "A",
+        "type": "json",
+        "url": "http://trading:8099/reasoning/traces?limit=20",
+        "url_options": { "method": "GET" },
+        "source": "url",
+        "format": "table",
+        "root_selector": "",
+        "columns": []
+      }],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "pipeline_id": true,
+              "has_extended_thinking": true
+            },
+            "indexByName": {
+              "pipeline_time": 0,
+              "agent_type": 1,
+              "symbol": 2,
+              "outcome": 3,
+              "decision": 4,
+              "confidence": 5,
+              "step_count": 6,
+              "duration_ms": 7,
+              "phase_summary": 8,
+              "agent_id": 9
+            },
+            "renameByName": {
+              "pipeline_time": "Time",
+              "agent_type": "Agent",
+              "symbol": "Symbol",
+              "outcome": "Outcome",
+              "decision": "Decision",
+              "confidence": "Confidence",
+              "step_count": "Steps",
+              "duration_ms": "Duration",
+              "phase_summary": "Reasoning Chain",
+              "agent_id": "ID"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": { "type": "auto" },
+            "filterable": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Decision" },
+            "properties": [{ "id": "custom.width", "value": 300 }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Reasoning Chain" },
+            "properties": [{ "id": "custom.width", "value": 500 }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Confidence" },
+            "properties": [
+              { "id": "unit", "value": "percentunit" },
+              { "id": "custom.width", "value": 90 },
+              { "id": "custom.cellOptions", "value": { "type": "gauge", "mode": "gradient" } },
+              { "id": "min", "value": 0 },
+              { "id": "max", "value": 1 },
+              { "id": "thresholds", "value": {
+                "steps": [
+                  { "color": "red", "value": null },
+                  { "color": "orange", "value": 0.4 },
+                  { "color": "yellow", "value": 0.6 },
+                  { "color": "green", "value": 0.75 }
+                ]
+              }}
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Duration" },
+            "properties": [
+              { "id": "unit", "value": "ms" },
+              { "id": "custom.width", "value": 80 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Agent" },
+            "properties": [
+              { "id": "custom.width", "value": 140 },
+              {
+                "id": "mappings",
+                "value": [
+                  { "type": "value", "options": { "CMT_ANALYST": { "text": "CMT Analyst", "color": "purple" } } },
+                  { "type": "value", "options": { "MARKET_INTELLIGENCE": { "text": "Market Intel", "color": "blue" } } },
+                  { "type": "value", "options": { "STRATEGY": { "text": "Strategy", "color": "green" } } },
+                  { "type": "value", "options": { "EXECUTION": { "text": "Execution", "color": "orange" } } },
+                  { "type": "value", "options": { "RISK_GATE": { "text": "Risk Gate", "color": "red" } } }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Time" },
+            "properties": [{ "id": "custom.width", "value": 180 }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Steps" },
+            "properties": [{ "id": "custom.width", "value": 60 }]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [{ "displayName": "Time", "desc": true }],
+        "footer": { "show": false }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 },
+      "id": 103,
+      "title": "Reasoning Steps (Phase-by-Phase)",
+      "type": "row"
+    },
+    {
+      "title": "Detailed Reasoning Steps",
+      "description": "Every individual reasoning phase across all agents: perception, hypothesis, evaluation, decision, action. Shows exactly what each agent thought at each stage with confidence scores.",
+      "type": "table",
+      "id": 30,
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 28 },
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "narration-json" },
+      "targets": [{
+        "refId": "A",
+        "type": "json",
+        "url": "http://trading:8099/reasoning/steps?limit=15",
+        "url_options": { "method": "GET" },
+        "source": "url",
+        "format": "table",
+        "root_selector": "",
+        "columns": []
+      }],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "pipeline_id": true,
+              "evidence": true,
+              "timestamp": true
+            },
+            "indexByName": {
+              "pipeline_time": 0,
+              "agent_type": 1,
+              "symbol": 2,
+              "phase": 3,
+              "content": 4,
+              "confidence": 5,
+              "agent_id": 6
+            },
+            "renameByName": {
+              "pipeline_time": "Time",
+              "agent_type": "Agent",
+              "symbol": "Symbol",
+              "phase": "Phase",
+              "content": "Reasoning",
+              "confidence": "Confidence",
+              "agent_id": "ID"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": { "type": "auto" },
+            "filterable": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Reasoning" },
+            "properties": [{ "id": "custom.width", "value": 600 }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Phase" },
+            "properties": [
+              { "id": "custom.width", "value": 110 },
+              {
+                "id": "mappings",
+                "value": [
+                  { "type": "value", "options": { "perception": { "text": "PERCEIVE", "color": "#5794F2" } } },
+                  { "type": "value", "options": { "hypothesis": { "text": "HYPOTHESISE", "color": "#B877D9" } } },
+                  { "type": "value", "options": { "evaluation": { "text": "EVALUATE", "color": "#FF9830" } } },
+                  { "type": "value", "options": { "decision": { "text": "DECIDE", "color": "#73BF69" } } },
+                  { "type": "value", "options": { "action": { "text": "ACT", "color": "#F2495C" } } },
+                  { "type": "value", "options": { "reflection": { "text": "REFLECT", "color": "#FADE2A" } } }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Confidence" },
+            "properties": [
+              { "id": "unit", "value": "percentunit" },
+              { "id": "custom.width", "value": 90 },
+              { "id": "custom.cellOptions", "value": { "type": "gauge", "mode": "gradient" } },
+              { "id": "min", "value": 0 },
+              { "id": "max", "value": 1 },
+              { "id": "thresholds", "value": {
+                "steps": [
+                  { "color": "red", "value": null },
+                  { "color": "orange", "value": 0.4 },
+                  { "color": "yellow", "value": 0.6 },
+                  { "color": "green", "value": 0.75 }
+                ]
+              }}
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Agent" },
+            "properties": [{ "id": "custom.width", "value": 130 }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Time" },
+            "properties": [{ "id": "custom.width", "value": 180 }]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [{ "displayName": "Time", "desc": true }],
+        "footer": { "show": false }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 40 },
+      "id": 104,
+      "title": "Market Context & Memory",
+      "type": "row"
+    },
+    {
+      "title": "Current Market Context",
+      "description": "Live fact table snapshot: portfolio state, risk parameters, and regime classification that agents read before reasoning.",
+      "type": "table",
+      "id": 40,
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 41 },
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "narration-json" },
+      "targets": [{
+        "refId": "A",
+        "type": "json",
+        "url": "http://trading:8099/reasoning/context",
+        "url_options": { "method": "GET" },
+        "source": "url",
+        "format": "table",
+        "root_selector": "",
+        "columns": [
+          { "selector": "regime", "text": "Regime", "type": "string" },
+          { "selector": "equity", "text": "Equity", "type": "number" },
+          { "selector": "gross_exposure", "text": "Gross Exposure", "type": "number" },
+          { "selector": "daily_pnl", "text": "Daily P&L", "type": "number" },
+          { "selector": "open_positions", "text": "Positions", "type": "number" },
+          { "selector": "drawdown_pct", "text": "Drawdown %", "type": "number" },
+          { "selector": "kill_switch", "text": "Kill Switch", "type": "boolean" },
+          { "selector": "degraded_mode", "text": "Mode", "type": "string" }
+        ]
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": { "type": "auto" }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Equity" },
+            "properties": [{ "id": "unit", "value": "currencyUSD" }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Gross Exposure" },
+            "properties": [{ "id": "unit", "value": "currencyUSD" }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Daily P&L" },
+            "properties": [{ "id": "unit", "value": "currencyUSD" }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Drawdown %" },
+            "properties": [{ "id": "unit", "value": "percentunit" }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Kill Switch" },
+            "properties": [{
+              "id": "mappings",
+              "value": [
+                { "type": "value", "options": { "true": { "text": "ACTIVE", "color": "red" } } },
+                { "type": "value", "options": { "false": { "text": "OFF", "color": "green" } } }
+              ]
+            }]
+          }
+        ]
+      },
+      "options": { "showHeader": true, "footer": { "show": false } }
+    },
+    {
+      "title": "Risk State",
+      "description": "Current risk parameters the agents factor into every decision.",
+      "type": "stat",
+      "id": 41,
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 41 },
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "narration-json" },
+      "targets": [{
+        "refId": "A",
+        "type": "json",
+        "url": "http://trading:8099/reasoning/context",
+        "url_options": { "method": "GET" },
+        "source": "url",
+        "format": "table",
+        "root_selector": "",
+        "columns": [
+          { "selector": "drawdown_pct", "text": "Drawdown", "type": "number" },
+          { "selector": "max_leverage", "text": "Max Leverage", "type": "number" }
+        ]
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [
+            { "color": "green", "value": null },
+            { "color": "yellow", "value": 0.05 },
+            { "color": "red", "value": 0.1 }
+          ]},
+          "unit": "percentunit"
+        }
+      },
+      "options": { "graphMode": "none", "textMode": "auto", "colorMode": "background" }
+    },
+    {
+      "title": "Circuit Breakers",
+      "description": "Active circuit breakers affecting agent decisions.",
+      "type": "stat",
+      "id": 42,
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 41 },
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "narration-json" },
+      "targets": [{
+        "refId": "A",
+        "type": "json",
+        "url": "http://trading:8099/reasoning/context",
+        "url_options": { "method": "GET" },
+        "source": "url",
+        "format": "table",
+        "root_selector": "",
+        "columns": [
+          { "selector": "circuit_breakers", "text": "Breakers", "type": "string" }
+        ]
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [
+            { "color": "green", "value": null }
+          ]}
+        }
+      },
+      "options": { "graphMode": "none", "textMode": "value", "colorMode": "background" }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 47 },
+      "id": 105,
+      "title": "Agent Memory Store",
+      "type": "row"
+    },
+    {
+      "title": "Recent Agent Memories",
+      "description": "Past analyses stored by agents after reasoning. Each entry has a relevance score that decays over time. Agents read these memories before making new decisions to maintain context across pipeline runs.",
+      "type": "table",
+      "id": 50,
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 48 },
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "narration-json" },
+      "targets": [{
+        "refId": "A",
+        "type": "json",
+        "url": "http://trading:8099/reasoning/memories?limit=25",
+        "url_options": { "method": "GET" },
+        "source": "url",
+        "format": "table",
+        "root_selector": "",
+        "columns": []
+      }],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "entry_id": true,
+              "ttl_hours": true
+            },
+            "indexByName": {
+              "timestamp": 0,
+              "entry_type": 1,
+              "symbol": 2,
+              "summary": 3,
+              "relevance": 4,
+              "tags": 5,
+              "strategy_id": 6,
+              "timeframe": 7
+            },
+            "renameByName": {
+              "timestamp": "Time",
+              "entry_type": "Type",
+              "symbol": "Symbol",
+              "summary": "Summary",
+              "relevance": "Relevance",
+              "tags": "Tags",
+              "strategy_id": "Strategy",
+              "timeframe": "TF"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": { "type": "auto" },
+            "filterable": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Summary" },
+            "properties": [{ "id": "custom.width", "value": 450 }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Relevance" },
+            "properties": [
+              { "id": "custom.width", "value": 90 },
+              { "id": "custom.cellOptions", "value": { "type": "gauge", "mode": "gradient" } },
+              { "id": "min", "value": 0 },
+              { "id": "max", "value": 1 },
+              { "id": "thresholds", "value": {
+                "steps": [
+                  { "color": "#888", "value": null },
+                  { "color": "yellow", "value": 0.3 },
+                  { "color": "green", "value": 0.6 }
+                ]
+              }}
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Type" },
+            "properties": [
+              { "id": "custom.width", "value": 130 },
+              {
+                "id": "mappings",
+                "value": [
+                  { "type": "value", "options": { "cmt_assessment": { "text": "CMT Assessment", "color": "purple" } } },
+                  { "type": "value", "options": { "htf_assessment": { "text": "HTF Assessment", "color": "blue" } } },
+                  { "type": "value", "options": { "smc_report": { "text": "SMC Report", "color": "#00d4aa" } } },
+                  { "type": "value", "options": { "trade_plan": { "text": "Trade Plan", "color": "green" } } },
+                  { "type": "value", "options": { "signal": { "text": "Signal", "color": "orange" } } },
+                  { "type": "value", "options": { "risk_event": { "text": "Risk Event", "color": "red" } } },
+                  { "type": "value", "options": { "reasoning_trace": { "text": "Reasoning", "color": "#888" } } }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Time" },
+            "properties": [{ "id": "custom.width", "value": 180 }]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [{ "displayName": "Time", "desc": true }],
+        "footer": { "show": false }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 58 },
+      "id": 106,
+      "title": "Live Trading Narration",
+      "type": "row"
+    },
+    {
+      "title": "Plain-English Narration",
+      "description": "Bloomberg-style narration of platform decisions. Each row is a narrated event — trades, holds, and market observations translated from agent reasoning into human language.",
+      "type": "table",
+      "id": 60,
+      "gridPos": { "h": 10, "w": 18, "x": 0, "y": 59 },
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "narration-json" },
+      "targets": [{
+        "refId": "A",
+        "type": "json",
+        "url": "http://trading:8099/narration/latest?limit=15",
+        "url_options": { "method": "GET" },
+        "source": "url",
+        "format": "table",
+        "root_selector": "",
+        "columns": []
+      }],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "decision_ref": true,
+              "playback_url": true,
+              "published_avatar": true,
+              "published_text": true,
+              "script_id": true,
+              "verbosity": true
+            },
+            "indexByName": {
+              "timestamp": 0,
+              "script_text": 1,
+              "symbol": 2,
+              "action": 3,
+              "regime": 4
+            },
+            "renameByName": {
+              "timestamp": "Time",
+              "script_text": "Narration",
+              "symbol": "Symbol",
+              "action": "Action",
+              "regime": "Regime"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": { "type": "auto" }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Narration" },
+            "properties": [{ "id": "custom.width", "value": 600 }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Time" },
+            "properties": [{ "id": "custom.width", "value": 180 }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Action" },
+            "properties": [
+              { "id": "custom.width", "value": 100 },
+              {
+                "id": "mappings",
+                "value": [
+                  { "type": "value", "options": { "ENTER": { "text": "ENTER", "color": "green" } } },
+                  { "type": "value", "options": { "EXIT": { "text": "EXIT", "color": "red" } } },
+                  { "type": "value", "options": { "HOLD": { "text": "HOLD", "color": "blue" } } },
+                  { "type": "value", "options": { "NO_TRADE": { "text": "NO TRADE", "color": "orange" } } }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [{ "displayName": "Time", "desc": true }],
+        "footer": { "show": false }
+      }
+    },
+    {
+      "title": "How It Works",
+      "type": "text",
+      "id": 61,
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 59 },
+      "options": {
+        "mode": "markdown",
+        "content": "### Reasoning Flow\n\n1. **Perceive** — Agent reads market context\n2. **Hypothesise** — Forms a directional thesis\n3. **Evaluate** — Checks confluence & confidence\n4. **Decide** — Trade or no-trade\n5. **Act** — Emit signal or hold\n6. **Reflect** — Store analysis to memory\n\nEach step is timestamped with a **confidence score** (0-100%)."
+      }
+    },
+    {
+      "title": "Disclaimer",
+      "type": "text",
+      "id": 62,
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 64 },
+      "options": {
+        "mode": "markdown",
+        "content": "**Disclaimer**: This dashboard displays automated system reasoning. It is NOT financial advice. All data is generated by the trading platform's agent reasoning subsystem. Decisions are grounded in actual platform state. Trade at your own risk."
+      }
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "tags": ["reasoning", "chain-of-thought", "agents", "narration"],
+  "templating": {
+    "list": [
+      {
+        "current": { "selected": false, "text": "All", "value": "" },
+        "description": "Filter by trading symbol",
+        "hide": 0,
+        "name": "symbol",
+        "label": "Symbol",
+        "options": [
+          { "selected": true, "text": "All", "value": "" },
+          { "selected": false, "text": "BTC/USDT", "value": "BTC/USDT" },
+          { "selected": false, "text": "ETH/USDT", "value": "ETH/USDT" },
+          { "selected": false, "text": "SOL/USDT", "value": "SOL/USDT" },
+          { "selected": false, "text": "XRP/USDT", "value": "XRP/USDT" },
+          { "selected": false, "text": "BNB/USDT", "value": "BNB/USDT" },
+          { "selected": false, "text": "DOGE/USDT", "value": "DOGE/USDT" },
+          { "selected": false, "text": "TRX/USDT", "value": "TRX/USDT" },
+          { "selected": false, "text": "SUI/USDT", "value": "SUI/USDT" },
+          { "selected": false, "text": "ADA/USDT", "value": "ADA/USDT" },
+          { "selected": false, "text": "AAVE/USDT", "value": "AAVE/USDT" },
+          { "selected": false, "text": "ZEC/USDT", "value": "ZEC/USDT" },
+          { "selected": false, "text": "PEPE/USDT", "value": "PEPE/USDT" }
+        ],
+        "query": "",
+        "type": "custom"
+      }
+    ]
+  },
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": {},
+  "timezone": "utc",
+  "title": "Agent Reasoning & Chain of Thought",
+  "uid": "reasoning-chain",
+  "version": 1
+}

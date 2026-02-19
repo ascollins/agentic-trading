@@ -1,17 +1,14 @@
-"""Smart Money Concepts (SMC) feature detection.
+"""Backward-compat re-export — canonical location: ``agentic_trading.intelligence.features.smc``.
 
-Provides institutional order flow analysis:
-- Swing point detection (HH/HL/LH/LL)
-- Order block identification
-- Fair Value Gap (FVG) detection
-- Break of Structure (BOS) / Change of Character (CHoCH)
-- Liquidity sweep detection (BSL/SSL)
-- Premium / Discount zone classification
+Will be removed in PR 16.
 """
 
-from .computer import SMCFeatureComputer
-from .liquidity_sweeps import LiquiditySweep, SweepType, detect_liquidity_sweeps
-from .price_location import (
+from agentic_trading.intelligence.features.smc import *  # noqa: F401, F403
+from agentic_trading.intelligence.features.smc import (  # noqa: F811
+    SMCFeatureComputer,
+    LiquiditySweep,
+    SweepType,
+    detect_liquidity_sweeps,
     PriceLocation,
     PriceZone,
     classify_price_location,

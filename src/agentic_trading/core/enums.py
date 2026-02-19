@@ -209,7 +209,9 @@ class AgentType(str, Enum):
     OPTIMIZER = "optimizer"
     REPORTING = "reporting"
     SURVEILLANCE = "surveillance"
+    DATA_QUALITY = "data_quality"
     INCIDENT_RESPONSE = "incident_response"
+    CMT_ANALYST = "cmt_analyst"
     CUSTOM = "custom"
 
 
@@ -222,3 +224,100 @@ class AgentStatus(str, Enum):
     STOPPING = "stopping"
     STOPPED = "stopped"
     FAILED = "failed"
+
+
+class StrategyStage(str, Enum):
+    """Strategy lifecycle stage (evidence-gated progression).
+
+    Candidate → Backtest → EvalPack → Paper → Limited → Scale
+    Demotion can happen at any live stage.
+    """
+
+    CANDIDATE = "candidate"
+    BACKTEST = "backtest"
+    EVAL_PACK = "eval_pack"
+    PAPER = "paper"
+    LIMITED = "limited"
+    SCALE = "scale"
+    DEMOTED = "demoted"
+
+
+class DegradedMode(str, Enum):
+    """System degraded-mode levels (escalate only, never auto de-escalate).
+
+    NORMAL → REDUCE_ONLY → NO_NEW_TRADES → READ_ONLY → KILLED
+    """
+
+    NORMAL = "normal"
+    REDUCE_ONLY = "reduce_only"
+    NO_NEW_TRADES = "no_new_trades"
+    READ_ONLY = "read_only"
+    KILLED = "killed"
+
+    @property
+    def rank(self) -> int:
+        """Numeric rank for comparisons (0=NORMAL, 4=KILLED)."""
+        return list(DegradedMode).index(self)
+
+
+class IncidentSeverity(str, Enum):
+    """Incident severity levels for the incident manager."""
+
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+
+class IncidentStatus(str, Enum):
+    """Incident lifecycle status."""
+
+    DETECTED = "detected"
+    TRIAGED = "triaged"
+    RESOLVED = "resolved"
+
+
+# ---------------------------------------------------------------------------
+# Context & Reasoning
+# ---------------------------------------------------------------------------
+
+
+class MemoryEntryType(str, Enum):
+    """Types of remembered analyses in the memory store."""
+
+    HTF_ASSESSMENT = "htf_assessment"
+    SMC_REPORT = "smc_report"
+    CMT_ASSESSMENT = "cmt_assessment"
+    TRADE_PLAN = "trade_plan"
+    SIGNAL = "signal"
+    RISK_EVENT = "risk_event"
+    REASONING_TRACE = "reasoning_trace"
+
+
+class ReasoningPhase(str, Enum):
+    """Phases in structured agent reasoning."""
+
+    PERCEPTION = "perception"
+    HYPOTHESIS = "hypothesis"
+    EVALUATION = "evaluation"
+    DECISION = "decision"
+    ACTION = "action"
+    REFLECTION = "reflection"
+
+
+class PipelineOutcome(str, Enum):
+    """Pipeline run outcomes."""
+
+    SIGNAL_EMITTED = "signal_emitted"
+    NO_SIGNAL = "no_signal"
+    ERROR = "error"
+    SKIPPED = "skipped"
+
+
+class OptimizationRecommendation(str, Enum):
+    """Optimizer recommendation for a strategy's parameters."""
+
+    KEEP = "keep"       # Current params are optimal or near-optimal
+    UPDATE = "update"   # New params show meaningful improvement
+    DISABLE = "disable"  # Strategy underperforming across all param combos
+    SKIP = "skip"       # No param grid or data, cannot optimize

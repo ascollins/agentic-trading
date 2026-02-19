@@ -1,0 +1,46 @@
+<div class="card-label" style="margin-bottom: var(--space-md);">Circuit Breakers</div>
+
+{% if circuit_breakers %}
+<div class="cb-grid">
+  {% for cb in circuit_breakers %}
+  <div class="cb-tile {{ 'tripped' if cb.tripped else '' }}">
+    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+      <span class="status-dot {{ 'critical' if cb.tripped else 'healthy' }}"></span>
+      <span style="font-weight: 600; font-size: 0.875rem;
+                   color: {{ 'var(--color-critical)' if cb.tripped else 'var(--text-primary)' }};">
+        {{ cb.name }}
+      </span>
+    </div>
+    <div style="font-size: 0.75rem; color: var(--text-muted); line-height: 1.5;">
+      {% if cb.tripped %}
+        <span style="color: var(--color-critical); font-weight: 600;">TRIPPED</span>
+        {% if cb.cooldown_remaining > 0 %}
+          — resets in {{ cb.cooldown_remaining }}s
+        {% endif %}
+        <br>
+      {% else %}
+        <span style="color: var(--color-positive);">Clear</span><br>
+      {% endif %}
+      <span class="tooltip-wrap" style="cursor: help;">
+        Threshold: {{ cb.threshold }}
+        <span class="tooltip-text" style="min-width: 180px;">
+          Trips after {{ cb.hysteresis }} violations within {{ cb.window_seconds }}s.
+          Auto-resets after {{ cb.cooldown_seconds }}s cooldown.
+        </span>
+      </span>
+      {% if cb.trip_count > 0 %}
+        <br>Trips: {{ cb.trip_count }}
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state" style="padding: var(--space-lg);">
+  <div class="empty-message">No circuit breakers configured</div>
+  <div class="empty-detail">
+    Circuit breakers monitor volatility, spread, liquidity, data freshness, and API error rates.
+    They are configured automatically when the risk manager starts.
+  </div>
+</div>
+{% endif %}

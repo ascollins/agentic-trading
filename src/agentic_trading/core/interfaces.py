@@ -174,6 +174,7 @@ class IExchangeAdapter(Protocol):
         take_profit: Decimal | None = None,
         stop_loss: Decimal | None = None,
         trailing_stop: Decimal | None = None,
+        active_price: Decimal | None = None,
     ) -> dict[str, Any]: ...
 
     async def get_closed_pnl(

@@ -1,10 +1,17 @@
-"""Narration HTTP server — serves both Channel 1 (text stream) and Channel 2 (avatar).
+"""Narration HTTP server — serves text stream, avatar, and reasoning endpoints.
 
 Endpoints:
-  GET  /narration/latest?limit=50  — JSON list of recent narrations (Grafana datasource)
-  GET  /narration/health            — Health check
-  POST /avatar/briefing             — Generate & trigger avatar for latest narration
-  GET  /avatar/watch                — HTML page with avatar player + latest script
+  GET  /narration/latest?limit=50     — JSON list of recent narrations (Grafana datasource)
+  GET  /narration/health               — Health check
+  POST /avatar/briefing                — Generate & trigger avatar for latest narration
+  GET  /avatar/watch                   — HTML page with avatar player + latest script
+  GET  /reasoning/pipelines            — Recent pipeline results (Grafana table)
+  GET  /reasoning/pipeline/{id}        — Single pipeline chain of thought
+  GET  /reasoning/traces               — Flattened reasoning traces (Grafana table)
+  GET  /reasoning/steps                — Flattened reasoning steps (Grafana table)
+  GET  /reasoning/context              — Current fact table snapshot
+  GET  /reasoning/memories             — Recent memory entries
+  GET  /reasoning/stats                — Aggregate stats for stat panels
 
 Runs as a lightweight aiohttp server alongside the main trading loop.
 """
@@ -35,17 +42,52 @@ def create_narration_app(
     store: NarrationStore,
     tavus: TavusAdapter,
     service: NarrationService | None = None,
+    pipeline_log: Any | None = None,
+    context_manager: Any | None = None,
+    consensus_gate: Any | None = None,
+    reasoning_bus: Any | None = None,
 ) -> web.Application:
-    """Create the aiohttp web application for narration endpoints."""
+    """Create the aiohttp web application for narration endpoints.
+
+    Parameters
+    ----------
+    store:
+        NarrationStore for text narration items.
+    tavus:
+        TavusAdapter for avatar briefings.
+    service:
+        Optional NarrationService for script generation.
+    pipeline_log:
+        Optional PipelineLog for reasoning chain persistence.
+        When provided, the ``/reasoning/*`` endpoints become active.
+    context_manager:
+        Optional ContextManager for fact table and memory store.
+        When provided, ``/reasoning/context`` and ``/reasoning/memories``
+        endpoints become active.
+    consensus_gate:
+        Optional ConsensusGate for desk consultation stats.
+        When provided, ``/reasoning/consensus`` endpoint returns live stats.
+    reasoning_bus:
+        Optional ReasoningMessageBus for conversation data.
+        When provided, ``/reasoning/conversations`` endpoint returns data.
+    """
     app = web.Application()
     app["store"] = store
     app["tavus"] = tavus
     app["service"] = service
+    app["pipeline_log"] = pipeline_log
+    app["context_manager"] = context_manager
+    app["consensus_gate"] = consensus_gate
+    app["reasoning_bus"] = reasoning_bus
 
     app.router.add_get("/narration/latest", handle_narration_latest)
     app.router.add_get("/narration/health", handle_health)
     app.router.add_post("/avatar/briefing", handle_avatar_briefing)
     app.router.add_get("/avatar/watch", handle_avatar_watch)
+
+    # Register reasoning & chain-of-thought endpoints (Grafana dashboard)
+    from .reasoning_endpoints import register_reasoning_routes
+    register_reasoning_routes(app)
 
     # CORS headers for Grafana Infinity plugin
     app.middlewares.append(cors_middleware)
@@ -311,12 +353,24 @@ async def start_narration_server(
     host: str = "0.0.0.0",
     port: int = 8099,
     service: NarrationService | None = None,
+    pipeline_log: Any | None = None,
+    context_manager: Any | None = None,
+    consensus_gate: Any | None = None,
+    reasoning_bus: Any | None = None,
 ) -> web.AppRunner:
     """Start the narration HTTP server.
 
     Returns the runner for lifecycle management (call runner.cleanup() to stop).
     """
-    app = create_narration_app(store, tavus, service=service)
+    app = create_narration_app(
+        store,
+        tavus,
+        service=service,
+        pipeline_log=pipeline_log,
+        context_manager=context_manager,
+        consensus_gate=consensus_gate,
+        reasoning_bus=reasoning_bus,
+    )
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, host, port)

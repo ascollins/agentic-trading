@@ -1,0 +1,115 @@
+# ===================================================================
+# ETH-specific Backtest config — 15m timeframe for less noise
+# ===================================================================
+
+mode = "backtest"
+
+[backtest]
+start_date = "2024-01-01"
+end_date = "2024-06-30"
+initial_capital = 100_000.0
+slippage_model = "volatility_based"
+slippage_bps = 5.0
+fee_maker = 0.0002
+fee_taker = 0.0004
+funding_enabled = true
+partial_fills = true
+latency_ms = 50
+random_seed = 42
+data_dir = "data/historical"
+input_timeframe = "15m"            # 15m aggregation — better for ranging ETH
+
+[symbols]
+symbols = [
+    "ETH/USDT",
+]
+
+# ===================================================================
+# STRATEGIES — only the proven performers
+# ===================================================================
+
+[[strategies]]
+strategy_id = "trend_following"
+enabled = true
+
+[strategies.params]
+fast_ema = 12
+slow_ema = 26
+adx_threshold = 25
+atr_multiplier = 2.5
+min_confidence = 0.65
+signal_cooldown_minutes = 720
+
+[[strategies]]
+strategy_id = "breakout"
+enabled = true
+
+[strategies.params]
+donchian_period = 20
+volume_confirmation_multiplier = 1.5
+min_confidence = 0.65
+signal_cooldown_minutes = 720
+
+[[strategies]]
+strategy_id = "multi_tf_ma"
+enabled = true
+
+[strategies.params]
+fast_ema = 50
+slow_ema = 200
+pullback_ema = 21
+adx_entry = 20
+adx_exit = 15
+min_confidence = 0.65
+signal_cooldown_minutes = 720
+
+[[strategies]]
+strategy_id = "rsi_divergence"
+enabled = true
+
+[strategies.params]
+rsi_oversold = 35
+rsi_overbought = 65
+lookback = 50
+divergence_bars = 5
+min_confidence = 0.65
+signal_cooldown_minutes = 720
+
+[[strategies]]
+strategy_id = "stochastic_macd"
+enabled = true
+
+[strategies.params]
+confluence_window = 3
+volume_gate = 1.2
+stoch_oversold = 20
+stoch_overbought = 80
+min_confidence = 0.65
+signal_cooldown_minutes = 720
+
+[[strategies]]
+strategy_id = "bb_squeeze"
+enabled = true
+
+[strategies.params]
+squeeze_percentile = 10
+bb_period = 20
+keltner_ema = 20
+keltner_mult = 1.5
+min_confidence = 0.65
+signal_cooldown_minutes = 720
+
+# ===================================================================
+# RISK MANAGEMENT
+# ===================================================================
+
+[risk]
+max_portfolio_leverage = 1.5
+max_single_position_pct = 0.05
+max_daily_loss_pct = 0.05
+max_drawdown_pct = 0.15
+
+[observability]
+log_level = "INFO"
+log_format = "console"
+decision_audit = true

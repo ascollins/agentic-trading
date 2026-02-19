@@ -1,0 +1,16 @@
+{
+  "experiment_id": "wf_fold_1_2024-01-01_2024-01-08",
+  "total_return": -0.9937344139629769,
+  "sharpe_ratio": 1.1992,
+  "max_drawdown": -0.9970086940039365,
+  "win_rate": 0.3157894736842105,
+  "profit_factor": 0.6457,
+  "total_trades": 38,
+  "avg_trade_return": -0.00038429577768630375,
+  "calmar_ratio": 0.0,
+  "sortino_ratio": 0.0,
+  "metadata": {
+    "train_sharpe": 1.2768,
+    "test_sharpe": 1.1992
+  }
+}

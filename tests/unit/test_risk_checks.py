@@ -103,6 +103,117 @@ class TestPreTradeChecker:
         assert not leverage_checks[0].passed
 
 
+    def test_direction_conflict_blocks_buy_against_short(self):
+        """BUY order against an existing SHORT position should be blocked."""
+        checker = PreTradeChecker()
+        intent = _make_intent(qty=Decimal("0.01"), price=Decimal("67000"))
+        assert intent.side == Side.BUY
+        portfolio = _make_portfolio(equity=Decimal("100000"))
+        # Existing SHORT position
+        portfolio.positions["BTC/USDT"] = Position(
+            symbol="BTC/USDT",
+            exchange=Exchange.BINANCE,
+            side=PositionSide.SHORT,
+            qty=Decimal("0.5"),
+            entry_price=Decimal("67000"),
+            mark_price=Decimal("67000"),
+            notional=Decimal("33500"),
+        )
+        results = checker.check(intent, portfolio)
+        conflict_checks = [r for r in results if r.check_name == "position_direction_conflict"]
+        assert len(conflict_checks) == 1
+        assert not conflict_checks[0].passed
+        assert "existing position is short" in conflict_checks[0].reason
+
+    def test_direction_conflict_blocks_sell_against_long(self):
+        """SELL order against an existing LONG position should be blocked."""
+        checker = PreTradeChecker()
+        intent = OrderIntent(
+            dedupe_key="test-sell",
+            strategy_id="mean_reversion",
+            symbol="BTC/USDT",
+            exchange=Exchange.BINANCE,
+            side=Side.SELL,
+            order_type=OrderType.LIMIT,
+            qty=Decimal("0.01"),
+            price=Decimal("67000"),
+        )
+        portfolio = _make_portfolio(equity=Decimal("100000"))
+        # Existing LONG position
+        portfolio.positions["BTC/USDT"] = Position(
+            symbol="BTC/USDT",
+            exchange=Exchange.BINANCE,
+            side=PositionSide.LONG,
+            qty=Decimal("0.5"),
+            entry_price=Decimal("67000"),
+            mark_price=Decimal("67000"),
+            notional=Decimal("33500"),
+        )
+        results = checker.check(intent, portfolio)
+        conflict_checks = [r for r in results if r.check_name == "position_direction_conflict"]
+        assert len(conflict_checks) == 1
+        assert not conflict_checks[0].passed
+        assert "existing position is long" in conflict_checks[0].reason
+
+    def test_direction_conflict_allows_same_direction(self):
+        """BUY order with existing LONG position should be allowed."""
+        checker = PreTradeChecker()
+        intent = _make_intent(qty=Decimal("0.01"), price=Decimal("67000"))
+        portfolio = _make_portfolio(equity=Decimal("100000"))
+        portfolio.positions["BTC/USDT"] = Position(
+            symbol="BTC/USDT",
+            exchange=Exchange.BINANCE,
+            side=PositionSide.LONG,
+            qty=Decimal("0.5"),
+            entry_price=Decimal("67000"),
+            mark_price=Decimal("67000"),
+            notional=Decimal("33500"),
+        )
+        results = checker.check(intent, portfolio)
+        conflict_checks = [r for r in results if r.check_name == "position_direction_conflict"]
+        assert len(conflict_checks) == 1
+        assert conflict_checks[0].passed
+
+    def test_direction_conflict_allows_no_position(self):
+        """Order with no existing position should be allowed."""
+        checker = PreTradeChecker()
+        intent = _make_intent(qty=Decimal("0.01"), price=Decimal("67000"))
+        portfolio = _make_portfolio(equity=Decimal("100000"))
+        results = checker.check(intent, portfolio)
+        conflict_checks = [r for r in results if r.check_name == "position_direction_conflict"]
+        assert len(conflict_checks) == 1
+        assert conflict_checks[0].passed
+
+    def test_direction_conflict_allows_reduce_only(self):
+        """reduce_only orders should be allowed even against opposite direction."""
+        checker = PreTradeChecker()
+        intent = OrderIntent(
+            dedupe_key="test-close",
+            strategy_id="test",
+            symbol="BTC/USDT",
+            exchange=Exchange.BINANCE,
+            side=Side.SELL,
+            order_type=OrderType.MARKET,
+            qty=Decimal("0.01"),
+            price=Decimal("67000"),
+            reduce_only=True,
+        )
+        portfolio = _make_portfolio(equity=Decimal("100000"))
+        portfolio.positions["BTC/USDT"] = Position(
+            symbol="BTC/USDT",
+            exchange=Exchange.BINANCE,
+            side=PositionSide.LONG,
+            qty=Decimal("0.5"),
+            entry_price=Decimal("67000"),
+            mark_price=Decimal("67000"),
+            notional=Decimal("33500"),
+        )
+        results = checker.check(intent, portfolio)
+        conflict_checks = [r for r in results if r.check_name == "position_direction_conflict"]
+        assert len(conflict_checks) == 1
+        assert conflict_checks[0].passed
+
+
 class TestPostTradeChecker:
     def _make_fill(self) -> Fill:
         return Fill(

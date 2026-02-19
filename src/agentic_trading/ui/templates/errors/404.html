@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% set active_tab = "" %}
+{% block title %}Page Not Found{% endblock %}
+
+{% block content %}
+<div class="error-page">
+  <div class="error-code">404</div>
+  <div class="error-title">Page Not Found</div>
+  <div class="error-detail">
+    The page you're looking for doesn't exist or has been moved.
+    Check the URL or head back to the dashboard.
+  </div>
+  <a href="/" class="btn btn-primary">← Back to Overview</a>
+</div>
+{% endblock %}

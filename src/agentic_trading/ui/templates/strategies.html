@@ -3,9 +3,36 @@
 {% block title %}Strategies{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <h2>Strategies</h2>
-  <div class="breadcrumb">Strategies / Lifecycle</div>
+<div class="page-header" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+  <div>
+    <h2>Strategies</h2>
+    <div class="breadcrumb">Strategies / Lifecycle</div>
+  </div>
+  <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+    <a href="/backtest" class="btn btn-ghost"
+       style="font-size: 0.8125rem; padding: 4px 14px; text-decoration: none; display: flex; align-items: center; gap: 6px;">
+      <svg viewBox="0 0 20 20" fill="currentColor" style="width:14px;height:14px;">
+        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"/>
+      </svg>
+      Backtest →
+    </a>
+    {% if strategies and strategies | length >= 2 %}
+    <button id="compare-toggle-btn"
+            onclick="toggleComparePanel()"
+            class="btn btn-ghost"
+            style="font-size: 0.8125rem; padding: 4px 14px; display: flex; align-items: center; gap: 6px;">
+      <svg viewBox="0 0 20 20" fill="currentColor" style="width:14px;height:14px;">
+        <path d="M5 4a1 1 0 00-2 0v7.268a2 2 0 000 3.464V16a1 1 0 102 0v-1.268a2 2 0 000-3.464V4zM11 4a1 1 0 10-2 0v1.268a2 2 0 000 3.464V16a1 1 0 102 0V8.732a2 2 0 000-3.464V4zM16 3a1 1 0 011 1v7.268a2 2 0 010 3.464V16a1 1 0 11-2 0v-1.268a2 2 0 010-3.464V4a1 1 0 011-1z"/>
+      </svg>
+      Compare
+    </button>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Comparison panel (hidden by default) -->
+<div id="compare-panel" style="display: none;">
+  {% include "partials/strategies_compare.html" %}
 </div>
 
 <div id="strategies-list"
@@ -14,4 +41,28 @@
      hx-swap="innerHTML">
   {% include "partials/strategies_list.html" %}
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  var _compareOpen = false;
+
+  function toggleComparePanel() {
+    _compareOpen = !_compareOpen;
+    var panel = document.getElementById('compare-panel');
+    var btn = document.getElementById('compare-toggle-btn');
+    if (panel) panel.style.display = _compareOpen ? '' : 'none';
+    if (btn) {
+      if (_compareOpen) {
+        btn.style.background = 'var(--accent-cyan)';
+        btn.style.color = '#000';
+        btn.style.borderColor = 'var(--accent-cyan)';
+      } else {
+        btn.style.background = '';
+        btn.style.color = '';
+        btn.style.borderColor = '';
+      }
+    }
+  }
+</script>
 {% endblock %}

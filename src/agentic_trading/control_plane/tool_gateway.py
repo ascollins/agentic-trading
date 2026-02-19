@@ -422,6 +422,8 @@ class ToolGateway:
                     kwargs_ts["stop_loss"] = Decimal(str(p["stop_loss"]))
                 if "trailing_stop" in p and p["trailing_stop"] is not None:
                     kwargs_ts["trailing_stop"] = Decimal(str(p["trailing_stop"]))
+                if "active_price" in p and p["active_price"] is not None:
+                    kwargs_ts["active_price"] = Decimal(str(p["active_price"]))
                 result = await self._adapter.set_trading_stop(**kwargs_ts)
                 return result if isinstance(result, dict) else {"result": result}
 

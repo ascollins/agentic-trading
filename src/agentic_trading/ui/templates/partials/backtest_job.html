@@ -1,0 +1,76 @@
+{% if job %}
+<div class="card" id="backtest-job-{{ job.job_id }}" style="margin-top: 24px;">
+
+  <!-- Job header -->
+  <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
+    <div style="display: flex; align-items: center; gap: 10px;">
+      {% if job.status == 'running' %}
+        <span class="status-dot warning" style="animation: pulse 1.2s infinite;"></span>
+        <span style="font-weight: 600; color: var(--color-warning);">Running…</span>
+      {% elif job.status == 'success' %}
+        <span class="status-dot healthy"></span>
+        <span style="font-weight: 600; color: var(--color-positive);">Completed</span>
+      {% else %}
+        <span class="status-dot critical"></span>
+        <span style="font-weight: 600; color: var(--color-critical);">Failed</span>
+      {% endif %}
+    </div>
+    <div style="font-size: 0.75rem; color: var(--text-muted);">
+      Job {{ job.job_id }} · {{ job.symbols }} · {{ job.start_date }} → {{ job.end_date }}
+      {% if job.strategy != 'all' %} · {{ job.strategy }}{% endif %}
+    </div>
+  </div>
+
+  <!-- Output log -->
+  <div style="background: var(--bg-elevated); border: 1px solid var(--border-card);
+              border-radius: var(--radius-sm); padding: 12px 14px; max-height: 320px;
+              overflow-y: auto; font-family: 'SF Mono', 'Fira Code', monospace;
+              font-size: 0.75rem; line-height: 1.6; color: var(--text-secondary);"
+       id="backtest-output-{{ job.job_id }}">
+    {% if job.lines %}
+      {% for line in job.lines %}
+        <div style="{% if 'ERROR' in line or 'error' in line or 'FAILED' in line %}color: var(--color-negative);
+                    {% elif 'WARNING' in line or 'warning' in line %}color: var(--color-warning);
+                    {% elif 'SUCCESS' in line or 'Backtest complete' in line or 'profit' in line.lower() %}color: var(--color-positive);
+                    {% else %}color: var(--text-secondary);
+                    {% endif %}white-space: pre-wrap; word-break: break-all;">{{ line }}</div>
+      {% endfor %}
+    {% else %}
+      <span style="color: var(--text-muted);">Waiting for output…</span>
+    {% endif %}
+  </div>
+
+  <!-- Timing and auto-scroll -->
+  <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 8px; font-size: 0.75rem; color: var(--text-muted);">
+    <span>Started {{ job.started_at }}{% if job.finished_at %} · Finished {{ job.finished_at }}{% endif %}</span>
+    {% if job.status == 'running' %}
+      <span style="color: var(--accent-cyan);">Auto-refreshing…</span>
+    {% endif %}
+  </div>
+
+  {% if job.status == 'running' %}
+  <!-- HTMX polling: update this card every 2 seconds while running -->
+  <div hx-get="/api/backtest/status/{{ job.job_id }}"
+       hx-trigger="every 2s"
+       hx-target="#backtest-job-{{ job.job_id }}"
+       hx-swap="outerHTML"
+       style="display:none;">
+  </div>
+  {% endif %}
+</div>
+
+<style>
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+</style>
+
+<script>
+  // Auto-scroll output div to bottom on each swap
+  (function() {
+    var out = document.getElementById('backtest-output-{{ job.job_id }}');
+    if (out) out.scrollTop = out.scrollHeight;
+  })();
+</script>
+{% endif %}

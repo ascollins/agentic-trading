@@ -1,0 +1,19 @@
+{
+  "experiment_id": "wf_fold_2_2024-01-01_2024-01-08",
+  "strategy_id": "trend_following",
+  "params": {},
+  "symbols": [
+    "BTC/USDT"
+  ],
+  "start_date": "2024-01-05T16:00:00+00:00",
+  "end_date": "2024-01-07T23:59:00+00:00",
+  "timeframes": [
+    "1m"
+  ],
+  "slippage_model": "volatility_based",
+  "fee_maker": 0.0002,
+  "fee_taker": 0.0004,
+  "random_seed": 42,
+  "created_at": "2026-02-14T02:14:03.046877+00:00",
+  "notes": "Walk-forward fold 2"
+}

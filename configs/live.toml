@@ -20,13 +20,20 @@ demo = true          # Bybit demo trading: production URL, virtual funds
 rate_limit = 1200
 
 [symbols]
-# Top 5 USDT perpetuals by volume on Bybit
+# Top 12 USDT perpetuals by volume on Bybit
 symbols = [
     "BTC/USDT",
     "ETH/USDT",
     "SOL/USDT",
     "XRP/USDT",
+    "BNB/USDT",
     "DOGE/USDT",
+    "TRX/USDT",
+    "SUI/USDT",
+    "ADA/USDT",
+    "AAVE/USDT",
+    "ZEC/USDT",
+    "PEPE/USDT",
 ]
 
 # ===================================================================
@@ -253,7 +260,7 @@ reconciliation_interval_seconds = 15
 # Safe mode for initial live deployment
 [safe_mode]
 enabled = true
-max_symbols = 5
+max_symbols = 12
 max_leverage = 2
 position_size_multiplier = 0.25
 

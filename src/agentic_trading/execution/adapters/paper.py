@@ -42,19 +42,23 @@ def _uid() -> str:
 class _TradingStop:
     """Stores active TP/SL/trailing levels for a symbol."""
 
-    __slots__ = ("take_profit", "stop_loss", "trailing_stop", "trailing_ref")
+    __slots__ = ("take_profit", "stop_loss", "trailing_stop", "trailing_ref", "active_price")
 
     def __init__(
         self,
         take_profit: Decimal | None = None,
         stop_loss: Decimal | None = None,
         trailing_stop: Decimal | None = None,
+        active_price: Decimal | None = None,
     ) -> None:
         self.take_profit = take_profit
         self.stop_loss = stop_loss
         self.trailing_stop = trailing_stop
         #: Best price seen since trailing was set (used for trailing logic)
         self.trailing_ref: Decimal | None = None
+        #: Trailing stop only arms when price reaches this level (breakeven activation).
+        #: Once reached, set to None so normal trailing logic takes over.
+        self.active_price: Decimal | None = active_price
 
 
 class PaperAdapter:
@@ -421,12 +425,21 @@ class PaperAdapter:
         take_profit: Decimal | None = None,
         stop_loss: Decimal | None = None,
         trailing_stop: Decimal | None = None,
+        active_price: Decimal | None = None,
     ) -> dict[str, Any]:
         """Store TP/SL levels for paper-mode simulation.
 
         On each subsequent ``set_market_price`` call, the adapter checks
         whether the new price crosses any active TP/SL level.  When
         triggered, a synthetic close fill is generated.
+
+        Parameters
+        ----------
+        active_price:
+            When set alongside ``trailing_stop``, the trailing stop does not
+            arm (track the high-water mark or trigger) until the market price
+            first reaches this level.  Mirrors Bybit V5's ``activePrice``
+            parameter for breakeven activation.
         """
         existing = self._trading_stops.get(symbol)
         if existing is not None:
@@ -437,21 +450,29 @@ class PaperAdapter:
                 existing.stop_loss = stop_loss
             if trailing_stop is not None:
                 existing.trailing_stop = trailing_stop
-                # Reset trailing ref to current market price
-                existing.trailing_ref = self._market_prices.get(symbol)
+                existing.active_price = active_price  # update activation gate
+                # Only reset trailing_ref immediately if there is no activation gate
+                if active_price is None:
+                    existing.trailing_ref = self._market_prices.get(symbol)
+                else:
+                    existing.trailing_ref = None  # will be set when active_price is reached
+            elif active_price is not None:
+                existing.active_price = active_price
         else:
             stop = _TradingStop(
                 take_profit=take_profit,
                 stop_loss=stop_loss,
                 trailing_stop=trailing_stop,
+                active_price=active_price,
             )
-            if trailing_stop is not None:
+            if trailing_stop is not None and active_price is None:
+                # No activation gate: arm trailing immediately
                 stop.trailing_ref = self._market_prices.get(symbol)
             self._trading_stops[symbol] = stop
 
         logger.info(
-            "PaperAdapter TP/SL stored: %s tp=%s sl=%s trail=%s",
-            symbol, take_profit, stop_loss, trailing_stop,
+            "PaperAdapter TP/SL stored: %s tp=%s sl=%s trail=%s active_price=%s",
+            symbol, take_profit, stop_loss, trailing_stop, active_price,
         )
         return {"result": "paper_stop_stored"}
 
@@ -488,14 +509,28 @@ class PaperAdapter:
 
         # --- Trailing stop: update reference price ---
         if stop.trailing_stop is not None:
-            if stop.trailing_ref is None:
-                stop.trailing_ref = price
-            elif is_long and price > stop.trailing_ref:
-                stop.trailing_ref = price
-            elif not is_long and price < stop.trailing_ref:
-                stop.trailing_ref = price
+            # Breakeven activation gate: trailing stop does not arm until
+            # the market price reaches active_price (1× SL distance in profit).
+            if stop.active_price is not None:
+                _activated = (
+                    (is_long and price >= stop.active_price)
+                    or (not is_long and price <= stop.active_price)
+                )
+                if _activated:
+                    # Price has reached breakeven — arm the trailing stop now.
+                    stop.active_price = None
+                    stop.trailing_ref = price
+                # else: not yet activated, skip all trailing logic this tick
+            else:
+                # No activation gate (or already activated) — normal tracking.
+                if stop.trailing_ref is None:
+                    stop.trailing_ref = price
+                elif is_long and price > stop.trailing_ref:
+                    stop.trailing_ref = price
+                elif not is_long and price < stop.trailing_ref:
+                    stop.trailing_ref = price
 
-            # Check trailing trigger
+            # Check trailing trigger (only when armed, i.e. trailing_ref is set)
             if is_long and stop.trailing_ref is not None:
                 trail_sl = stop.trailing_ref - stop.trailing_stop
                 if price <= trail_sl:

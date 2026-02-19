@@ -16,13 +16,20 @@ demo = true
 rate_limit = 1200
 
 [symbols]
-# Top 5 USDT perpetuals by volume on Bybit
+# Top 12 USDT perpetuals by volume on Bybit
 symbols = [
     "BTC/USDT",
     "ETH/USDT",
     "SOL/USDT",
     "XRP/USDT",
+    "BNB/USDT",
     "DOGE/USDT",
+    "TRX/USDT",
+    "SUI/USDT",
+    "ADA/USDT",
+    "AAVE/USDT",
+    "ZEC/USDT",
+    "PEPE/USDT",
 ]
 
 # ===================================================================
@@ -221,6 +228,19 @@ position_size_pct = 0.05
 atr_stop_multiplier = 3.0
 min_confidence = 0.3
 signal_cooldown_minutes = 30
+
+# ===================================================================
+# EXIT MANAGEMENT (server-side TP/SL)
+# ===================================================================
+
+[exits]
+enabled = true
+sl_atr_multiplier = 2.5           # SL = entry ± ATR × 2.5
+tp_atr_multiplier = 5.0           # TP = entry ± ATR × 5.0 (2:1 R:R)
+trailing_stop_atr_multiplier = 2.0 # Trailing distance = ATR × 2.0
+trailing_strategies = [
+    "trend_following", "breakout", "multi_tf_ma", "bb_squeeze",
+]
 
 # ===================================================================
 # RISK MANAGEMENT

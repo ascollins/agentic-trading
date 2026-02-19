@@ -31,6 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 @click.option("--live-context", is_flag=True, help="Fetch live Bybit market context")
 @click.option("--write-config", is_flag=True, help="Write optimized params to config files")
 @click.option("--wf-folds", default=3, type=int, help="Walk-forward validation folds")
+@click.option("--timeframe", default="5m", help="Aggregate 1m candles to this timeframe (1m, 5m, 15m)")
 def main(
     strategy: str | None,
     optimize_all: bool,
@@ -41,6 +42,7 @@ def main(
     live_context: bool,
     write_config: bool,
     wf_folds: int,
+    timeframe: str,
 ) -> None:
     """Run strategy parameter optimization."""
     asyncio.run(
@@ -54,6 +56,7 @@ def main(
             live_context=live_context,
             write_config=write_config,
             wf_folds=wf_folds,
+            timeframe=timeframe,
         )
     )
 
@@ -68,10 +71,12 @@ async def _run(
     live_context: bool,
     write_config: bool,
     wf_folds: int,
+    timeframe: str = "5m",
 ) -> None:
     from agentic_trading.core.enums import Exchange, Timeframe
     from agentic_trading.data.historical import HistoricalDataLoader
     from agentic_trading.features.engine import FeatureEngine
+    from agentic_trading.main import _aggregate_candles
     from agentic_trading.optimizer.engine import ParameterOptimizer
     from agentic_trading.optimizer.param_grid import list_strategies_with_grids
     from agentic_trading.optimizer.report import (
@@ -97,6 +102,7 @@ async def _run(
     click.echo(f"  Period:      {start} to {end}")
     click.echo(f"  Samples:     {samples}")
     click.echo(f"  WF Folds:    {wf_folds}")
+    click.echo(f"  Timeframe:   {timeframe}")
 
     # Load historical data
     click.echo(f"\nLoading historical data...")
@@ -115,13 +121,21 @@ async def _run(
         )
         if candles:
             candles_by_symbol[symbol.strip()] = candles
-            click.echo(f"  {symbol}: {len(candles)} candles loaded")
+            click.echo(f"  {symbol}: {len(candles)} 1m candles loaded")
         else:
             click.echo(f"  {symbol}: NO DATA FOUND")
 
     if not candles_by_symbol:
         click.echo("Error: no historical data found. Run download_historical.py first.")
         sys.exit(1)
+
+    # Aggregate to target timeframe
+    if timeframe != "1m":
+        target_tf = Timeframe(timeframe)
+        for symbol in list(candles_by_symbol.keys()):
+            raw = candles_by_symbol[symbol]
+            candles_by_symbol[symbol] = _aggregate_candles(raw, target_tf)
+            click.echo(f"  {symbol}: aggregated to {timeframe} -> {len(candles_by_symbol[symbol])} candles")
 
     # Optional: live market context
     if live_context:

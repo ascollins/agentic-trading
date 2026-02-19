@@ -48,6 +48,7 @@ class BaseAgent(abc.ABC):
         *,
         agent_id: str | None = None,
         interval: float = 0,
+        context_manager: Any | None = None,
     ) -> None:
         self._agent_id = agent_id or str(uuid.uuid4())
         self._interval = interval
@@ -57,6 +58,8 @@ class BaseAgent(abc.ABC):
         self._error_count = 0
         self._last_work_at: datetime | None = None
         self._last_error: str | None = None
+        self._context_manager = context_manager
+        self._reasoning_builder: Any | None = None
 
     # ------------------------------------------------------------------
     # Identity
@@ -198,3 +201,46 @@ class BaseAgent(abc.ABC):
     def capabilities(self) -> AgentCapabilities:
         """Declare this agent's event subscriptions and publications."""
         ...
+
+    # ------------------------------------------------------------------
+    # Context & Reasoning (optional, backward-compatible)
+    # ------------------------------------------------------------------
+
+    def set_context_manager(self, cm: Any) -> None:
+        """Inject context manager after construction."""
+        self._context_manager = cm
+
+    def _read_context(
+        self, symbol: str | None = None
+    ) -> Any | None:
+        """Read context before reasoning. Returns None if no CM."""
+        if self._context_manager is None:
+            return None
+        return self._context_manager.read_context(symbol=symbol)
+
+    def _write_analysis(
+        self,
+        entry_type: Any,
+        content: dict[str, Any],
+        **kwargs: Any,
+    ) -> str | None:
+        """Write analysis to memory store. Returns entry_id or None."""
+        if self._context_manager is None:
+            return None
+        return self._context_manager.write_analysis(
+            entry_type=entry_type, content=content, **kwargs
+        )
+
+    def _start_reasoning(
+        self, symbol: str = "", pipeline_id: str = ""
+    ) -> Any:
+        """Create a new reasoning trace for this agent."""
+        if self._reasoning_builder is None:
+            from agentic_trading.reasoning.builder import ReasoningBuilder
+
+            self._reasoning_builder = ReasoningBuilder(
+                self._agent_id, self.agent_type.value
+            )
+        return self._reasoning_builder.start(
+            symbol=symbol, pipeline_id=pipeline_id
+        )

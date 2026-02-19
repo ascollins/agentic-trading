@@ -6,20 +6,22 @@ validation to find optimal strategy parameters while detecting overfitting.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from datetime import datetime
 from typing import Any
 
+import agentic_trading.strategies.bb_squeeze  # noqa: F401
+import agentic_trading.strategies.breakout  # noqa: F401
+import agentic_trading.strategies.funding_arb  # noqa: F401
+import agentic_trading.strategies.mean_reversion  # noqa: F401
+import agentic_trading.strategies.multi_tf_ma  # noqa: F401
+import agentic_trading.strategies.rsi_divergence  # noqa: F401
+import agentic_trading.strategies.stochastic_macd  # noqa: F401
+import agentic_trading.strategies.supply_demand  # noqa: F401
+import agentic_trading.strategies.trend_following  # noqa: F401
 from agentic_trading.backtester.engine import BacktestEngine
 from agentic_trading.core.models import Candle
 from agentic_trading.strategies.registry import create_strategy
-
-# Import strategy modules so their @register_strategy decorators fire
-import agentic_trading.strategies.trend_following  # noqa: F401
-import agentic_trading.strategies.mean_reversion  # noqa: F401
-import agentic_trading.strategies.breakout  # noqa: F401
-import agentic_trading.strategies.funding_arb  # noqa: F401
 from agentic_trading.strategies.research.walk_forward import (
     WalkForwardReport,
     WalkForwardResult,
@@ -27,7 +29,7 @@ from agentic_trading.strategies.research.walk_forward import (
 )
 
 from .param_grid import random_sample
-from .report import OptimizationReport, StrategyResult
+from .report import CompositeScoreWeights, OptimizationReport, StrategyResult
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +62,7 @@ class ParameterOptimizer:
         fee_maker: float = 0.0002,
         fee_taker: float = 0.0004,
         seed: int = 42,
+        score_weights: CompositeScoreWeights | None = None,
     ) -> None:
         self._strategy_id = strategy_id
         self._candles = candles_by_symbol
@@ -69,6 +72,7 @@ class ParameterOptimizer:
         self._fee_maker = fee_maker
         self._fee_taker = fee_taker
         self._seed = seed
+        self._score_weights = score_weights or CompositeScoreWeights()
 
     async def run(
         self,
@@ -130,16 +134,20 @@ class ParameterOptimizer:
                 samples_tested=0,
             )
 
-        # Sort by Sharpe ratio (descending)
-        results.sort(key=lambda r: r.sharpe_ratio, reverse=True)
+        # Sort by composite score (descending) — multi-objective ranking
+        results.sort(
+            key=lambda r: self._score_weights.compute(r), reverse=True
+        )
 
         best = results[0]
+        best_composite = self._score_weights.compute(best)
         report = OptimizationReport(
             strategy_id=self._strategy_id,
             results=results,
             best_params=best.params,
             best_sharpe=best.sharpe_ratio,
             best_return=best.total_return * 100,
+            best_composite_score=best_composite,
             samples_tested=len(results),
             data_period=self._get_data_period(),
         )
@@ -186,10 +194,14 @@ class ParameterOptimizer:
             total_return=bt_result.total_return,
             sharpe_ratio=bt_result.sharpe_ratio,
             sortino_ratio=bt_result.sortino_ratio,
+            calmar_ratio=bt_result.calmar_ratio,
             max_drawdown=bt_result.max_drawdown,
             total_trades=bt_result.total_trades,
             win_rate=bt_result.win_rate,
             profit_factor=bt_result.profit_factor,
+            avg_win=bt_result.avg_win,
+            avg_loss=bt_result.avg_loss,
+            annualized_return=bt_result.annualized_return,
             total_fees=bt_result.total_fees,
         )
 

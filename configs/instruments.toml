@@ -17,21 +17,30 @@ spot = [
     "BTC/USDT",
     "ETH/USDT",
     "SOL/USDT",
-    "BNB/USDT",
     "XRP/USDT",
-    "ADA/USDT",
-    "AVAX/USDT",
+    "BNB/USDT",
     "DOGE/USDT",
-    "LINK/USDT",
-    "DOT/USDT",
+    "TRX/USDT",
+    "SUI/USDT",
+    "ADA/USDT",
+    "AAVE/USDT",
+    "ZEC/USDT",
+    "PEPE/USDT",
 ]
 
 perp = [
     "BTC/USDT:USDT",
     "ETH/USDT:USDT",
     "SOL/USDT:USDT",
-    "BNB/USDT:USDT",
     "XRP/USDT:USDT",
+    "BNB/USDT:USDT",
+    "DOGE/USDT:USDT",
+    "TRX/USDT:USDT",
+    "SUI/USDT:USDT",
+    "ADA/USDT:USDT",
+    "AAVE/USDT:USDT",
+    "ZEC/USDT:USDT",
+    "PEPE/USDT:USDT",
 ]
 
 # Blacklist (never trade, regardless of filters)

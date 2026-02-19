@@ -1,5 +1,14 @@
-<div class="card">
+<div class="card" id="positions-card">
   <div class="card-label">Open Positions</div>
+
+  {% if close_error is defined and close_error %}
+    <div style="padding: 8px 12px; margin-bottom: 10px;
+                background: var(--color-negative-bg); border-radius: var(--radius-sm);
+                color: var(--color-negative); font-size: 0.875rem; border: 1px solid rgba(239,68,68,0.25);">
+      ⚠ {{ close_error }}
+    </div>
+  {% endif %}
+
   {% if positions %}
     <table class="positions-table">
       <thead>
@@ -11,11 +20,12 @@
           <th>Mark</th>
           <th>P&amp;L</th>
           <th>Strategy</th>
+          <th></th>
         </tr>
       </thead>
       <tbody>
         {% for pos in positions %}
-        <tr>
+        <tr id="pos-row-{{ pos.symbol | replace('/', '_') | replace(':', '_') }}">
           <td>{{ pos.symbol }}</td>
           <td class="{{ 'side-long' if pos.side == 'LONG' else 'side-short' }}">
             {{ pos.side }}
@@ -29,6 +39,21 @@
           <td style="color: var(--text-secondary); font-family: inherit;">
             {{ pos.strategy }}
           </td>
+          <td>
+            <button class="btn btn-deny" style="font-size: 0.75rem; padding: 2px 10px;"
+                    onclick="confirmPositionClose('{{ pos.symbol }}', '{{ pos.side }}', '{{ pos.qty }}')"
+                    type="button">
+              Close
+            </button>
+            <!-- Hidden HTMX trigger button — activated by JS after modal confirmation -->
+            <button id="close-submit-{{ pos.symbol | replace('/', '_') | replace(':', '_') }}"
+                    hx-post="/actions/positions/close/{{ pos.symbol }}"
+                    hx-target="#positions-card"
+                    hx-swap="outerHTML"
+                    style="display:none;"
+                    type="button">
+            </button>
+          </td>
         </tr>
         {% endfor %}
       </tbody>
@@ -40,3 +65,55 @@
     </div>
   {% endif %}
 </div>
+
+<!-- Close position confirmation modal -->
+<div class="modal-overlay hidden" id="close-position-modal" role="dialog" aria-modal="true">
+  <div class="modal-box">
+    <div class="modal-title">Close Position?</div>
+    <div class="modal-body" id="close-position-modal-body">
+      This will place a market order.
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="cancelPositionClose()">Cancel</button>
+      <button class="btn btn-deny" id="close-position-confirm" onclick="submitPositionClose()">
+        Close Position
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+  var _pendingCloseSymbol = null;
+
+  function confirmPositionClose(symbol, side, qty) {
+    _pendingCloseSymbol = symbol;
+    var safeSym = symbol.replace(/\//g, '_').replace(/:/g, '_');
+    document.getElementById('close-position-modal-body').innerHTML =
+      'Close <strong>' + side + ' ' + qty + ' ' + symbol + '</strong>?<br><br>' +
+      'This will place a <strong>market order</strong> at the current price. ' +
+      'The order may not fill at the exact displayed price.';
+    document.getElementById('close-position-modal').classList.remove('hidden');
+  }
+
+  function cancelPositionClose() {
+    document.getElementById('close-position-modal').classList.add('hidden');
+    _pendingCloseSymbol = null;
+  }
+
+  function submitPositionClose() {
+    if (_pendingCloseSymbol) {
+      var safeSym = _pendingCloseSymbol.replace(/\//g, '_').replace(/:/g, '_');
+      var btn = document.getElementById('close-submit-' + safeSym);
+      if (btn) btn.click();
+      cancelPositionClose();
+    }
+  }
+
+  // Close modal on overlay click
+  var _closePosModal = document.getElementById('close-position-modal');
+  if (_closePosModal) {
+    _closePosModal.addEventListener('click', function(e) {
+      if (e.target === this) cancelPositionClose();
+    });
+  }
+</script>

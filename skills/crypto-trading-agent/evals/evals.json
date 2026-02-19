@@ -1,0 +1,54 @@
+{
+  "skill_name": "crypto-trading-agent",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Analyse BTCUSDT on the 4H timeframe. I'm looking for a long entry. What's the current structure telling us?",
+      "expected_output": "A structured market analysis that starts with HTF context (Daily/Weekly bias), identifies current 4H swing structure (HH/HL or LH/LL), maps key OBs and FVGs, identifies liquidity pools, and provides a clear directional bias with confluence scoring.",
+      "files": [],
+      "assertions": [
+        "The analysis begins with HTF context before discussing 4H structure",
+        "Swing structure is explicitly identified with HH/HL/LH/LL labels",
+        "At least one order block or fair value gap is identified",
+        "Liquidity pools (BSL/SSL) are mapped",
+        "A clear bias is stated with supporting reasoning",
+        "Risk parameters are mentioned (entry zone, stop, targets)",
+        "The output uses the trade plan template or structured format",
+        "Funding rate and/or OI context is mentioned"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "I want to backtest an SMC-based strategy on ETHUSDT using 1H candles. The strategy enters long on bullish OB retests after a BOS, with stops below the OB. Help me set this up.",
+      "expected_output": "A structured approach to codifying and backtesting the SMC strategy, including data requirements, code for OB and BOS detection, backtest framework, and clear guidance on avoiding overfitting.",
+      "files": [],
+      "assertions": [
+        "Provides code for fetching historical data from Bybit",
+        "Includes swing point detection logic",
+        "Includes order block detection logic",
+        "Includes BOS detection logic",
+        "Defines clear entry, stop loss, and take profit rules",
+        "Mentions train/test split or walk-forward methodology",
+        "Includes transaction cost modelling (Bybit fees)",
+        "Lists required performance metrics (Sharpe, max DD, win rate, etc.)",
+        "Warns about overfitting or look-ahead bias"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "I'm in a BTCUSDT long from $94,500 with a stop at $93,200. Position size is 0.8 BTC on 5x leverage. Account is $50K. The trade is currently at $96,000. How should I manage this?",
+      "expected_output": "Specific trade management advice covering current risk exposure, break-even considerations, trailing stop options, and partial take-profit strategy with calculated levels.",
+      "files": [],
+      "assertions": [
+        "Calculates current P&L accurately",
+        "Calculates current risk as a percentage of account",
+        "Recommends whether to move stop to break-even",
+        "Provides specific trailing stop methodology options",
+        "Suggests partial take-profit levels with rationale",
+        "Considers funding rate impact on the open position",
+        "Does not suggest moving the stop loss further away from entry",
+        "Frames advice in risk-reward terms"
+      ]
+    }
+  ]
+}
