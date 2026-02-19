@@ -81,7 +81,7 @@
       "options": { "graphMode": "none", "textMode": "auto", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } }
     },
     {
-      "title": "Recommended Position Size",
+      "title": "Recommended Position Size (Kelly)",
       "description": "The mathematically optimal allocation for each strategy, based on its win rate and average payoff. Higher = strategy deserves a larger allocation. Near zero = reduce allocation.",
       "type": "stat",
       "gridPos": { "h": 5, "w": 6, "x": 18, "y": 2 },
@@ -363,6 +363,142 @@
         }
       },
       "options": { "graphMode": "none", "textMode": "auto", "colorMode": "background", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "title": "",
+      "type": "text",
+      "gridPos": { "h": 2, "w": 24, "x": 0, "y": 45 },
+      "options": { "content": "# Governance Activity Log", "mode": "markdown" }
+    },
+    {
+      "title": "All Governance Decisions Over Time",
+      "description": "Every governance decision (approve, block, reduce, etc.) plotted over time per strategy. Spikes in blocks may indicate risk limit pressure or misconfigured rules.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 47 },
+      "targets": [
+        {
+          "expr": "increase(trading_governance_decisions_total[1m])",
+          "legendFormat": "{{strategy_id}} — {{action}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "stacking": { "mode": "normal" },
+            "barMaxWidth": 8
+          },
+          "color": { "mode": "palette-classic" }
+        }
+      }
+    },
+    {
+      "title": "Block Reasons — Detailed History",
+      "description": "Every trade block with the specific reason and strategy. Use this to investigate why governance stopped a trade. Common reasons: maturity_gate (strategy not promoted), risk_limit (position too large), policy_violation.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 47 },
+      "targets": [
+        {
+          "expr": "increase(trading_governance_blocks_total[1m])",
+          "legendFormat": "{{strategy_id}}: {{reason}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "stacking": { "mode": "normal" },
+            "barMaxWidth": 8
+          },
+          "color": { "mode": "palette-classic" }
+        }
+      }
+    },
+    {
+      "title": "Governance Decision Totals (Session)",
+      "description": "Running totals of all governance decisions since the system started. Shows the overall balance of approvals vs blocks across all strategies.",
+      "type": "table",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 55 },
+      "targets": [
+        {
+          "expr": "trading_governance_decisions_total",
+          "legendFormat": "{{strategy_id}} — {{action}}",
+          "refId": "A",
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "strategy_id" },
+            "properties": [
+              { "id": "custom.width", "value": 180 },
+              { "id": "displayName", "value": "Strategy" }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "action" },
+            "properties": [
+              { "id": "custom.width", "value": 120 },
+              { "id": "displayName", "value": "Decision" },
+              { "id": "mappings", "value": [
+                { "type": "value", "options": {
+                  "approve": { "text": "APPROVE", "color": "green" },
+                  "block": { "text": "BLOCK", "color": "red" },
+                  "reduce": { "text": "REDUCE", "color": "yellow" },
+                  "shadow_block": { "text": "SHADOW BLOCK", "color": "orange" }
+                }}
+              ]}
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Value" },
+            "properties": [
+              { "id": "displayName", "value": "Count" }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Time" },
+            "properties": [
+              { "id": "custom.hidden", "value": true }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "__name__" },
+            "properties": [
+              { "id": "custom.hidden", "value": true }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "instance" },
+            "properties": [
+              { "id": "custom.hidden", "value": true }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "job" },
+            "properties": [
+              { "id": "custom.hidden", "value": true }
+            ]
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "sortBy",
+          "options": { "sort": [{ "field": "Count", "desc": true }] }
+        }
+      ]
     }
   ],
   "schemaVersion": 39,

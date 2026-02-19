@@ -51,7 +51,7 @@
       }
     },
     {
-      "title": "Gains vs. Losses Ratio",
+      "title": "Gains vs. Losses Ratio (Profit Factor)",
       "description": "Total winning dollars divided by total losing dollars. Above 1.0 means gains outweigh losses overall. Higher is better. Below 1.0 = losing money.",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 2 },
@@ -132,7 +132,7 @@
       "options": { "graphMode": "none", "textMode": "auto", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } }
     },
     {
-      "title": "Return Consistency",
+      "title": "Return Consistency (Sharpe Ratio)",
       "description": "How steady are the profits? Higher = more reliable and predictable returns. Above 1.0 (green) is excellent. Below 0 (red) means inconsistent or negative returns.",
       "type": "stat",
       "gridPos": { "h": 5, "w": 6, "x": 12, "y": 10 },
@@ -284,7 +284,7 @@
       }
     },
     {
-      "title": "Is This Skill or Luck?",
+      "title": "Is This Skill or Luck? (Statistical Edge)",
       "description": "Statistical test of whether each strategy's profits are due to genuine skill or random chance. Below 0.05 (green) = very likely real skill. Above 0.25 (red) = could be luck.",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 8, "x": 8, "y": 29 },
@@ -382,6 +382,67 @@
           { "matcher": { "id": "byRegexp", "options": "win" }, "properties": [{ "id": "color", "value": { "fixedColor": "#73BF69", "mode": "fixed" } }] },
           { "matcher": { "id": "byRegexp", "options": "loss" }, "properties": [{ "id": "color", "value": { "fixedColor": "#F2495C", "mode": "fixed" } }] }
         ]
+      }
+    },
+    {
+      "title": "",
+      "type": "text",
+      "gridPos": { "h": 2, "w": 24, "x": 0, "y": 45 },
+      "options": { "content": "# P&L by Symbol", "mode": "markdown" }
+    },
+    {
+      "title": "Unrealized P&L by Symbol",
+      "description": "Current unrealized profit or loss for each trading symbol. Green = position is profitable. Red = position is losing money. Shows which markets are contributing to or dragging on overall performance.",
+      "type": "bargauge",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 47 },
+      "targets": [
+        {
+          "expr": "trading_unrealized_pnl",
+          "legendFormat": "{{symbol}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "red" },
+              { "value": 0, "color": "green" }
+            ]
+          }
+        }
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true,
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      }
+    },
+    {
+      "title": "Unrealized P&L Over Time",
+      "description": "How unrealized profit/loss per symbol has changed over time. Helps spot which positions are improving or deteriorating.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 47 },
+      "targets": [
+        {
+          "expr": "trading_unrealized_pnl",
+          "legendFormat": "{{symbol}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          },
+          "color": { "mode": "palette-classic" }
+        }
       }
     }
   ],

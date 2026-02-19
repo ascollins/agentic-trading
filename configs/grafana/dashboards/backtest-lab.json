@@ -1,6 +1,6 @@
 {
   "annotations": { "list": [] },
-  "description": "CMT Backtest Lab — Post-backtest analysis, strategy comparison, and optimization robustness. Bloomberg-style dark theme.",
+  "description": "CMT Backtest Lab — Example backtest results (static data). Strategy comparison, optimization robustness, and regime analysis. Not live data.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -169,6 +169,6 @@
   "templating": { "list": [] },
   "time": { "from": "now-30d", "to": "now" },
   "refresh": "",
-  "title": "CMT Backtest Lab",
+  "title": "CMT Backtest Lab (Example Results)",
   "uid": "cmt-backtest-lab"
 }

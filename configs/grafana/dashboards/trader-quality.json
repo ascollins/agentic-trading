@@ -169,7 +169,7 @@
       "options": { "content": "# Risk-Adjusted Returns", "mode": "markdown" }
     },
     {
-      "title": "Sharpe Ratio Score",
+      "title": "Sharpe Ratio Quality Grade",
       "description": "How well each strategy's returns compensate for risk. Target: > 1.0. Above 1.5 is very good. This is the most important risk-adjusted metric for institutional investors.",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 8, "x": 0, "y": 10 },
@@ -201,7 +201,7 @@
       }
     },
     {
-      "title": "Sortino Ratio Score",
+      "title": "Sortino Ratio Quality Grade",
       "description": "Like Sharpe, but only penalizes downside volatility. Better for strategies that have occasional large gains. Target: > 1.5.",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 8, "x": 8, "y": 10 },
@@ -233,7 +233,7 @@
       }
     },
     {
-      "title": "Calmar Ratio Score",
+      "title": "Calmar Ratio Quality Grade",
       "description": "Return divided by max drawdown. Tells you how much pain you endure for each unit of return. Target: > 1.0, 2.0+ is excellent.",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 8, "x": 16, "y": 10 },
@@ -271,7 +271,7 @@
       "options": { "content": "# Trade Quality Metrics", "mode": "markdown" }
     },
     {
-      "title": "Profit Factor Score",
+      "title": "Profit Factor Quality Grade",
       "description": "Ratio of total gains to total losses. Above 1.75 (green) is target. Below 1.0 means losing money overall.",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 8, "x": 0, "y": 20 },
@@ -303,7 +303,7 @@
       }
     },
     {
-      "title": "Win Rate Score",
+      "title": "Win Rate Quality Grade",
       "description": "Win rate graded relative to strategy type. Trend strategies are expected to win less often (30-50%) than mean reversion strategies (60-80%). The grade adjusts accordingly.",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 8, "x": 8, "y": 20 },
@@ -335,7 +335,7 @@
       }
     },
     {
-      "title": "Avg R-Multiple Score",
+      "title": "Avg R-Multiple Quality Grade",
       "description": "On average, how many R (initial risk units) does each strategy earn per trade? Target: > 0.3R. Positive = making more than risked.",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 8, "x": 16, "y": 20 },
@@ -373,7 +373,7 @@
       "options": { "content": "# Capital Safety & Edge Verification", "mode": "markdown" }
     },
     {
-      "title": "Max Drawdown Score",
+      "title": "Max Drawdown Quality Grade",
       "description": "How deep has the portfolio fallen from its peak? Target: less than 15-20%. This is a critical capital preservation metric. Red = dangerous drawdown levels.",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 8, "x": 0, "y": 30 },
@@ -405,7 +405,7 @@
       }
     },
     {
-      "title": "Statistical Edge Score",
+      "title": "Statistical Edge Quality Grade",
       "description": "Is each strategy's performance due to genuine skill or random luck? Based on statistical hypothesis testing. Green = strong evidence of real skill.",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 8, "x": 8, "y": 30 },
@@ -437,7 +437,7 @@
       }
     },
     {
-      "title": "Risk of Ruin Score",
+      "title": "Risk of Ruin Quality Grade",
       "description": "Probability of a catastrophic 50%+ drawdown over the next 500 trades, from Monte Carlo simulation. Target: < 5%. Green = safe. Red = dangerous.",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 8, "x": 16, "y": 30 },

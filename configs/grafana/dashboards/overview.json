@@ -20,37 +20,20 @@
       "options": { "content": "# System Health", "mode": "markdown" }
     },
     {
-      "title": "System Status",
-      "description": "Overall system state. Green = all systems running normally. Red = emergency stop is active or a critical component is down.",
-      "type": "stat",
-      "gridPos": { "h": 4, "w": 5, "x": 0, "y": 2 },
-      "targets": [
-        {
-          "expr": "trading_kill_switch_active",
-          "legendFormat": "status",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "mappings": [
-            { "type": "value", "options": { "0": { "text": "ALL SYSTEMS GO", "color": "green" }, "1": { "text": "EMERGENCY STOP ACTIVE", "color": "red" } } }
-          ],
-          "thresholds": {
-            "steps": [
-              { "value": null, "color": "green" },
-              { "value": 1, "color": "red" }
-            ]
-          }
-        }
-      },
-      "options": { "graphMode": "none", "textMode": "auto", "colorMode": "background", "reduceOptions": { "calcs": ["lastNotNull"] } }
+      "title": "Emergency Stop",
+      "description": "Kill switch control. When active, all new orders are rejected. Click the button to toggle.",
+      "type": "text",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 2 },
+      "options": {
+        "mode": "html",
+        "content": "<div id=\"ks-panel-o\" style=\"display:flex;align-items:center;justify-content:center;height:100%;gap:12px;padding:0 10px;\">\n  <div id=\"ks-indicator-o\" style=\"flex:1;text-align:center;\">\n    <div id=\"ks-label-o\" style=\"font-size:16px;font-weight:700;\">Loading...</div>\n    <div id=\"ks-sub-o\" style=\"font-size:10px;margin-top:2px;color:#999;\"></div>\n  </div>\n  <button id=\"ks-btn-o\" onclick=\"(async()=>{const b=document.getElementById('ks-btn-o');b.disabled=true;b.style.opacity='0.5';b.textContent='...';const wasActive=b.dataset.active==='true';const action=wasActive?'deactivate':'activate';try{const r=await fetch('http://localhost:8099/actions/kill-switch/'+action,{method:'POST'});if(!r.ok)throw new Error(r.statusText);setTimeout(()=>location.reload(),1500);}catch(e){b.textContent='Error';b.disabled=false;b.style.opacity='1';}})()\" style=\"padding:8px 14px;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;min-width:110px;transition:all 0.2s;background:#333;color:#ccc;\" data-active=\"false\">Loading...</button>\n</div>\n<script>\n(async function poll(){try{const r=await fetch('http://localhost:9091/api/v1/query?query=trading_kill_switch_active');const d=await r.json();const v=d?.data?.result?.[0]?.value?.[1];const active=v==='1';const lbl=document.getElementById('ks-label-o');const sub=document.getElementById('ks-sub-o');const btn=document.getElementById('ks-btn-o');if(lbl&&btn){btn.dataset.active=String(active);if(active){lbl.textContent='STOPPED';lbl.style.color='#f44336';sub.textContent='All orders blocked';btn.textContent='Resume Trading';btn.style.background='#2e7d32';btn.style.color='#fff';btn.style.boxShadow='0 2px 8px rgba(46,125,50,0.4)';}else{lbl.textContent='ACTIVE';lbl.style.color='#4caf50';sub.textContent='Trading normally';btn.textContent='Emergency Stop';btn.style.background='#c62828';btn.style.color='#fff';btn.style.boxShadow='0 2px 8px rgba(198,40,40,0.4)';}}}catch(e){}setTimeout(poll,5000);})();\n</script>"
+      }
     },
     {
       "title": "Portfolio Health",
       "description": "Based on current drawdown. Green = drawdown under 5%. Yellow = 5-10%. Orange = 10-15%. Red = over 15%.",
       "type": "stat",
-      "gridPos": { "h": 4, "w": 5, "x": 5, "y": 2 },
+      "gridPos": { "h": 4, "w": 5, "x": 6, "y": 2 },
       "targets": [
         {
           "expr": "trading_drawdown_pct",
@@ -83,7 +66,7 @@
       "title": "Risk Guardrails",
       "description": "Are safety controls blocking trades? Green = no recent blocks. Yellow/Red = trades are being stopped by the governance system.",
       "type": "stat",
-      "gridPos": { "h": 4, "w": 5, "x": 10, "y": 2 },
+      "gridPos": { "h": 4, "w": 4, "x": 11, "y": 2 },
       "targets": [
         {
           "expr": "increase(trading_governance_blocks_total[15m])",
@@ -431,7 +414,115 @@
     {
       "title": "",
       "type": "text",
-      "gridPos": { "h": 3, "w": 24, "x": 0, "y": 44 },
+      "gridPos": { "h": 2, "w": 24, "x": 0, "y": 44 },
+      "options": { "content": "# Open Positions", "mode": "markdown" }
+    },
+    {
+      "title": "Current Positions by Symbol",
+      "description": "All currently open positions. Shows the dollar size of each position and whether it is long or short.",
+      "type": "table",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 46 },
+      "targets": [
+        {
+          "expr": "trading_position_size",
+          "legendFormat": "{{symbol}} ({{side}})",
+          "refId": "A",
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "text" }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "symbol" },
+            "properties": [
+              { "id": "custom.width", "value": 140 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "side" },
+            "properties": [
+              { "id": "custom.width", "value": 80 },
+              { "id": "mappings", "value": [
+                { "type": "value", "options": { "long": { "text": "LONG", "color": "green" }, "short": { "text": "SHORT", "color": "red" } } }
+              ] }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Time" },
+            "properties": [
+              { "id": "custom.hidden", "value": true }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "__name__" },
+            "properties": [
+              { "id": "custom.hidden", "value": true }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "instance" },
+            "properties": [
+              { "id": "custom.hidden", "value": true }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "job" },
+            "properties": [
+              { "id": "custom.hidden", "value": true }
+            ]
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "sortBy",
+          "options": { "sort": [{ "field": "Value", "desc": true }] }
+        }
+      ]
+    },
+    {
+      "title": "Unrealized P&L by Position",
+      "description": "How much each open position is currently up or down. Green = profitable. Red = losing money.",
+      "type": "bargauge",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 46 },
+      "targets": [
+        {
+          "expr": "trading_unrealized_pnl",
+          "legendFormat": "{{symbol}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "thresholds": {
+            "steps": [
+              { "value": null, "color": "red" },
+              { "value": 0, "color": "green" }
+            ]
+          }
+        }
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true,
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      }
+    },
+    {
+      "title": "",
+      "type": "text",
+      "gridPos": { "h": 3, "w": 24, "x": 0, "y": 54 },
       "options": {
         "content": "### Deep Dives\n\n| | | | | |\n|---|---|---|---|---|\n| [Strategy Performance →](/d/strategy-performance) | [Risk & Governance →](/d/risk-governance) | [System Health →](/d/system-health) | [Strategy Reference Guide →](/d/strategy-reference) | [Live Narration →](/d/narration-live) |",
         "mode": "markdown"
