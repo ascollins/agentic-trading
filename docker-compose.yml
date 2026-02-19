@@ -46,6 +46,7 @@ services:
     ports:
       - "9090:9090"  # Prometheus metrics
       - "8099:8099"  # Narration server
+      - "8080:8080"  # Supervision UI
 
   prometheus:
     image: prom/prometheus:latest
