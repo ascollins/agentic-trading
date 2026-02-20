@@ -15,6 +15,7 @@ from agentic_trading.core.events import (
     CircuitBreakerEvent,
     CMTAssessment,
     DegradedModeEnabled,
+    EfficacyAnalysisCompleted,
     FeatureVector,
     FillEvent,
     FundingPaymentEvent,
@@ -76,6 +77,7 @@ TOPIC_SCHEMAS: dict[str, list[type[BaseEvent]]] = {
     "intelligence.cmt": [CMTAssessment],
     "optimizer.result": [
         OptimizationCompleted, StrategyOptimizationResult, ParameterChangeApplied,
+        EfficacyAnalysisCompleted,
     ],
 }
 

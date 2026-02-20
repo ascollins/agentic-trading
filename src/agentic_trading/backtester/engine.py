@@ -31,7 +31,12 @@ from agentic_trading.event_bus.memory_bus import MemoryEventBus
 
 from .fee_model import FeeModel, FundingModel
 from .fill_simulator import FillSimulator
-from .results import BacktestResult, compute_metrics, compute_per_strategy_metrics
+from .results import (
+    BacktestResult,
+    TradeDetail,
+    compute_metrics,
+    compute_per_strategy_metrics,
+)
 from .slippage import create_slippage_model
 
 logger = logging.getLogger(__name__)
@@ -48,6 +53,10 @@ class _SimPosition:
     stop_price: float = 0.0  # 0 = no stop
     strategy_id: str = ""
     entry_time: datetime | None = None
+    # MAE/MFE tracking (updated each candle while position is open)
+    mae_price: float = 0.0   # Worst price seen (lowest for long, highest for short)
+    mfe_price: float = 0.0   # Best price seen (highest for long, lowest for short)
+    entry_fee: float = 0.0   # Fee paid on entry fill
 
 
 class BacktestEngine:
@@ -109,6 +118,7 @@ class BacktestEngine:
         self._last_price: dict[str, float] = {}  # symbol → last known close
         self._equity_curve: list[float] = [initial_capital]
         self._trade_returns: list[tuple[str, float]] = []  # (strategy_id, return)
+        self._trade_details: list[TradeDetail] = []  # Per-trade detail for diagnosis
         self._total_fees = 0.0
         self._total_funding = 0.0
         self._event_log: list[dict[str, Any]] = []
@@ -170,6 +180,9 @@ class BacktestEngine:
                         if hasattr(strategy, "_record_exit"):
                             strategy._record_exit(symbol)
 
+            # 0.5. Update MAE/MFE for all open positions using this candle
+            self._update_mae_mfe(candle)
+
             # 1. Compute features (with aliasing for strategy compat)
             features = self._compute_features(symbol, candle)
             f = features.features
@@ -230,6 +243,9 @@ class BacktestEngine:
         # Compute per-strategy breakdown
         result.per_strategy = compute_per_strategy_metrics(self._trade_returns)
 
+        # Attach per-trade detail for efficacy analysis
+        result.trade_details = list(self._trade_details)
+
         logger.info("Backtest complete: %s", result.summary())
         return result
 
@@ -266,7 +282,7 @@ class BacktestEngine:
 
         # Opposite direction → close first, then open new (reversal)
         if existing and existing.side != direction:
-            self._close_position(existing, candle)
+            self._close_position(existing, candle, exit_reason="reversal")
             # Reset cooldown for reversal — same signal triggers both close and open
             self._last_any_entry_time = None
 
@@ -356,6 +372,9 @@ class BacktestEngine:
                 stop_price=stop_price,
                 strategy_id=signal.strategy_id,
                 entry_time=self._clock.now(),
+                mae_price=fill_price,  # Initialise MAE/MFE at entry
+                mfe_price=fill_price,
+                entry_fee=fee,
             )
 
             # Track daily entries and portfolio cooldown
@@ -363,7 +382,12 @@ class BacktestEngine:
             self._daily_entry_count[date_key] = self._daily_entry_count.get(date_key, 0) + 1
             self._last_any_entry_time = self._clock.now()
 
-    def _close_position(self, pos: _SimPosition, candle: Candle) -> None:
+    def _close_position(
+        self,
+        pos: _SimPosition,
+        candle: Candle,
+        exit_reason: str = "signal",
+    ) -> None:
         """Close an existing position and record trade return."""
         close_side = Side.SELL if pos.side == "long" else Side.BUY
 
@@ -397,9 +421,50 @@ class BacktestEngine:
             if pos.entry_price > 0:
                 if pos.side == "long":
                     trade_ret = (fill_price - pos.entry_price) / pos.entry_price
+                    gross_ret = trade_ret  # Before fee deduction from return
                 else:
                     trade_ret = (pos.entry_price - fill_price) / pos.entry_price
+                    gross_ret = trade_ret
                 self._trade_returns.append((pos.strategy_id, trade_ret))
+
+                # Build per-trade detail
+                total_fee = pos.entry_fee + fee
+                notional = pos.entry_price * pos.qty
+                fee_drag = total_fee / notional if notional > 0 else 0.0
+
+                hold_secs = 0.0
+                entry_ts = ""
+                if pos.entry_time is not None:
+                    hold_secs = (self._clock.now() - pos.entry_time).total_seconds()
+                    entry_ts = pos.entry_time.isoformat()
+
+                # MAE/MFE as percentage from entry
+                if pos.side == "long":
+                    mae_pct = (pos.mae_price - pos.entry_price) / pos.entry_price
+                    mfe_pct = (pos.mfe_price - pos.entry_price) / pos.entry_price
+                else:
+                    mae_pct = (pos.entry_price - pos.mae_price) / pos.entry_price
+                    mfe_pct = (pos.entry_price - pos.mfe_price) / pos.entry_price
+
+                self._trade_details.append(TradeDetail(
+                    strategy_id=pos.strategy_id,
+                    symbol=pos.symbol,
+                    direction=pos.side,
+                    entry_price=pos.entry_price,
+                    exit_price=fill_price,
+                    entry_time=entry_ts,
+                    exit_time=self._clock.now().isoformat(),
+                    qty=pos.qty,
+                    return_pct=trade_ret,
+                    gross_return_pct=gross_ret,
+                    fee_paid=total_fee,
+                    slippage_cost=fee_drag,  # Fee drag as proxy for cost
+                    stop_price=pos.stop_price,
+                    exit_reason=exit_reason,
+                    hold_seconds=hold_secs,
+                    mae_pct=mae_pct,
+                    mfe_pct=mfe_pct,
+                ))
 
         # Remove position
         self._sim_positions.pop(pos.symbol, None)
@@ -433,6 +498,45 @@ class BacktestEngine:
             else:
                 trade_ret = (pos.entry_price - stop_price) / pos.entry_price
             self._trade_returns.append((pos.strategy_id, trade_ret))
+
+            # Build per-trade detail
+            total_fee = pos.entry_fee + fee
+            notional = pos.entry_price * pos.qty
+            fee_drag = total_fee / notional if notional > 0 else 0.0
+
+            hold_secs = 0.0
+            entry_ts = ""
+            if pos.entry_time is not None:
+                hold_secs = (self._clock.now() - pos.entry_time).total_seconds()
+                entry_ts = pos.entry_time.isoformat()
+
+            # MAE/MFE as percentage from entry
+            if pos.side == "long":
+                mae_pct = (pos.mae_price - pos.entry_price) / pos.entry_price
+                mfe_pct = (pos.mfe_price - pos.entry_price) / pos.entry_price
+            else:
+                mae_pct = (pos.entry_price - pos.mae_price) / pos.entry_price
+                mfe_pct = (pos.entry_price - pos.mfe_price) / pos.entry_price
+
+            self._trade_details.append(TradeDetail(
+                strategy_id=pos.strategy_id,
+                symbol=pos.symbol,
+                direction=pos.side,
+                entry_price=pos.entry_price,
+                exit_price=stop_price,
+                entry_time=entry_ts,
+                exit_time=self._clock.now().isoformat(),
+                qty=pos.qty,
+                return_pct=trade_ret,
+                gross_return_pct=trade_ret,
+                fee_paid=total_fee,
+                slippage_cost=fee_drag,
+                stop_price=pos.stop_price,
+                exit_reason="stop_loss",
+                hold_seconds=hold_secs,
+                mae_pct=mae_pct,
+                mfe_pct=mfe_pct,
+            ))
 
         logger.debug(
             "Stop-loss hit: %s %s @ %.2f (entry %.2f, stop %.2f)",
@@ -480,6 +584,20 @@ class BacktestEngine:
         qty = min(qty, max_qty_by_cash)
 
         return qty
+
+    def _update_mae_mfe(self, candle: Candle) -> None:
+        """Update MAE/MFE for all open positions using candle high/low."""
+        for pos in self._sim_positions.values():
+            if pos.symbol != candle.symbol:
+                continue
+            if pos.side == "long":
+                # For longs: MAE = lowest low, MFE = highest high
+                pos.mae_price = min(pos.mae_price, candle.low)
+                pos.mfe_price = max(pos.mfe_price, candle.high)
+            else:
+                # For shorts: MAE = highest high, MFE = lowest low
+                pos.mae_price = max(pos.mae_price, candle.high)
+                pos.mfe_price = min(pos.mfe_price, candle.low)
 
     def _apply_funding(self, symbol: str, mark_price: float, period: int) -> None:
         """Apply funding payment if position exists."""

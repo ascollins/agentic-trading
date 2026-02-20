@@ -10,6 +10,34 @@ import numpy as np
 
 
 @dataclass
+class TradeDetail:
+    """Per-trade detail captured during backtest for post-hoc analysis.
+
+    Lightweight record that captures everything needed for loss diagnosis
+    without the full weight of ``TradeRecord`` (which uses Decimal, FillLeg,
+    etc. for live/paper trading).
+    """
+
+    strategy_id: str = ""
+    symbol: str = ""
+    direction: str = ""          # "long" / "short"
+    entry_price: float = 0.0
+    exit_price: float = 0.0
+    entry_time: str = ""         # ISO timestamp
+    exit_time: str = ""          # ISO timestamp
+    qty: float = 0.0
+    return_pct: float = 0.0     # Net of fees/slippage
+    gross_return_pct: float = 0.0  # Before fees
+    fee_paid: float = 0.0
+    slippage_cost: float = 0.0
+    stop_price: float = 0.0
+    exit_reason: str = ""        # "signal", "stop_loss", "reversal"
+    hold_seconds: float = 0.0
+    mae_pct: float = 0.0        # Max adverse excursion (% from entry)
+    mfe_pct: float = 0.0        # Max favorable excursion (% from entry)
+
+
+@dataclass
 class StrategyBreakdown:
     """Per-strategy backtest metrics."""
 
@@ -70,6 +98,9 @@ class BacktestResult:
 
     # Per-strategy breakdown
     per_strategy: list[StrategyBreakdown] = field(default_factory=list)
+
+    # Per-trade detail (for loss diagnosis / efficacy analysis)
+    trade_details: list[TradeDetail] = field(default_factory=list)
 
     def summary(self) -> dict[str, Any]:
         """Return summary dict for logging."""

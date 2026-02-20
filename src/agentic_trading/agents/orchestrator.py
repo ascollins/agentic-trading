@@ -175,6 +175,18 @@ class AgentOrchestrator:
             )
             self._registry.register(optimizer)
 
+        # --- 7. EfficacyAgent ---
+        if settings.efficacy_agent.enabled:
+            from agentic_trading.optimizer.efficacy_agent import EfficacyAgent
+
+            efficacy = EfficacyAgent(
+                config=settings.efficacy_agent,
+                data_dir=settings.backtest.data_dir,
+                event_bus=ctx.event_bus,
+                agent_id="efficacy-agent",
+            )
+            self._registry.register(efficacy)
+
         logger.info(
             "AgentOrchestrator: %d agents registered",
             self._registry.count,

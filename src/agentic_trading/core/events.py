@@ -629,3 +629,16 @@ class ParameterChangeApplied(BaseEvent):
     improvement_pct: float = 0.0
     approval_required: bool = False
     approval_id: str = ""
+
+
+class EfficacyAnalysisCompleted(BaseEvent):
+    """Published when an efficacy analysis cycle finishes."""
+
+    source_module: str = "optimizer"
+    strategy_id: str = ""
+    total_trades: int = 0
+    win_rate: float = 0.0
+    profit_factor: float = 0.0
+    loss_driver_count: int = 0
+    critical_drivers: int = 0
+    top_recommendation: str = ""

@@ -263,6 +263,23 @@ class OptimizerSchedulerConfig(BaseModel):
     disable_min_sharpe: float = -0.5
 
 
+class EfficacyAgentConfig(BaseModel):
+    """Periodic trade efficacy analysis configuration."""
+
+    enabled: bool = False
+    interval_hours: float = 24.0
+    strategies: list[str] = Field(
+        default_factory=lambda: [
+            "multi_tf_ma", "rsi_divergence", "stochastic_macd", "bb_squeeze",
+            "mean_reversion_enhanced", "supply_demand", "fibonacci_confluence",
+            "obv_divergence",
+        ]
+    )
+    data_window_days: int = 90
+    min_trades_per_segment: int = 50
+    results_dir: str = "data/efficacy_results"
+
+
 class CMTConfig(BaseModel):
     """CMT Autonomous Strategist Agent configuration."""
 
@@ -328,6 +345,9 @@ class Settings(BaseSettings):
     narration: NarrationConfig = Field(default_factory=NarrationConfig)
     optimizer_scheduler: OptimizerSchedulerConfig = Field(
         default_factory=OptimizerSchedulerConfig
+    )
+    efficacy_agent: EfficacyAgentConfig = Field(
+        default_factory=EfficacyAgentConfig
     )
     ui: UIConfig = Field(default_factory=UIConfig)
     cmt: CMTConfig = Field(default_factory=CMTConfig)
