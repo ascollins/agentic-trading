@@ -1,46 +1,32 @@
-<div class="card-label" style="margin-bottom: var(--space-md);">Circuit Breakers</div>
+<div class="card-label" style="margin-bottom:6px;">CIRCUIT BREAKERS</div>
 
 {% if circuit_breakers %}
 <div class="cb-grid">
   {% for cb in circuit_breakers %}
-  <div class="cb-tile {{ 'tripped' if cb.tripped else '' }}">
-    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-      <span class="status-dot {{ 'critical' if cb.tripped else 'healthy' }}"></span>
-      <span style="font-weight: 600; font-size: 0.875rem;
-                   color: {{ 'var(--color-critical)' if cb.tripped else 'var(--text-primary)' }};">
+  <div class="cb-tile {{ 'tripped' if cb.tripped else '' }}" style="padding:6px;">
+    <div style="display:flex; align-items:center; gap:4px; margin-bottom:4px;">
+      <span class="status-dot {{ 'critical' if cb.tripped else 'healthy' }}" style="width:5px;height:5px;"></span>
+      <span style="font-weight:600; font-size:10px; text-transform:uppercase;
+                   color:{{ 'var(--color-negative)' if cb.tripped else 'var(--text-primary)' }};">
         {{ cb.name }}
       </span>
     </div>
-    <div style="font-size: 0.75rem; color: var(--text-muted); line-height: 1.5;">
+    <div style="font-size:9px; color:var(--text-muted); line-height:1.4;">
       {% if cb.tripped %}
-        <span style="color: var(--color-critical); font-weight: 600;">TRIPPED</span>
-        {% if cb.cooldown_remaining > 0 %}
-          — resets in {{ cb.cooldown_remaining }}s
-        {% endif %}
-        <br>
+        <span style="color:var(--color-negative); font-weight:600;">TRIPPED</span>
+        {% if cb.cooldown_remaining > 0 %} — {{ cb.cooldown_remaining }}s{% endif %}
       {% else %}
-        <span style="color: var(--color-positive);">Clear</span><br>
+        <span style="color:var(--color-positive);">CLEAR</span>
       {% endif %}
-      <span class="tooltip-wrap" style="cursor: help;">
-        Threshold: {{ cb.threshold }}
-        <span class="tooltip-text" style="min-width: 180px;">
-          Trips after {{ cb.hysteresis }} violations within {{ cb.window_seconds }}s.
-          Auto-resets after {{ cb.cooldown_seconds }}s cooldown.
-        </span>
-      </span>
-      {% if cb.trip_count > 0 %}
-        <br>Trips: {{ cb.trip_count }}
-      {% endif %}
+      · T:{{ cb.threshold }}
+      {% if cb.trip_count > 0 %} · ×{{ cb.trip_count }}{% endif %}
     </div>
   </div>
   {% endfor %}
 </div>
 {% else %}
-<div class="empty-state" style="padding: var(--space-lg);">
-  <div class="empty-message">No circuit breakers configured</div>
-  <div class="empty-detail">
-    Circuit breakers monitor volatility, spread, liquidity, data freshness, and API error rates.
-    They are configured automatically when the risk manager starts.
-  </div>
+<div class="empty-state" style="padding:8px 0;">
+  <div class="empty-message">NO BREAKERS</div>
+  <div class="empty-detail">Configured automatically when risk manager starts</div>
 </div>
 {% endif %}

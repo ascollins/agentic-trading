@@ -1,69 +1,44 @@
-{% macro gauge(label, current_pct, limit_label, current_label, fill_class, tooltip_text) %}
-<div class="risk-gauge-item">
-  <div class="risk-gauge-header">
-    <span class="risk-gauge-label tooltip-wrap" style="cursor: help;">
-      {{ label }}
-      <span class="tooltip-text" style="text-align: left; min-width: 240px; font-weight: normal;">
-        {{ tooltip_text }}
-      </span>
-    </span>
-    <span class="risk-gauge-values">
-      <span style="color: {{ 'var(--color-critical)' if current_pct >= 95 else ('var(--color-warning)' if current_pct >= 80 else 'var(--text-primary)') }}; font-weight: 600;">
+{% macro gauge(label, current_pct, limit_label, current_label, fill_class) %}
+<div style="margin-bottom:8px;">
+  <div style="display:flex; justify-content:space-between; font-size:10px; margin-bottom:2px;">
+    <span style="color:var(--text-muted); text-transform:uppercase;">{{ label }}</span>
+    <span>
+      <span style="font-weight:600; font-family:'JetBrains Mono',monospace;
+        color:{{ 'var(--color-negative)' if current_pct >= 95 else ('var(--color-warning)' if current_pct >= 80 else 'var(--text-primary)') }};">
         {{ current_label }}
       </span>
-      <span style="color: var(--text-muted);"> / {{ limit_label }} limit</span>
+      <span style="color:var(--text-muted);"> / {{ limit_label }}</span>
     </span>
   </div>
-  <div class="risk-gauge-bar">
-    <div class="risk-gauge-fill {{ fill_class }}"
-         style="width: {{ [current_pct, 100] | min }}%">
-    </div>
+  <div class="risk-gauge-bar" style="height:3px;">
+    <div class="risk-gauge-fill {{ fill_class }}" style="width:{{ [current_pct, 100] | min }}%"></div>
   </div>
-  <div class="risk-gauge-pct">
-    {{ "%.0f" | format(current_pct) }}% of limit used
+  <div style="font-size:8px; color:var(--text-muted); margin-top:1px;">
+    {{ "%.0f" | format(current_pct) }}%
     {% if current_pct >= 95 %}
-      <span style="color: var(--color-critical); font-weight: 600;"> — CRITICAL</span>
+      <span style="color:var(--color-negative); font-weight:600;">CRITICAL</span>
     {% elif current_pct >= 80 %}
-      <span style="color: var(--color-warning);"> — Approaching limit</span>
+      <span style="color:var(--color-warning);">WARN</span>
     {% endif %}
   </div>
 </div>
 {% endmacro %}
 
+<div class="card-label">RISK LIMITS</div>
+
 {% set dl_pct = risk_gauges.daily_loss_pct_used | default(0) %}
 {% set dl_class = 'critical' if dl_pct >= 95 else ('warn' if dl_pct >= 80 else 'safe') %}
-{{ gauge(
-  'Max Daily Loss',
-  dl_pct,
-  risk_gauges.daily_loss_limit | default('-'),
-  risk_gauges.daily_loss_current | default('$0'),
-  dl_class,
-  'Total realised losses today as a percentage of account equity. When this reaches the limit, the platform stops opening new positions for the rest of the trading day.'
-) }}
+{{ gauge('MAX DAILY LOSS', dl_pct, risk_gauges.daily_loss_limit | default('-'), risk_gauges.daily_loss_current | default('$0'), dl_class) }}
 
 {% set dd_pct = risk_gauges.drawdown_pct_used | default(0) %}
 {% set dd_class = 'critical' if dd_pct >= 95 else ('warn' if dd_pct >= 80 else 'safe') %}
-{{ gauge(
-  'Max Drawdown',
-  dd_pct,
-  risk_gauges.drawdown_limit | default('-'),
-  risk_gauges.drawdown_current | default('$0'),
-  dd_class,
-  'Peak-to-trough decline from the highest account value. Measures how far the portfolio has fallen from its recent high. Breaching the limit triggers an automatic halt.'
-) }}
+{{ gauge('MAX DRAWDOWN', dd_pct, risk_gauges.drawdown_limit | default('-'), risk_gauges.drawdown_current | default('$0'), dd_class) }}
 
 {% set pos_pct = risk_gauges.position_size_pct_used | default(0) %}
 {% set pos_class = 'critical' if pos_pct >= 95 else ('warn' if pos_pct >= 80 else 'safe') %}
-{{ gauge(
-  'Max Position Size',
-  pos_pct,
-  risk_gauges.position_size_limit | default('-'),
-  risk_gauges.position_size_current | default('0%'),
-  pos_class,
-  'Largest single position as a percentage of total equity. Prevents over-concentration in one asset. New orders that would exceed this limit are rejected by the risk gate.'
-) }}
+{{ gauge('MAX POSITION SIZE', pos_pct, risk_gauges.position_size_limit | default('-'), risk_gauges.position_size_current | default('0%'), pos_class) }}
 
-<div style="margin-top: var(--space-sm); font-size: 0.75rem; color: var(--text-muted);">
-  ⚠ Amber warning at 80% · 🔴 Critical at 95%
-  <span style="float: right;">Updated {{ risk_gauges.updated_at | default('—') }}</span>
+<div style="font-size:8px; color:var(--text-muted); margin-top:4px;">
+  ⚠ 80% WARN · 🔴 95% CRITICAL
+  <span style="float:right;">{{ risk_gauges.updated_at | default('—') }}</span>
 </div>

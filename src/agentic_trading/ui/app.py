@@ -40,7 +40,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -125,21 +125,18 @@ def create_ui_app(
     @app.get("/", response_class=HTMLResponse)
     async def home_page(request: Request) -> HTMLResponse:
         data = await _build_home_data(app)
+        # Promote kill_switch_active to top level for command bar template
+        rc = data.get("risk_controls", {})
+        data["kill_switch_active"] = rc.get("kill_switch_active", False)
         return templates.TemplateResponse("home.html", _ctx(request, **data))
 
-    @app.get("/strategies", response_class=HTMLResponse)
-    async def strategies_page(request: Request) -> HTMLResponse:
-        data = {**_build_strategies_data(app), **_build_status_bar_data(app)}
-        return templates.TemplateResponse(
-            "strategies.html", _ctx(request, **data),
-        )
+    @app.get("/strategies")
+    async def strategies_page() -> RedirectResponse:
+        return RedirectResponse("/#section-strategies", status_code=302)
 
-    @app.get("/activity", response_class=HTMLResponse)
-    async def activity_page(request: Request) -> HTMLResponse:
-        data = {**_build_activity_data(app), **_build_status_bar_data(app)}
-        return templates.TemplateResponse(
-            "activity.html", _ctx(request, **data),
-        )
+    @app.get("/activity")
+    async def activity_page() -> RedirectResponse:
+        return RedirectResponse("/#section-activity", status_code=302)
 
     @app.get("/settings", response_class=HTMLResponse)
     async def settings_page(request: Request) -> HTMLResponse:
@@ -148,16 +145,9 @@ def create_ui_app(
             "settings.html", _ctx(request, **data),
         )
 
-    @app.get("/risk", response_class=HTMLResponse)
-    async def risk_page(request: Request) -> HTMLResponse:
-        data = {
-            **(await _build_risk_controls_data(app)),
-            **_build_circuit_breakers_data(app),
-            **_build_status_bar_data(app),
-        }
-        return templates.TemplateResponse(
-            "risk.html", _ctx(request, **data),
-        )
+    @app.get("/risk")
+    async def risk_page() -> RedirectResponse:
+        return RedirectResponse("/#section-risk", status_code=302)
 
     # ------------------------------------------------------------------
     # HTMX partial routes (return HTML fragments, not full pages)
@@ -225,6 +215,23 @@ def create_ui_app(
         data = _build_status_bar_data(app)
         return templates.TemplateResponse(
             "partials/status_bar.html", _ctx(request, **data),
+        )
+
+    @app.get("/partials/command-bar", response_class=HTMLResponse)
+    async def partial_command_bar(request: Request) -> HTMLResponse:
+        """Command bar partial — polled every 10s by base.html."""
+        data = _build_status_bar_data(app)
+        # Add kill switch state for the inline kill button
+        kill_switch_active = False
+        risk_mgr = app.state.risk_manager
+        if risk_mgr is not None and hasattr(risk_mgr, "kill_switch"):
+            try:
+                kill_switch_active = await risk_mgr.kill_switch.is_active()
+            except Exception:
+                pass
+        data["kill_switch_active"] = kill_switch_active
+        return templates.TemplateResponse(
+            "partials/command_bar.html", _ctx(request, **data),
         )
 
     @app.get("/partials/risk/gauges", response_class=HTMLResponse)
@@ -696,14 +703,23 @@ async def _fetch_exchange_state(
 
 
 async def _build_home_data(app: FastAPI) -> dict[str, Any]:
-    """Build all data for the home page (initial full load)."""
+    """Build all data for the single-page mission control (initial full load).
+
+    Includes all 7 sections: portfolio, equity, positions, strategies,
+    activity, risk & controls, and system.
+    """
     portfolio = await _build_portfolio_data(app)
     positions = await _build_positions_data(app)
+    risk_controls = await _build_risk_controls_data(app)
     return {
         **(await _build_banner_data(app)),
         **_build_scorecard_data(app),
         **portfolio,
         **positions,
+        **_build_strategies_data(app),
+        **_build_activity_data(app),
+        **risk_controls,
+        **_build_circuit_breakers_data(app),
         **_build_system_data(app),
         **_build_approvals_data(app),
         **_build_status_bar_data(app),

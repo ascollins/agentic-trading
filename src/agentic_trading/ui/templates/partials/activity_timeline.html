@@ -1,17 +1,17 @@
 {% for event in events %}
 {% set event_type = event.icon | default('signal') %}
 {% set type_label_map = {
-  'fill': 'Trade Fill',
-  'signal': 'Signal',
-  'governance': 'Policy Decision',
-  'approval': 'Approval',
-  'incident': 'Incident'
+  'fill': 'FILL',
+  'signal': 'SIG',
+  'governance': 'GOV',
+  'approval': 'APR',
+  'incident': 'INC'
 } %}
 <div class="timeline-item type-{{ event_type }}" id="event-{{ loop.index }}">
   <div class="timeline-time">{{ event.time }}</div>
-  <div class="timeline-icon {{ event_type }}" title="{{ type_label_map.get(event_type, event_type) }}"></div>
+  <div class="timeline-icon {{ event_type }}"></div>
   <div class="timeline-content">
-    <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px;">
+    <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:4px;">
       <div>
         <div class="timeline-title">{{ event.title }}</div>
         <div class="timeline-subtitle">{{ event.subtitle }}</div>
@@ -19,13 +19,13 @@
         <div class="timeline-detail">{{ event.detail }}</div>
         {% endif %}
       </div>
-      <span style="font-size: 0.6875rem; color: var(--text-muted); white-space: nowrap; padding-top: 3px;">
-        {{ type_label_map.get(event_type, event_type) }}
+      <span style="font-size:8px; color:var(--text-muted); white-space:nowrap; padding-top:2px; letter-spacing:0.5px;">
+        {{ type_label_map.get(event_type, event_type | upper) }}
       </span>
     </div>
     {% if event.detail %}
     <button class="timeline-expand-btn" onclick="toggleEventDetail(this, 'event-{{ loop.index }}')">
-      ▶ Show detail
+      ▶ DETAIL
     </button>
     {% endif %}
   </div>
@@ -33,34 +33,34 @@
 {% endfor %}
 
 {% if not events %}
-<div class="empty-state">
+<div class="empty-state" style="padding:8px 0;">
   {% if filter_type == 'trades' %}
-    <div class="empty-message">No trade fills yet</div>
-    <div class="empty-detail">Executed trades appear here. Strategies need 26+ candles before generating their first signal.</div>
+    <div class="empty-message">NO TRADES</div>
+    <div class="empty-detail">Strategies need 26+ candles before first signal</div>
   {% elif filter_type == 'signals' %}
-    <div class="empty-message">No signals fired yet</div>
-    <div class="empty-detail">Trading signals appear when strategies identify opportunities. Requires 26+ candles of market data.</div>
+    <div class="empty-message">NO SIGNALS</div>
+    <div class="empty-detail">Requires 26+ candles of market data</div>
   {% elif filter_type == 'governance' %}
-    <div class="empty-message">No policy decisions yet</div>
-    <div class="empty-detail">Every trade passes through the governance gate. Allow and block decisions appear here when trading begins.</div>
+    <div class="empty-message">NO POLICY DECISIONS</div>
+    <div class="empty-detail">Governance gate decisions appear when trading begins</div>
   {% elif filter_type == 'approvals' %}
-    <div class="empty-message">No approval events yet</div>
-    <div class="empty-detail">Approval requests and decisions appear here when the governance gate flags high-impact trades for review.</div>
+    <div class="empty-message">NO APPROVALS</div>
+    <div class="empty-detail">High-impact trade reviews appear here</div>
   {% elif filter_type == 'incidents' %}
-    <div class="empty-message">No incidents recorded</div>
-    <div class="empty-detail">Emergency stops and critical alerts appear here. An empty list is a good sign.</div>
+    <div class="empty-message">NO INCIDENTS</div>
+    <div class="empty-detail">Clean operations — no alerts</div>
   {% else %}
-    <div class="empty-message">No activity yet</div>
-    <div class="empty-detail">Strategies need 26+ candles before firing their first signal. Events appear here in real time as trading begins.</div>
+    <div class="empty-message">NO ACTIVITY</div>
+    <div class="empty-detail">Events appear here in real time as trading begins</div>
   {% endif %}
 </div>
 {% endif %}
 
 <script>
   function toggleEventDetail(btn, itemId) {
-    const item = document.getElementById(itemId);
+    var item = document.getElementById(itemId);
     if (!item) return;
     item.classList.toggle('expanded');
-    btn.textContent = item.classList.contains('expanded') ? '▼ Hide detail' : '▶ Show detail';
+    btn.textContent = item.classList.contains('expanded') ? '▼ DETAIL' : '▶ DETAIL';
   }
 </script>

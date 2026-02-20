@@ -1,87 +1,66 @@
-<div class="card">
-  <div class="card-label">System Status</div>
-  {% if system %}
-    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-      <span class="status-dot {{ 'healthy' if system.all_healthy else 'warning' }}"></span>
-      <span style="font-weight: 600; font-size: 1.125rem;">
-        {% if system.all_healthy %}
-          All Healthy
-        {% else %}
-          Degraded
-        {% endif %}
-      </span>
-    </div>
+<div class="card-label">SYSTEM STATUS</div>
+{% if system %}
+  <div style="display:flex; align-items:center; gap:6px; margin:4px 0;">
+    <span class="status-dot {{ 'healthy' if system.all_healthy else 'warning' }}" style="width:6px;height:6px;"></span>
+    <span style="font-weight:600; font-size:12px; text-transform:uppercase;">
+      {% if system.all_healthy %}ALL HEALTHY{% else %}DEGRADED{% endif %}
+    </span>
+  </div>
 
-    <div class="system-stats">
-      <div class="system-stat">
-        <strong>{{ system.agents_healthy }}/{{ system.agents_total }}</strong> agents
-      </div>
-      <div class="system-stat">
-        Last candle: <strong>{{ system.last_candle_seconds }}s</strong> ago
-      </div>
-  {% if system.dlq_count > 0 %}
-      <div class="system-stat tooltip-wrap" style="color: var(--color-warning); cursor: help;">
-        ⚠ Processing errors: <strong>{{ system.dlq_count }}</strong>
-        <span class="tooltip-text" style="text-align: left; min-width: 220px;">
-          <strong>Processing Errors</strong><br><br>
-          {{ system.dlq_count }} event{{ 's' if system.dlq_count != 1 else '' }} could not be
-          processed after retries and were moved to the dead-letter queue.
-          Check the application logs for details.
-        </span>
-      </div>
-      {% endif %}
-    </div>
-
-    <!-- Per-agent detail (expandable) -->
-    {% if system.agent_details %}
-    <div style="margin-top: var(--space-md);">
-      <button class="agent-expand-toggle" onclick="toggleAgentDetails(this)" type="button">
-        Show details ▶
-      </button>
-      <div class="agent-detail-panel" style="display: none; margin-top: var(--space-sm);">
-        <table class="agent-detail-table">
-          <thead>
-            <tr>
-              <th>Agent</th>
-              <th>Type</th>
-              <th>Status</th>
-              <th>Errors</th>
-              <th>Last Active</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for agent in system.agent_details %}
-            <tr class="agent-row {{ 'unhealthy' if not agent.healthy else '' }}">
-              <td style="font-weight: 500;">{{ agent.name }}</td>
-              <td>{{ agent.type }}</td>
-              <td>
-                <span class="status-dot {{ 'healthy' if agent.healthy else 'critical' }}"
-                      style="width: 8px; height: 8px;"></span>
-                {{ 'Healthy' if agent.healthy else 'Unhealthy' }}
-              </td>
-              <td style="font-family: 'SF Mono', monospace;">
-                {% if agent.error_count > 0 %}
-                  <span style="color: var(--color-warning);">{{ agent.error_count }}</span>
-                {% else %}
-                  <span style="color: var(--text-muted);">0</span>
-                {% endif %}
-              </td>
-              <td style="color: var(--text-muted);">{{ agent.last_work }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </div>
+  <div style="display:flex; gap:12px; font-size:10px; color:var(--text-muted); margin:4px 0;">
+    <span><strong style="color:var(--text-primary);">{{ system.agents_healthy }}/{{ system.agents_total }}</strong> AGENTS</span>
+    <span>CANDLE <strong style="color:var(--text-primary);">{{ system.last_candle_seconds }}s</strong></span>
+    {% if system.dlq_count > 0 %}
+    <span style="color:var(--color-warning);">⚠ DLQ: <strong>{{ system.dlq_count }}</strong></span>
     {% endif %}
+  </div>
 
-  {% else %}
-    <div class="empty-state">
-      <div class="empty-message">System status unavailable</div>
-      <div class="empty-detail">The agent registry has not initialised yet — check application logs</div>
+  {% if system.agent_details %}
+  <div style="margin-top:6px;">
+    <button style="font-size:9px; color:var(--text-muted); background:none; border:none; cursor:pointer; padding:0; font-family:'JetBrains Mono',monospace;"
+            onclick="toggleAgentDetails(this)" type="button">
+      ▶ DETAILS
+    </button>
+    <div class="agent-detail-panel" style="display:none; margin-top:4px;">
+      <table class="positions-table" style="width:100%;">
+        <thead>
+          <tr>
+            <th>AGENT</th>
+            <th>TYPE</th>
+            <th>STATUS</th>
+            <th>ERR</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for agent in system.agent_details %}
+          <tr>
+            <td style="font-weight:500;">{{ agent.name }}</td>
+            <td>{{ agent.type }}</td>
+            <td>
+              <span class="status-dot {{ 'healthy' if agent.healthy else 'critical' }}" style="width:5px;height:5px;"></span>
+              {{ 'OK' if agent.healthy else 'ERR' }}
+            </td>
+            <td>
+              {% if agent.error_count > 0 %}
+                <span style="color:var(--color-warning);">{{ agent.error_count }}</span>
+              {% else %}
+                <span style="color:var(--text-muted);">0</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
+  </div>
   {% endif %}
-</div>
+
+{% else %}
+  <div class="empty-state" style="padding:8px 0;">
+    <div class="empty-message">UNAVAILABLE</div>
+    <div class="empty-detail">Agent registry not initialised</div>
+  </div>
+{% endif %}
 
 <script>
   function toggleAgentDetails(btn) {
@@ -89,6 +68,6 @@
     if (!panel) return;
     var visible = panel.style.display !== 'none';
     panel.style.display = visible ? 'none' : 'block';
-    btn.textContent = visible ? 'Show details ▶' : 'Hide details ▼';
+    btn.textContent = visible ? '▶ DETAILS' : '▼ DETAILS';
   }
 </script>

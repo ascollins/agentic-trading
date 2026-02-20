@@ -28,28 +28,28 @@ class TestUIPageRoutes:
         assert resp.status_code == 200
         assert "text/html" in resp.headers["content-type"]
 
-    def test_home_contains_dashboard_heading(self):
+    def test_home_contains_mission_control_heading(self):
         client = TestClient(_make_app())
         resp = client.get("/")
-        assert "Dashboard" in resp.text
+        assert "Mission Control" in resp.text
 
-    def test_strategies_returns_200(self):
-        client = TestClient(_make_app())
+    def test_strategies_redirects_to_home(self):
+        client = TestClient(_make_app(), follow_redirects=False)
         resp = client.get("/strategies")
-        assert resp.status_code == 200
-        assert "text/html" in resp.headers["content-type"]
+        assert resp.status_code == 302
+        assert "/#section-strategies" in resp.headers["location"]
 
-    def test_activity_returns_200(self):
-        client = TestClient(_make_app())
+    def test_activity_redirects_to_home(self):
+        client = TestClient(_make_app(), follow_redirects=False)
         resp = client.get("/activity")
-        assert resp.status_code == 200
-        assert "text/html" in resp.headers["content-type"]
+        assert resp.status_code == 302
+        assert "/#section-activity" in resp.headers["location"]
 
-    def test_risk_returns_200(self):
-        client = TestClient(_make_app())
+    def test_risk_redirects_to_home(self):
+        client = TestClient(_make_app(), follow_redirects=False)
         resp = client.get("/risk")
-        assert resp.status_code == 200
-        assert "text/html" in resp.headers["content-type"]
+        assert resp.status_code == 302
+        assert "/#section-risk" in resp.headers["location"]
 
     def test_settings_returns_200(self):
         client = TestClient(_make_app())
@@ -239,4 +239,4 @@ class TestCircuitBreakersRoute:
     def test_circuit_breakers_shows_empty_state(self):
         client = TestClient(_make_app())
         resp = client.get("/partials/risk/circuit-breakers")
-        assert "No circuit breakers configured" in resp.text
+        assert "NO BREAKERS" in resp.text

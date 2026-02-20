@@ -1,68 +1,56 @@
-<div class="card">
-  <div class="card-label">Daily Effectiveness</div>
-  {% if scorecard %}
-    {% set total = scorecard.total | default(0) %}
-    {% set score_class = "score-good" if total >= 7 else ("score-ok" if total >= 4 else "score-bad") %}
-    {% set bar_class = "good" if total >= 7 else ("ok" if total >= 4 else "bad") %}
+<div class="card-label">DAILY EFFECTIVENESS</div>
+{% if scorecard %}
+  {% set total = scorecard.total | default(0) %}
+  {% set score_class = "score-good" if total >= 7 else ("score-ok" if total >= 4 else "score-bad") %}
+  {% set bar_class = "good" if total >= 7 else ("ok" if total >= 4 else "bad") %}
 
-    <div class="scorecard-total tooltip-wrap" style="cursor: help; display: inline-flex; align-items: baseline; gap: 4px;">
-      <span class="score-big {{ score_class }}">{{ "%.1f" | format(total) }}</span>
-      <span class="score-max">/ 10</span>
-      <span class="tooltip-text" style="text-align: left; min-width: 260px; font-weight: normal; left: 0; transform: none;">
-        <strong>Daily Effectiveness Score</strong><br><br>
-        Composite of 4 sub-scores (0–10 each), averaged:<br><br>
-        <strong>≥ 7.0</strong> — Good (green)<br>
-        <strong>4.0–6.9</strong> — Acceptable (amber)<br>
-        <strong>&lt; 4.0</strong> — Needs attention (red)<br><br>
-        Hover each sub-score below for what it measures and how to improve it.
-      </span>
-    </div>
+  <div style="display:inline-flex; align-items:baseline; gap:4px; margin:4px 0;">
+    <span style="font-size:1.5rem; font-weight:700; font-family:'JetBrains Mono',monospace;"
+          class="{{ score_class }}">{{ "%.1f" | format(total) }}</span>
+    <span style="font-size:10px; color:var(--text-muted);">/ 10</span>
+  </div>
 
-    <div class="progress-bar">
-      <div class="progress-fill {{ bar_class }}" style="width: {{ total * 10 }}%"></div>
-    </div>
+  <div class="progress-bar" style="height:3px; margin:4px 0;">
+    <div class="progress-fill {{ bar_class }}" style="width:{{ total * 10 }}%"></div>
+  </div>
 
-    <div class="scorecard-subscores">
-      {% set edge = scorecard.edge_quality | default(0) %}
-      {% set exec = scorecard.execution_quality | default(0) %}
-      {% set risk = scorecard.risk_discipline | default(0) %}
-      {% set ops = scorecard.operational_integrity | default(0) %}
+  <div class="scorecard-subscores" style="margin-top:6px;">
+    {% set edge = scorecard.edge_quality | default(0) %}
+    {% set exec = scorecard.execution_quality | default(0) %}
+    {% set risk = scorecard.risk_discipline | default(0) %}
+    {% set ops = scorecard.operational_integrity | default(0) %}
 
-      <div class="subscore" title="Edge Quality: Win rate × profit factor. High score = strategy consistently captures more than it loses.">
-        <div class="subscore-value {{ 'score-good' if edge >= 7 else ('score-ok' if edge >= 4 else 'score-bad') }}">
-          {{ "%.1f" | format(edge) }}
-        </div>
-        <div class="subscore-label">Edge</div>
+    <div class="subscore" title="Edge Quality: Win rate × profit factor">
+      <div class="subscore-value {{ 'score-good' if edge >= 7 else ('score-ok' if edge >= 4 else 'score-bad') }}">
+        {{ "%.1f" | format(edge) }}
       </div>
-
-      <div class="subscore" title="Execution Quality: Did exits happen at the right time? Low score = early exits or chasing entries.">
-        <div class="subscore-value {{ 'score-good' if exec >= 7 else ('score-ok' if exec >= 4 else 'score-bad') }}">
-          {{ "%.1f" | format(exec) }}
-        </div>
-        <div class="subscore-label">Execution</div>
-      </div>
-
-      <div class="subscore" title="Risk Discipline: Penalises consecutive losses and large drawdowns. High score = staying within risk limits.">
-        <div class="subscore-value {{ 'score-good' if risk >= 7 else ('score-ok' if risk >= 4 else 'score-bad') }}">
-          {{ "%.1f" | format(risk) }}
-        </div>
-        <div class="subscore-label">Risk</div>
-      </div>
-
-      <div class="subscore" title="System Health: Operational reliability — failed messages, agent health. Perfect score = no errors today.">
-        <div class="subscore-value {{ 'score-good' if ops >= 7 else ('score-ok' if ops >= 4 else 'score-bad') }}">
-          {{ "%.1f" | format(ops) }}
-        </div>
-        <div class="subscore-label">System</div>
-      </div>
+      <div class="subscore-label">EDGE</div>
     </div>
-    <div style="margin-top: var(--space-xs); font-size: 0.75rem; color: var(--text-muted);">
-      Hover each score for details
+
+    <div class="subscore" title="Execution Quality: Exit timing efficiency">
+      <div class="subscore-value {{ 'score-good' if exec >= 7 else ('score-ok' if exec >= 4 else 'score-bad') }}">
+        {{ "%.1f" | format(exec) }}
+      </div>
+      <div class="subscore-label">EXEC</div>
     </div>
-  {% else %}
-    <div class="empty-state">
-      <div class="empty-message">Scorecard not available yet</div>
-      <div class="empty-detail">Scores are computed from completed trades. The scorecard will appear after the first trade closes today.</div>
+
+    <div class="subscore" title="Risk Discipline: Drawdown + loss streak penalty">
+      <div class="subscore-value {{ 'score-good' if risk >= 7 else ('score-ok' if risk >= 4 else 'score-bad') }}">
+        {{ "%.1f" | format(risk) }}
+      </div>
+      <div class="subscore-label">RISK</div>
     </div>
-  {% endif %}
-</div>
+
+    <div class="subscore" title="System Health: DLQ, agent health, ops reliability">
+      <div class="subscore-value {{ 'score-good' if ops >= 7 else ('score-ok' if ops >= 4 else 'score-bad') }}">
+        {{ "%.1f" | format(ops) }}
+      </div>
+      <div class="subscore-label">SYS</div>
+    </div>
+  </div>
+{% else %}
+  <div class="empty-state" style="padding:8px 0;">
+    <div class="empty-message">NO DATA</div>
+    <div class="empty-detail">Scores computed from completed trades</div>
+  </div>
+{% endif %}

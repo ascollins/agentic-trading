@@ -1,51 +1,39 @@
-<div class="card">
-  <div class="card-label">
-    Pending Approvals
-    {% if approvals %}
-      <span class="badge badge-warning" style="margin-left: 8px;">{{ approvals | length }}</span>
-    {% endif %}
-  </div>
-
+<div class="card-label">
+  PENDING APPROVALS
   {% if approvals %}
-    {% for approval in approvals %}
-    <div class="approval-item">
-      <div class="approval-info">
-        <div style="font-weight: 500; font-size: 0.875rem;">
-          {{ approval.symbol }} — {{ approval.trigger | replace("_", " ") | title }}
-        </div>
-        <div style="font-size: 0.8125rem; color: var(--text-secondary);">
-          {{ approval.strategy_id }} | {{ approval.escalation_level }}
-          {% if approval.notional_usd %}
-            | ${{ "{:,.0f}".format(approval.notional_usd) }}
-          {% endif %}
-          {% if approval.created_at %}
-            | {{ approval.created_at }}
-          {% endif %}
-        </div>
-      </div>
-      <div class="approval-actions">
-        <button class="btn btn-approve"
-                hx-post="/actions/approve/{{ approval.request_id }}"
-                hx-target="#approvals-container"
-                hx-swap="innerHTML">
-          Approve
-        </button>
-        <button class="btn btn-deny"
-                hx-post="/actions/deny/{{ approval.request_id }}"
-                hx-target="#approvals-container"
-                hx-swap="innerHTML">
-          Deny
-        </button>
-      </div>
-    </div>
-    {% endfor %}
-  {% else %}
-    <div class="empty-state" style="padding: 24px 0;">
-      <div class="empty-message" style="font-size: 0.875rem;">No pending approvals</div>
-      <div class="empty-detail">
-        High-impact trades flagged by the governance gate appear here for your review.
-        The platform is trading normally.
-      </div>
-    </div>
+    <span class="count-badge" style="margin-left:4px;">{{ approvals | length }}</span>
   {% endif %}
 </div>
+
+{% if approvals %}
+  {% for approval in approvals %}
+  <div style="padding:4px 0; border-bottom:1px solid var(--border-card); font-size:11px;">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <div>
+        <span style="font-weight:600; color:var(--text-primary);">{{ approval.symbol }}</span>
+        <span style="color:var(--text-muted); margin-left:4px;">{{ approval.trigger | replace("_", " ") | upper }}</span>
+        <br>
+        <span style="font-size:9px; color:var(--text-muted);">
+          {{ approval.strategy_id }} · {{ approval.escalation_level }}
+          {% if approval.notional_usd %} · ${{ "{:,.0f}".format(approval.notional_usd) }}{% endif %}
+        </span>
+      </div>
+      <div style="display:flex; gap:3px;">
+        <button class="btn btn-approve" style="font-size:9px; padding:1px 8px;"
+                hx-post="/actions/approve/{{ approval.request_id }}"
+                hx-target="#approvals-container"
+                hx-swap="innerHTML">OK</button>
+        <button class="btn btn-deny" style="font-size:9px; padding:1px 8px;"
+                hx-post="/actions/deny/{{ approval.request_id }}"
+                hx-target="#approvals-container"
+                hx-swap="innerHTML">DENY</button>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+{% else %}
+  <div class="empty-state" style="padding:8px 0;">
+    <div class="empty-message">NONE PENDING</div>
+    <div class="empty-detail">High-impact trades flagged by governance appear here</div>
+  </div>
+{% endif %}

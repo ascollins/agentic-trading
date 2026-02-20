@@ -1,155 +1,490 @@
 {% extends "base.html" %}
+{% from "partials/section_header.html" import section_header %}
 {% set active_tab = "home" %}
-{% block title %}Home{% endblock %}
-
-{% block head %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-{% endblock %}
+{% block title %}Mission Control{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <h2>Dashboard</h2>
-  <div class="breadcrumb">Home / Overview</div>
+
+<!-- Critical Banner (only shows when degraded) -->
+<div id="banner-container"
+     hx-get="/partials/home/banner"
+     hx-trigger="every 5s"
+     hx-swap="innerHTML">
+  {% include "partials/banner.html" %}
 </div>
 
-<div class="grid-home">
-  <!-- Critical Banner (only shows when degraded) -->
-  <div id="banner-container"
-       hx-get="/partials/home/banner"
-       hx-trigger="every 5s"
-       hx-swap="innerHTML">
-    {% include "partials/banner.html" %}
-  </div>
+<!-- ═══════════════════════════════════════════════════════════════
+     SECTION 1: PORTFOLIO
+     ═══════════════════════════════════════════════════════════════ -->
+<section id="section-portfolio">
+  {{ section_header("PORTFOLIO", live=True, id="section-portfolio") }}
+  <div class="section-body">
+    <div class="grid-2">
+      <!-- Daily Effectiveness Score -->
+      <div class="card"
+           id="scorecard-container"
+           hx-get="/partials/home/scorecard"
+           hx-trigger="every 10s"
+           hx-swap="innerHTML">
+        {% include "partials/scorecard_card.html" %}
+      </div>
 
-  <!-- Row 1: Scorecard + Portfolio -->
-  <div class="grid-2">
-    <!-- Daily Effectiveness Score -->
-    <div id="scorecard-container"
-         hx-get="/partials/home/scorecard"
-         hx-trigger="every 10s"
-         hx-swap="innerHTML">
-      {% include "partials/scorecard_card.html" %}
+      <!-- Portfolio Summary -->
+      <div class="card"
+           id="portfolio-container"
+           hx-get="/partials/home/portfolio"
+           hx-trigger="every 5s"
+           hx-swap="innerHTML">
+        {% include "partials/portfolio_card.html" %}
+      </div>
     </div>
+  </div>
+</section>
 
-    <!-- Portfolio Summary -->
-    <div id="portfolio-container"
-         hx-get="/partials/home/portfolio"
+<!-- ═══════════════════════════════════════════════════════════════
+     SECTION 2: EQUITY CURVE
+     ═══════════════════════════════════════════════════════════════ -->
+<section id="section-equity">
+  {{ section_header("EQUITY CURVE", live=True, id="section-equity") }}
+  <div class="section-body">
+    <div class="card" style="padding:6px 8px;">
+      <canvas id="equityChart" style="height:160px;width:100%;"></canvas>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SECTION 3: POSITIONS
+     ═══════════════════════════════════════════════════════════════ -->
+<section id="section-positions">
+  {{ section_header("POSITIONS", live=True, count=positions|length if positions is defined else 0, id="section-positions") }}
+  <div class="section-body">
+    <div class="card"
+         id="positions-container"
+         hx-get="/partials/home/positions"
          hx-trigger="every 5s"
          hx-swap="innerHTML">
-      {% include "partials/portfolio_card.html" %}
+      {% include "partials/positions_card.html" %}
     </div>
   </div>
+</section>
 
-  <!-- Row 2: Equity Curve -->
-  <div class="card">
-    <div class="card-label">Today's Equity</div>
-    <div class="chart-container">
-      <canvas id="equityChart"></canvas>
-    </div>
-  </div>
-
-  <!-- Row 3: Open Positions -->
-  <div id="positions-container"
-       hx-get="/partials/home/positions"
-       hx-trigger="every 5s"
-       hx-swap="innerHTML">
-    {% include "partials/positions_card.html" %}
-  </div>
-
-  <!-- Row 4: System Status + Pending Approvals -->
-  <div class="grid-2">
-    <!-- System Status -->
-    <div id="system-container"
-         hx-get="/partials/home/system"
-         hx-trigger="every 10s"
+<!-- ═══════════════════════════════════════════════════════════════
+     SECTION 4: STRATEGIES
+     ═══════════════════════════════════════════════════════════════ -->
+<section id="section-strategies">
+  {{ section_header("STRATEGIES", count=strategies|length if strategies is defined else 0, id="section-strategies") }}
+  <div class="section-body">
+    <div class="card"
+         id="strategies-list"
+         hx-get="/partials/strategies/list"
+         hx-trigger="every 30s"
          hx-swap="innerHTML">
-      {% include "partials/system_card.html" %}
+      {% include "partials/strategies_list.html" %}
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SECTION 5: ACTIVITY
+     ═══════════════════════════════════════════════════════════════ -->
+<section id="section-activity">
+  {{ section_header("ACTIVITY", live=True, id="section-activity") }}
+  <div class="section-body">
+    <div class="card">
+      <!-- Filters -->
+      <div class="timeline-filters">
+        <button class="filter-btn active"
+                hx-get="/partials/activity/timeline?type=all"
+                hx-target="#timeline-content"
+                hx-swap="innerHTML">ALL</button>
+        <button class="filter-btn"
+                hx-get="/partials/activity/timeline?type=trades"
+                hx-target="#timeline-content"
+                hx-swap="innerHTML">TRADES</button>
+        <button class="filter-btn"
+                hx-get="/partials/activity/timeline?type=signals"
+                hx-target="#timeline-content"
+                hx-swap="innerHTML">SIGNALS</button>
+        <button class="filter-btn"
+                hx-get="/partials/activity/timeline?type=governance"
+                hx-target="#timeline-content"
+                hx-swap="innerHTML">POLICY</button>
+        <button class="filter-btn"
+                hx-get="/partials/activity/timeline?type=approvals"
+                hx-target="#timeline-content"
+                hx-swap="innerHTML">APPROVALS</button>
+        <button class="filter-btn"
+                hx-get="/partials/activity/timeline?type=incidents"
+                hx-target="#timeline-content"
+                hx-swap="innerHTML">INCIDENTS</button>
+      </div>
+
+      <!-- Timeline content (HTMX polling) -->
+      <div id="timeline-content"
+           hx-get="/partials/activity/timeline?type=all"
+           hx-trigger="every 10s"
+           hx-swap="innerHTML">
+        {% if events is defined %}
+          {% include "partials/activity_timeline.html" %}
+        {% else %}
+          <div class="empty-state"><div class="empty-message">Loading timeline...</div></div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SECTION 6: RISK & CONTROLS
+     ═══════════════════════════════════════════════════════════════ -->
+<section id="section-risk">
+  {{ section_header("RISK & CONTROLS", id="section-risk") }}
+  <div class="section-body">
+    <div class="grid-2">
+      <!-- Risk Gauges -->
+      <div class="card"
+           id="risk-gauges"
+           hx-get="/partials/risk/gauges"
+           hx-trigger="every 15s"
+           hx-swap="innerHTML">
+        {% if risk_gauges is defined %}
+          {% include "partials/risk_gauges.html" %}
+        {% else %}
+          <div class="card-label">RISK LIMITS</div>
+          <div class="empty-state"><div class="empty-message">Loading...</div></div>
+        {% endif %}
+      </div>
+
+      <!-- Circuit Breakers -->
+      <div class="card"
+           id="circuit-breakers-card"
+           hx-get="/partials/risk/circuit-breakers"
+           hx-trigger="every 10s"
+           hx-swap="innerHTML">
+        {% if circuit_breakers is defined %}
+          {% include "partials/circuit_breakers_card.html" %}
+        {% else %}
+          <div class="card-label">CIRCUIT BREAKERS</div>
+          <div class="empty-state"><div class="empty-message">Loading...</div></div>
+        {% endif %}
+      </div>
     </div>
 
-    <!-- Pending Approvals -->
-    <div id="approvals-container"
-         hx-get="/partials/home/approvals"
-         hx-trigger="every 5s"
-         hx-swap="innerHTML">
-      {% include "partials/approvals_card.html" %}
+    <!-- Governance Status (inline) -->
+    {% if risk_controls is defined %}
+    <div class="card" style="margin-top:3px;">
+      <div class="card-label">GOVERNANCE</div>
+      <div style="margin-top:6px; display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:11px;">
+        <div>
+          <span style="color:var(--text-muted);">POLICY ENGINE</span>
+          {% if risk_controls.policy_engine_enabled %}
+            <span class="badge badge-positive" style="margin-left:4px;font-size:9px;">ACTIVE</span>
+            <span style="color:var(--text-muted);margin-left:4px;">{{ risk_controls.policy_rules_count }} rules</span>
+          {% else %}
+            <span class="badge badge-warning" style="margin-left:4px;font-size:9px;">OFF</span>
+          {% endif %}
+        </div>
+        <div>
+          <span style="color:var(--text-muted);">APPROVAL WORKFLOW</span>
+          {% if risk_controls.approval_workflow %}
+            <span class="badge badge-positive" style="margin-left:4px;font-size:9px;">ON</span>
+            {% if risk_controls.auto_approve_l1 %}
+              <span style="color:var(--text-muted);margin-left:4px;">auto L1</span>
+            {% endif %}
+          {% else %}
+            <span class="badge badge-warning" style="margin-left:4px;font-size:9px;">OFF</span>
+          {% endif %}
+        </div>
+        <div>
+          <span style="color:var(--text-muted);">SHADOW MODE</span>
+          {% if risk_controls.shadow_mode %}
+            <span class="badge badge-warning" style="margin-left:4px;font-size:9px;">ON</span>
+          {% else %}
+            <span style="color:var(--text-muted);margin-left:4px;">Off (enforcing)</span>
+          {% endif %}
+        </div>
+        <div>
+          <span style="color:var(--text-muted);">PENDING</span>
+          {% if risk_controls.pending_approvals > 0 %}
+            <span class="count-badge" style="margin-left:4px;">{{ risk_controls.pending_approvals }}</span>
+          {% else %}
+            <span style="color:var(--text-muted);margin-left:4px;">None</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SECTION 7: SYSTEM
+     ═══════════════════════════════════════════════════════════════ -->
+<section id="section-system">
+  {{ section_header("SYSTEM", id="section-system") }}
+  <div class="section-body">
+    <div class="grid-2">
+      <!-- Agent Health -->
+      <div class="card"
+           id="system-container"
+           hx-get="/partials/home/system"
+           hx-trigger="every 10s"
+           hx-swap="innerHTML">
+        {% include "partials/system_card.html" %}
+      </div>
+
+      <!-- Pending Approvals -->
+      <div class="card"
+           id="approvals-container"
+           hx-get="/partials/home/approvals"
+           hx-trigger="every 5s"
+           hx-swap="innerHTML">
+        {% include "partials/approvals_card.html" %}
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     MODALS
+     ═══════════════════════════════════════════════════════════════ -->
+
+<!-- Kill Switch Confirmation Modal -->
+<div class="modal-overlay hidden" id="kill-switch-modal" role="dialog" aria-modal="true">
+  <div class="modal-box">
+    <div class="modal-title" id="ks-modal-title">CONFIRM ACTION</div>
+    <div class="modal-body" id="ks-modal-body"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeKillSwitchModal()">CANCEL</button>
+      <button class="btn" id="ks-modal-confirm" onclick="submitKillSwitch()">CONFIRM</button>
     </div>
   </div>
 </div>
+
+<!-- Strategy Promotion Modal -->
+<div class="modal-overlay hidden" id="promote-modal" role="dialog" aria-modal="true">
+  <div class="modal-box">
+    <div class="modal-title">PROMOTE STRATEGY?</div>
+    <div class="modal-body" id="promote-modal-body">
+      This will request promotion for this strategy to the next stage.
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closePromoteModal()">CANCEL</button>
+      <button class="btn btn-primary" id="promote-modal-confirm" onclick="submitPromotion()">CONFIRM PROMOTION</button>
+    </div>
+  </div>
+</div>
+
+<!-- Close Position Modal -->
+<div class="modal-overlay hidden" id="close-position-modal" role="dialog" aria-modal="true">
+  <div class="modal-box">
+    <div class="modal-title">CLOSE POSITION?</div>
+    <div class="modal-body" id="close-pos-modal-body">
+      This will submit a market order to close this position.
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeClosePositionModal()">CANCEL</button>
+      <button class="btn" id="close-pos-modal-confirm" style="background:var(--color-negative);"
+              onclick="submitClosePosition()">CLOSE POSITION</button>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
 <script>
-  // Equity curve chart
+  /* ═══════════════════════════════════════════════
+     KILL SWITCH
+     ═══════════════════════════════════════════════ */
+  var _ksAction = null;
+
+  function showKillSwitchModal(action) {
+    _ksAction = action;
+    var modal = document.getElementById('kill-switch-modal');
+    var title = document.getElementById('ks-modal-title');
+    var body = document.getElementById('ks-modal-body');
+    var confirm = document.getElementById('ks-modal-confirm');
+
+    if (action === 'activate') {
+      title.textContent = 'ACTIVATE EMERGENCY STOP?';
+      body.innerHTML = '<strong style="color:var(--color-negative);">THIS WILL IMMEDIATELY HALT ALL NEW ORDERS.</strong><br><br>Existing open positions will remain. Only activate in a genuine emergency. This action is logged in the audit trail.';
+      confirm.className = 'btn';
+      confirm.style.background = 'var(--color-negative)';
+      confirm.textContent = 'YES, ACTIVATE';
+    } else {
+      title.textContent = 'RESUME TRADING?';
+      body.innerHTML = 'This will deactivate the emergency stop and allow new orders to be placed again. Confirm only when the situation is resolved.';
+      confirm.className = 'btn btn-primary';
+      confirm.style.background = '';
+      confirm.textContent = 'YES, RESUME';
+    }
+    modal.classList.remove('hidden');
+  }
+
+  function closeKillSwitchModal() {
+    document.getElementById('kill-switch-modal').classList.add('hidden');
+    _ksAction = null;
+  }
+
+  function submitKillSwitch() {
+    if (!_ksAction) return;
+    var endpoint = _ksAction === 'activate'
+      ? '/actions/kill-switch/activate'
+      : '/actions/kill-switch/deactivate';
+
+    fetch(endpoint, { method: 'POST' })
+      .then(function(r) { return r.text(); })
+      .then(function(html) {
+        // Refresh the command bar to reflect new state
+        htmx.ajax('GET', '/partials/command-bar', '#command-bar');
+        closeKillSwitchModal();
+      })
+      .catch(function() { closeKillSwitchModal(); });
+  }
+
+  document.getElementById('kill-switch-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeKillSwitchModal();
+  });
+
+  /* ═══════════════════════════════════════════════
+     STRATEGY PROMOTION
+     ═══════════════════════════════════════════════ */
+  var _pendingStrategyId = null;
+
+  function confirmPromotion(strategyId, currentStage, score) {
+    _pendingStrategyId = strategyId;
+    document.getElementById('promote-modal-body').innerHTML =
+      '<strong>' + strategyId.replace(/_/g, ' ').replace(/\b\w/g, function(l) { return l.toUpperCase(); }) +
+      '</strong> is currently in <em>' + currentStage + '</em> with a quality score of <strong>' +
+      score + '/100</strong>.<br><br>Request promotion to the next stage?';
+    document.getElementById('promote-modal').classList.remove('hidden');
+  }
+
+  function closePromoteModal() {
+    document.getElementById('promote-modal').classList.add('hidden');
+    _pendingStrategyId = null;
+  }
+
+  function submitPromotion() {
+    if (_pendingStrategyId) {
+      var btn = document.getElementById('promote-submit-' + _pendingStrategyId);
+      if (btn) btn.click();
+      closePromoteModal();
+    }
+  }
+
+  document.getElementById('promote-modal').addEventListener('click', function(e) {
+    if (e.target === this) closePromoteModal();
+  });
+
+  /* ═══════════════════════════════════════════════
+     CLOSE POSITION
+     ═══════════════════════════════════════════════ */
+  var _closePosSymbol = null;
+
+  function showClosePositionModal(symbol) {
+    _closePosSymbol = symbol;
+    document.getElementById('close-pos-modal-body').innerHTML =
+      'Submit a market order to close <strong>' + symbol + '</strong>?<br><br>This action cannot be undone.';
+    document.getElementById('close-position-modal').classList.remove('hidden');
+  }
+
+  function closeClosePositionModal() {
+    document.getElementById('close-position-modal').classList.add('hidden');
+    _closePosSymbol = null;
+  }
+
+  function submitClosePosition() {
+    if (!_closePosSymbol) return;
+    fetch('/actions/close-position/' + encodeURIComponent(_closePosSymbol), { method: 'POST' })
+      .then(function() { closeClosePositionModal(); htmx.ajax('GET', '/partials/home/positions', '#positions-container'); })
+      .catch(function() { closeClosePositionModal(); });
+  }
+
+  document.getElementById('close-position-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeClosePositionModal();
+  });
+
+  /* ═══════════════════════════════════════════════
+     ACTIVITY FILTER BUTTONS
+     ═══════════════════════════════════════════════ */
+  document.addEventListener('click', function(e) {
+    if (e.target.matches('.filter-btn')) {
+      document.querySelectorAll('.filter-btn').forEach(function(b) { b.classList.remove('active'); });
+      e.target.classList.add('active');
+    }
+  });
+
+  /* ═══════════════════════════════════════════════
+     EQUITY CHART
+     ═══════════════════════════════════════════════ */
   fetch('/api/equity-curve')
-    .then(r => r.json())
-    .then(data => {
-      const ctx = document.getElementById('equityChart').getContext('2d');
-      const gradient = ctx.createLinearGradient(0, 0, 0, 200);
-      gradient.addColorStop(0, 'rgba(0, 210, 211, 0.15)');
-      gradient.addColorStop(1, 'rgba(0, 210, 211, 0.0)');
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var ctx = document.getElementById('equityChart').getContext('2d');
+      var gradient = ctx.createLinearGradient(0, 0, 0, 160);
+      gradient.addColorStop(0, 'rgba(0, 255, 136, 0.15)');
+      gradient.addColorStop(1, 'rgba(0, 255, 136, 0.0)');
 
       new Chart(ctx, {
         type: 'line',
         data: {
-          labels: data.map(d => d.time),
+          labels: data.map(function(d) { return d.time; }),
           datasets: [{
-            data: data.map(d => d.equity),
-            borderColor: '#00d2d3',
-            borderWidth: 2,
+            data: data.map(function(d) { return d.equity; }),
+            borderColor: '#00ff88',
+            borderWidth: 1.5,
             backgroundColor: gradient,
             fill: true,
             tension: 0.3,
             pointRadius: 0,
-            pointHoverRadius: 4,
-            pointHoverBackgroundColor: '#00d2d3',
+            pointHoverRadius: 3,
+            pointHoverBackgroundColor: '#00ff88',
           }]
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          interaction: {
-            intersect: false,
-            mode: 'index',
-          },
+          interaction: { intersect: false, mode: 'index' },
           plugins: {
             legend: { display: false },
             tooltip: {
-              backgroundColor: '#1a2332',
-              borderColor: 'rgba(0, 210, 211, 0.3)',
+              backgroundColor: '#111125',
+              borderColor: 'rgba(0,255,136,0.3)',
               borderWidth: 1,
               titleColor: '#8b95a5',
-              bodyColor: '#f0f2f5',
-              bodyFont: { family: '"SF Mono", monospace', weight: '600' },
-              padding: 12,
-              cornerRadius: 8,
+              bodyColor: '#e0e0e0',
+              bodyFont: { family: '"JetBrains Mono", monospace', weight: '600', size: 11 },
+              padding: 8,
+              cornerRadius: 3,
               callbacks: {
-                label: (ctx) => '$' + ctx.parsed.y.toLocaleString(undefined, {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                }),
-              },
-            },
+                label: function(ctx) {
+                  return '$' + ctx.parsed.y.toLocaleString(undefined, {
+                    minimumFractionDigits: 2, maximumFractionDigits: 2
+                  });
+                }
+              }
+            }
           },
           scales: {
             x: {
               grid: { color: 'rgba(255,255,255,0.04)' },
-              ticks: {
-                color: '#5a6577',
-                font: { size: 11 },
-                maxTicksLimit: 12,
-              },
+              ticks: { color: '#5a6577', font: { size: 9, family: '"JetBrains Mono", monospace' }, maxTicksLimit: 12 }
             },
             y: {
               grid: { color: 'rgba(255,255,255,0.04)' },
               ticks: {
                 color: '#5a6577',
-                font: { size: 11, family: '"SF Mono", monospace' },
-                callback: (v) => '$' + (v/1000).toFixed(0) + 'k',
-              },
-            },
-          },
-        },
+                font: { size: 9, family: '"JetBrains Mono", monospace' },
+                callback: function(v) { return '$' + (v/1000).toFixed(0) + 'k'; }
+              }
+            }
+          }
+        }
       });
-    });
+    })
+    .catch(function() { /* Equity API not available yet */ });
 </script>
 {% endblock %}

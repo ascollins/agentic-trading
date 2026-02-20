@@ -1,0 +1,18 @@
+{% macro section_header(title, live=False, count=None, id=None, collapsible=True) %}
+<div class="section-header" {% if id %}id="{{ id }}-header"{% endif %}>
+  <span class="section-header-title">{{ title }}</span>
+  {% if live %}
+  <span class="live-badge">
+    <span class="live-dot"></span>
+    LIVE
+  </span>
+  {% endif %}
+  {% if count is not none and count > 0 %}
+  <span class="count-badge">{{ count }}</span>
+  {% endif %}
+  {% if collapsible %}
+  <button class="section-expand" type="button"
+          onclick="this.textContent=this.textContent.trim()==='-'?'+':'-';var s=this.closest('.section-header').nextElementSibling;if(s)s.style.display=s.style.display==='none'?'':'none';">-</button>
+  {% endif %}
+</div>
+{% endmacro %}

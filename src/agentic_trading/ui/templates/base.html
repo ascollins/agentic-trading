@@ -3,93 +3,33 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Supervision{% endblock %} — Trading Platform</title>
+  <title>{% block title %}Supervision{% endblock %} — Trading Ops</title>
   <link rel="stylesheet" href="/static/css/theme.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
   {% block head %}{% endblock %}
 </head>
 <body>
   <div class="app-shell">
-    <!-- Sidebar -->
-    <nav class="sidebar">
-      <div class="sidebar-logo">
-        <h1>SUPERVISION</h1>
-        <div class="subtitle">Trading Platform</div>
-      </div>
-      <ul class="sidebar-nav">
-        <li>
-          <a href="/" class="{% if active_tab == 'home' %}active{% endif %}">
-            <svg class="nav-icon" viewBox="0 0 20 20" fill="currentColor">
-              <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z"/>
-            </svg>
-            Overview
-            <span class="nav-badge" id="nav-approval-badge"
-                  style="{{ '' if pending_approvals_count and pending_approvals_count > 0 else 'display:none;' }}">
-              {{ pending_approvals_count or 0 }}
-            </span>
-          </a>
-        </li>
-        <li>
-          <a href="/strategies" class="{% if active_tab == 'strategies' %}active{% endif %}">
-            <svg class="nav-icon" viewBox="0 0 20 20" fill="currentColor">
-              <path fill-rule="evenodd" d="M3 3a1 1 0 000 2v8a2 2 0 002 2h2.586l-1.293 1.293a1 1 0 101.414 1.414L10 15.414l2.293 2.293a1 1 0 001.414-1.414L12.414 15H15a2 2 0 002-2V5a1 1 0 100-2H3zm11.707 4.707a1 1 0 00-1.414-1.414L10 9.586 8.707 8.293a1 1 0 00-1.414 0l-2 2a1 1 0 101.414 1.414L8 10.414l1.293 1.293a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
-            </svg>
-            Strategies
-          </a>
-        </li>
-        <li>
-          <a href="/backtest" class="{% if active_tab == 'backtest' %}active{% endif %}"
-             style="font-size: 0.8125rem; padding-left: 2.75rem; opacity: 0.85;">
-            <svg class="nav-icon" viewBox="0 0 20 20" fill="currentColor" style="width: 14px; height: 14px;">
-              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"/>
-            </svg>
-            Backtest
-          </a>
-        </li>
-        <li>
-          <a href="/activity" class="{% if active_tab == 'activity' %}active{% endif %}">
-            <svg class="nav-icon" viewBox="0 0 20 20" fill="currentColor">
-              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"/>
-            </svg>
-            Activity
-          </a>
-        </li>
-        <li>
-          <a href="/risk" class="{% if active_tab == 'risk' %}active{% endif %}">
-            <svg class="nav-icon" viewBox="0 0 20 20" fill="currentColor">
-              <path fill-rule="evenodd" d="M10 1.944A11.954 11.954 0 012.166 5C2.056 5.649 2 6.319 2 7c0 5.225 3.34 9.67 8 11.317C14.66 16.67 18 12.225 18 7c0-.682-.057-1.35-.166-2.001A11.954 11.954 0 0110 1.944zM11 14a1 1 0 11-2 0 1 1 0 012 0zm0-7a1 1 0 10-2 0v3a1 1 0 102 0V7z" clip-rule="evenodd"/>
-            </svg>
-            Risk &amp; Controls
-          </a>
-        </li>
-        <li>
-          <a href="/settings" class="{% if active_tab == 'settings' %}active{% endif %}">
-            <svg class="nav-icon" viewBox="0 0 20 20" fill="currentColor">
-              <path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd"/>
-            </svg>
-            Settings
-          </a>
-        </li>
-      </ul>
-    </nav>
-
-    <!-- Persistent Status Bar -->
-    <div class="status-bar"
-         id="status-bar"
-         hx-get="/partials/status-bar"
-         hx-trigger="every 10s"
-         hx-swap="innerHTML">
+    <!-- Command Bar -->
+    <header class="command-bar"
+            id="command-bar"
+            hx-get="/partials/command-bar"
+            hx-trigger="every 10s"
+            hx-swap="innerHTML">
       {% if status_bar is defined %}
-        {% include "partials/status_bar.html" %}
+        {% include "partials/command_bar.html" %}
       {% else %}
-        <div class="status-bar-item">
-          <span class="status-bar-label">Loading...</span>
-        </div>
+        <span class="command-bar-logo">SUPERVISION</span>
+        <div class="command-bar-sep"></div>
+        <span class="command-bar-item">LOADING...</span>
       {% endif %}
-    </div>
+    </header>
 
     <!-- Main content -->
-    <main class="main-content main-content-with-bar">
+    <main class="main-content">
       {% block content %}{% endblock %}
     </main>
   </div>
@@ -97,7 +37,7 @@
   <!-- Toast notification container -->
   <div id="toast-container" class="toast-container"></div>
 
-  <!-- Global toast + modal utilities -->
+  <!-- Global utilities -->
   <script>
     // --- Toast notification system ---
     function showToast(message, type) {
@@ -109,14 +49,12 @@
       var icon = type === 'success' ? '✓' : type === 'error' ? '✕' : '⚠';
       toast.innerHTML = '<span>' + icon + '</span> <span>' + message + '</span>';
       container.appendChild(toast);
-      // Auto-dismiss after 5 seconds
       setTimeout(function () {
         toast.classList.add('fade-out');
         setTimeout(function () { toast.remove(); }, 400);
       }, 5000);
     }
 
-    // Listen for HX-Trigger showToast events from HTMX responses
     document.body.addEventListener('showToast', function (evt) {
       if (evt.detail && evt.detail.message) {
         showToast(evt.detail.message, evt.detail.type || 'success');
@@ -128,42 +66,40 @@
       if (e.key === 'Escape') {
         var modals = document.querySelectorAll('.modal-overlay:not(.hidden)');
         if (modals.length > 0) {
-          // Close the topmost (last) open modal
-          var topModal = modals[modals.length - 1];
-          topModal.classList.add('hidden');
+          modals[modals.length - 1].classList.add('hidden');
           e.preventDefault();
         }
       }
     });
-  </script>
 
-  <!-- Approval badge + tab title updater -->
-  <script>
+    // --- Clock updater ---
+    (function updateClock() {
+      var el = document.getElementById('command-bar-clock');
+      if (el) {
+        var now = new Date();
+        el.textContent = now.toUTCString().replace('GMT', 'UTC');
+      }
+      setTimeout(updateClock, 1000);
+    })();
+
+    // --- Approval badge + tab title updater ---
     (function () {
       var BASE_TITLE = document.title;
 
       function updateApprovalBadge(count) {
-        var badge = document.getElementById('nav-approval-badge');
-        if (!badge) return;
         if (count > 0) {
-          badge.textContent = count;
-          badge.style.display = '';
           document.title = '(' + count + ') ' + BASE_TITLE;
         } else {
-          badge.style.display = 'none';
           document.title = BASE_TITLE;
         }
       }
 
-      // Sync from server-rendered count on page load
       var _initCount = {{ pending_approvals_count or 0 }};
       if (_initCount > 0) {
         document.title = '(' + _initCount + ') ' + BASE_TITLE;
       }
 
-      // Re-sync whenever HTMX swaps the status bar (every 10s) or the approvals card
-      document.body.addEventListener('htmx:afterSwap', function (evt) {
-        // The status bar partial injects a hidden span with the authoritative count
+      document.body.addEventListener('htmx:afterSwap', function () {
         var carrier = document.getElementById('status-bar-approval-count');
         if (carrier) {
           var count = parseInt(carrier.getAttribute('data-count') || '0', 10) || 0;
@@ -171,7 +107,6 @@
         }
       });
 
-      // Expose for external callers (e.g. HTMX partial that knows new count)
       window.updateApprovalBadge = updateApprovalBadge;
     })();
   </script>

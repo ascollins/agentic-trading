@@ -1,0 +1,78 @@
+<!-- Logo -->
+<a href="/" class="command-bar-logo" style="text-decoration:none;">SUPERVISION</a>
+<span class="command-bar-version">v1.0</span>
+<div class="command-bar-sep"></div>
+
+<!-- Mode + LIVE dot -->
+<div class="command-bar-item">
+  {% if status_bar.mode == 'live' %}
+    <span class="live-dot"></span>
+  {% endif %}
+  <span class="mode-badge {{ status_bar.mode }}">{{ status_bar.mode | upper }}</span>
+</div>
+<div class="command-bar-sep"></div>
+
+<!-- Exchange -->
+<div class="command-bar-item {{ 'status-ok' if status_bar.exchange_connected else 'status-err' }}">
+  <span class="status-dot {{ 'healthy' if status_bar.exchange_connected else 'critical' }}"
+        style="width:6px;height:6px;margin-right:2px;"></span>
+  {{ status_bar.exchange_name }}
+</div>
+<div class="command-bar-sep"></div>
+
+<!-- Kill switch (compact) -->
+{% if kill_switch_active is defined and kill_switch_active %}
+  <button class="command-bar-kill active"
+          onclick="showKillSwitchModal('deactivate')">⬤ KILL ACTIVE</button>
+{% else %}
+  <button class="command-bar-kill"
+          onclick="showKillSwitchModal('activate')">KILL</button>
+{% endif %}
+<div class="command-bar-sep"></div>
+
+<!-- Agents -->
+<div class="command-bar-item {{ 'status-ok' if status_bar.agents_healthy == status_bar.agents_total else 'status-warn' }}">
+  AGENTS {{ status_bar.agents_healthy }}/{{ status_bar.agents_total }}
+</div>
+<div class="command-bar-sep"></div>
+
+<!-- Last candle -->
+{% set candle_age = status_bar.candle_age_seconds | default(0) %}
+<div class="command-bar-item {{ 'status-ok' if candle_age < 60 else ('status-warn' if candle_age < 300 else 'status-err') }}">
+  {% if candle_age < 60 %}
+    CANDLE {{ candle_age }}s
+  {% elif candle_age < 3600 %}
+    CANDLE {{ (candle_age / 60) | int }}m
+  {% else %}
+    CANDLE STALE
+  {% endif %}
+</div>
+
+<!-- Approvals (if pending) -->
+{% if status_bar.pending_approvals is defined and status_bar.pending_approvals > 0 %}
+<div class="command-bar-sep"></div>
+<div class="command-bar-item status-warn">
+  <span class="count-badge" style="background:var(--color-warning-bg);color:var(--color-warning);">
+    {{ status_bar.pending_approvals }}
+  </span>
+  APPROVALS
+</div>
+{% endif %}
+
+<!-- Nav anchors (right-aligned) -->
+<nav class="command-bar-nav">
+  <a href="#section-portfolio">PORTFOLIO</a>
+  <a href="#section-positions">POSITIONS</a>
+  <a href="#section-strategies">STRATEGIES</a>
+  <a href="#section-activity">ACTIVITY</a>
+  <a href="#section-risk">RISK</a>
+  <a href="#section-system">SYSTEM</a>
+</nav>
+
+<!-- Clock -->
+<span class="command-bar-clock" id="command-bar-clock"></span>
+
+<!-- Hidden data carrier for approval badge sync -->
+<span id="status-bar-approval-count"
+      data-count="{{ status_bar.pending_approvals | default(0) }}"
+      style="display:none;"></span>
