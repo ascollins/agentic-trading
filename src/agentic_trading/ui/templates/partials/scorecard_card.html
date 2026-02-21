@@ -1,4 +1,4 @@
-<div class="card-label">DAILY EFFECTIVENESS</div>
+<div class="card-label">DAILY EFFECTIVENESS <span class="tooltip-wrap info-icon">&#9432;<span class="tooltip-text">Composite 0–10 score of today's trading quality. Four dimensions: edge capture, execution timing, risk discipline, and system reliability.</span></span></div>
 {% if scorecard %}
   {% set total = scorecard.total | default(0) %}
   {% set score_class = "score-good" if total >= 7 else ("score-ok" if total >= 4 else "score-bad") %}

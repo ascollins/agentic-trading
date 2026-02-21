@@ -17,7 +17,7 @@
      SECTION 1: PORTFOLIO
      ═══════════════════════════════════════════════════════════════ -->
 <section id="section-portfolio">
-  {{ section_header("PORTFOLIO", live=True, id="section-portfolio") }}
+  {{ section_header("PORTFOLIO", live=True, id="section-portfolio", tooltip="Account equity and daily performance score. Agents grade edge, execution, risk, and system health each day. Use period tabs to compare PnL.") }}
   <div class="section-body">
     <div class="grid-2">
       <!-- Daily Effectiveness Score -->
@@ -45,7 +45,7 @@
      SECTION 2: EQUITY CURVE
      ═══════════════════════════════════════════════════════════════ -->
 <section id="section-equity">
-  {{ section_header("EQUITY CURVE", live=True, id="section-equity") }}
+  {{ section_header("EQUITY CURVE", live=True, id="section-equity", tooltip="Total account equity plotted over time. Hover any point to see the exact balance. Updates as fills are processed by the execution engine.") }}
   <div class="section-body">
     <div class="card" style="padding:6px 8px;">
       <canvas id="equityChart" style="height:160px;width:100%;"></canvas>
@@ -57,7 +57,7 @@
      SECTION 3: RISK PnL & POSTURE (NEW)
      ═══════════════════════════════════════════════════════════════ -->
 <section id="section-risk-pnl">
-  {{ section_header("RISK PnL & POSTURE", live=True, id="section-risk-pnl") }}
+  {{ section_header("RISK PnL & POSTURE", live=True, id="section-risk-pnl", tooltip="PnL breakdown by strategy with current risk posture. Shows leverage, Value at Risk, drawdown, and daily loss budget usage.") }}
   <div class="section-body">
     <div class="card"
          id="risk-pnl-container"
@@ -78,7 +78,7 @@
      SECTION 4: POSITIONS
      ═══════════════════════════════════════════════════════════════ -->
 <section id="section-positions">
-  {{ section_header("POSITIONS", live=True, count=positions|length if positions is defined else 0, id="section-positions") }}
+  {{ section_header("POSITIONS", live=True, count=positions|length if positions is defined else 0, id="section-positions", tooltip="All open positions on the exchange with live mark-to-market PnL. Click CLOSE to submit a market exit order. Synced every 5 seconds.") }}
   <div class="section-body">
     <div class="card"
          id="positions-container"
@@ -94,7 +94,7 @@
      SECTION 5: STRATEGIES
      ═══════════════════════════════════════════════════════════════ -->
 <section id="section-strategies">
-  {{ section_header("STRATEGIES", count=strategies|length if strategies is defined else 0, id="section-strategies") }}
+  {{ section_header("STRATEGIES", count=strategies|length if strategies is defined else 0, id="section-strategies", tooltip="Registered strategies with lifecycle stage, quality grade, and track record. Click PROMOTE to request advancement to the next stage.") }}
   <div class="section-body">
     <div class="card"
          id="strategies-list"
@@ -110,7 +110,7 @@
      SECTION 6: ACTIVITY
      ═══════════════════════════════════════════════════════════════ -->
 <section id="section-activity">
-  {{ section_header("ACTIVITY", live=True, id="section-activity") }}
+  {{ section_header("ACTIVITY", live=True, id="section-activity", tooltip="Chronological feed of signals, fills, governance decisions, and incidents. Use filter tabs to isolate event types.") }}
   <div class="section-body">
     <div class="card">
       <!-- Filters -->
@@ -160,7 +160,7 @@
      SECTION 7: MODEL SCORECARD & DRIFT (NEW)
      ═══════════════════════════════════════════════════════════════ -->
 <section id="section-model-scorecard">
-  {{ section_header("MODEL SCORECARD & DRIFT", id="section-model-scorecard") }}
+  {{ section_header("MODEL SCORECARD & DRIFT", id="section-model-scorecard", tooltip="Model lifecycle tracking and drift detection. Compares live metrics against baselines to catch strategy degradation early.") }}
   <div class="section-body">
     <div class="grid-2">
       <!-- Model Registry -->
@@ -228,7 +228,7 @@
      SECTION 8: ACTION QUEUE & ALERTS (NEW)
      ═══════════════════════════════════════════════════════════════ -->
 <section id="section-action-queue">
-  {{ section_header("ACTION QUEUE & ALERTS", live=True, id="section-action-queue") }}
+  {{ section_header("ACTION QUEUE & ALERTS", live=True, id="section-action-queue", tooltip="Trade requests awaiting review, active incidents, and recent governance decisions. Approve, deny, or resolve items here.") }}
   <div class="section-body">
     <div class="grid-2">
       <!-- Pending Approvals (full cards) -->
@@ -296,7 +296,7 @@
      SECTION 9: PRE-TRADE CONTROLS (NEW)
      ═══════════════════════════════════════════════════════════════ -->
 <section id="section-pre-trade">
-  {{ section_header("PRE-TRADE CONTROLS", live=True, id="section-pre-trade") }}
+  {{ section_header("PRE-TRADE CONTROLS", live=True, id="section-pre-trade", tooltip="Safety checks that run before every order submission. Pass rates and throttle meters show health at the pre-trade gate.") }}
   <div class="section-body">
     <div class="grid-2">
       <!-- Check Status Grid -->
@@ -334,7 +334,7 @@
      SECTION 10: RISK & CONTROLS (circuit breakers + governance)
      ═══════════════════════════════════════════════════════════════ -->
 <section id="section-risk">
-  {{ section_header("RISK & CONTROLS", id="section-risk") }}
+  {{ section_header("RISK & CONTROLS", id="section-risk", tooltip="Portfolio risk limits, circuit breakers, and governance policy status. Breakers trip automatically when thresholds are exceeded.") }}
   <div class="section-body">
     <div class="grid-2">
       <!-- Risk Gauges -->
@@ -369,7 +369,7 @@
     <!-- Governance Status (inline) -->
     {% if risk_controls is defined %}
     <div class="card" style="margin-top:3px;">
-      <div class="card-label">GOVERNANCE</div>
+      <div class="card-label">GOVERNANCE <span class="tooltip-wrap info-icon">&#9432;<span class="tooltip-text">Policy engine and approval workflow status. Shadow mode logs violations without blocking trades. Shows active rule count.</span></span></div>
       <div style="margin-top:6px; display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:11px;">
         <div>
           <span style="color:var(--text-muted);">POLICY ENGINE</span>
@@ -417,7 +417,7 @@
      SECTION 11: MICRO-EDGE & SURVEILLANCE (NEW)
      ═══════════════════════════════════════════════════════════════ -->
 <section id="section-micro-edge">
-  {{ section_header("MICRO-EDGE & SURVEILLANCE", id="section-micro-edge") }}
+  {{ section_header("MICRO-EDGE & SURVEILLANCE", id="section-micro-edge", tooltip="Risk-adjusted return analysis and compliance monitoring. R-multiples measure trade quality. Surveillance tracks open cases.") }}
   <div class="section-body">
     <div class="grid-2">
       <!-- R-Multiple Distribution -->
@@ -469,7 +469,7 @@
      SECTION 12: SYSTEM (agent health only)
      ═══════════════════════════════════════════════════════════════ -->
 <section id="section-system">
-  {{ section_header("SYSTEM", id="section-system") }}
+  {{ section_header("SYSTEM", id="section-system", tooltip="Agent health and system status. Shows running agents, error counts, and last data feed timestamp.") }}
   <div class="section-body">
     <div class="card"
          id="system-container"

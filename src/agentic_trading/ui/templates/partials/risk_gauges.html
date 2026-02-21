@@ -24,7 +24,7 @@
 </div>
 {% endmacro %}
 
-<div class="card-label">RISK LIMITS</div>
+<div class="card-label">RISK LIMITS <span class="tooltip-wrap info-icon">&#9432;<span class="tooltip-text">Hard risk limits from configuration: daily loss cap, max drawdown, and position size ceiling. Gauges show current usage percentage.</span></span></div>
 
 {% set dl_pct = risk_gauges.daily_loss_pct_used | default(0) %}
 {% set dl_class = 'critical' if dl_pct >= 95 else ('warn' if dl_pct >= 80 else 'safe') %}

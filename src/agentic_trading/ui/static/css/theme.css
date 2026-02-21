@@ -1134,6 +1134,34 @@ body {
 
 .subscore.has-tooltip { cursor: help; }
 
+/* --- Info Icon (section + card tooltips) --- */
+.info-icon {
+  font-size: 11px;
+  font-style: normal;
+  color: var(--text-muted);
+  margin-left: 6px;
+  opacity: 0.4;
+  transition: opacity var(--duration) var(--ease);
+  vertical-align: middle;
+}
+.info-icon:hover { opacity: 1; }
+
+.section-header .info-icon .tooltip-text {
+  left: 0;
+  transform: none;
+  min-width: 200px;
+}
+
+.card-label .info-icon {
+  font-size: 10px;
+  margin-left: 4px;
+}
+.card-label .info-icon .tooltip-text {
+  left: 0;
+  transform: none;
+  bottom: calc(100% + 4px);
+}
+
 /* --- Risk Page Layout --- */
 .risk-controls-grid {
   display: grid;

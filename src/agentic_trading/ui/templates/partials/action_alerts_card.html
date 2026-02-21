@@ -1,5 +1,6 @@
 <div class="card-label">
   ALERTS
+  <span class="tooltip-wrap info-icon">&#9432;<span class="tooltip-text">Real-time alerts from incident detection and risk monitoring agents. Sorted by most recent. Severity badge indicates priority.</span></span>
   {% if alerts is defined and alerts %}
     <span class="count-badge" style="margin-left:4px;">{{ alerts | length }}</span>
   {% endif %}

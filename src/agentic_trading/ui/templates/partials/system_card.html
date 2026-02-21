@@ -1,4 +1,4 @@
-<div class="card-label">SYSTEM STATUS</div>
+<div class="card-label">SYSTEM STATUS <span class="tooltip-wrap info-icon">&#9432;<span class="tooltip-text">Health of all running agents. Shows total count, individual status, error counts, and last candle feed timestamp.</span></span></div>
 {% if system %}
   <div style="display:flex; align-items:center; gap:6px; margin:4px 0;">
     <span class="status-dot {{ 'healthy' if system.all_healthy else 'warning' }}" style="width:6px;height:6px;"></span>

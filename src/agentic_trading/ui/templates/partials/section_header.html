@@ -1,6 +1,9 @@
-{% macro section_header(title, live=False, count=None, id=None, collapsible=True) %}
+{% macro section_header(title, live=False, count=None, id=None, collapsible=True, tooltip=None) %}
 <div class="section-header" {% if id %}id="{{ id }}-header"{% endif %}>
   <span class="section-header-title">{{ title }}</span>
+  {% if tooltip %}
+  <span class="tooltip-wrap info-icon" aria-label="Info">&#9432;<span class="tooltip-text">{{ tooltip }}</span></span>
+  {% endif %}
   {% if live %}
   <span class="live-badge">
     <span class="live-dot"></span>

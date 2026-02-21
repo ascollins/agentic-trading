@@ -1,0 +1,138 @@
+{
+  "sections": {
+    "portfolio": {
+      "title": "Account Overview",
+      "body": "Account equity and daily performance score. Agents grade edge, execution, risk, and system health each day. Use period tabs to compare PnL."
+    },
+    "equity_curve": {
+      "title": "Equity Over Time",
+      "body": "Total account equity plotted over time. Hover any point to see the exact balance. Updates as fills are processed by the execution engine."
+    },
+    "risk_pnl": {
+      "title": "Risk & Profit Summary",
+      "body": "PnL breakdown by strategy with current risk posture. Shows leverage, Value at Risk, drawdown, and daily loss budget usage."
+    },
+    "positions": {
+      "title": "Open Exchange Positions",
+      "body": "All open positions on the exchange with live mark-to-market PnL. Click CLOSE to submit a market exit order. Synced every 5 seconds."
+    },
+    "strategies": {
+      "title": "Strategy Lifecycle",
+      "body": "Registered strategies with lifecycle stage, quality grade, and track record. Click PROMOTE to request advancement to the next stage."
+    },
+    "activity": {
+      "title": "Event Timeline",
+      "body": "Chronological feed of signals, fills, governance decisions, and incidents. Use filter tabs to isolate event types."
+    },
+    "model_scorecard": {
+      "title": "Model Performance",
+      "body": "Model lifecycle tracking and drift detection. Compares live metrics against baselines to catch strategy degradation early."
+    },
+    "action_queue": {
+      "title": "Items Needing Attention",
+      "body": "Trade requests awaiting review, active incidents, and recent governance decisions. Approve, deny, or resolve items here."
+    },
+    "pre_trade": {
+      "title": "Order Safety Gate",
+      "body": "Safety checks that run before every order submission. Pass rates and throttle meters show health at the pre-trade gate."
+    },
+    "risk_controls": {
+      "title": "Hard Limits & Breakers",
+      "body": "Portfolio risk limits, circuit breakers, and governance policy status. Breakers trip automatically when thresholds are exceeded."
+    },
+    "micro_edge": {
+      "title": "Trade Quality & Compliance",
+      "body": "Risk-adjusted return analysis and compliance monitoring. R-multiples measure trade quality. Surveillance tracks open cases."
+    },
+    "system": {
+      "title": "Infrastructure Health",
+      "body": "Agent health and system status. Shows running agents, error counts, and last data feed timestamp."
+    }
+  },
+  "cards": {
+    "daily_effectiveness": {
+      "title": "Daily Score",
+      "body": "Composite 0\u201310 score of today\u2019s trading quality. Four dimensions: edge capture, execution timing, risk discipline, and system reliability."
+    },
+    "portfolio_summary": {
+      "title": "Equity & Returns",
+      "body": "Current account equity and period returns. PnL is calculated from filled trades. Open position count reflects exchange state."
+    },
+    "risk_pnl_posture": {
+      "title": "PnL & Risk Posture",
+      "body": "Strategy PnL waterfall shows per-strategy contribution. Posture grid tracks exposure, leverage, 1-day Value at Risk, and drawdown."
+    },
+    "open_positions": {
+      "title": "Live Positions",
+      "body": "Positions synced from the exchange. Mark price and unrealised PnL update in real time. CLOSE sends a market order to exit."
+    },
+    "model_registry": {
+      "title": "Registered Models",
+      "body": "All models with version and lifecycle stage. Stages progress from research through paper trading to full production."
+    },
+    "drift_indicators": {
+      "title": "Strategy Drift",
+      "body": "Compares live strategy metrics against stored baselines. Deviation above 25% is flagged critical. Checked automatically by agents."
+    },
+    "effectiveness_scorecard": {
+      "title": "Quality Dimensions",
+      "body": "Edge: win rate and profit factor. Execution: exit timing. Risk: drawdown control. Operations: system uptime and reliability."
+    },
+    "exec_quality": {
+      "title": "Execution Metrics",
+      "body": "Order execution stats from the quality tracker. Slippage in basis points, fill rate, and total order submission counts."
+    },
+    "pending_approvals": {
+      "title": "Awaiting Review",
+      "body": "Trade intents requiring human approval. Escalation level (L1\u2013L4) reflects impact severity. Approve or deny each request."
+    },
+    "active_incidents": {
+      "title": "Open Incidents",
+      "body": "Incidents detected by monitoring agents. Severity indicates urgency. Click RESOLVE when the underlying issue is addressed."
+    },
+    "recent_decisions": {
+      "title": "Gate Decisions",
+      "body": "Last 10 governance gate outcomes. Shows whether each trade intent was allowed or blocked, the policy reason, and any size adjustment."
+    },
+    "alerts": {
+      "title": "Alert Feed",
+      "body": "Real-time alerts from incident detection and risk monitoring agents. Sorted by most recent. Severity badge indicates priority."
+    },
+    "pre_trade_checks": {
+      "title": "Check Pass Rates",
+      "body": "Pass rate for each pre-trade safety check. Green means above 95%. Red means below 80%. Agents run these on every order intent."
+    },
+    "message_throttles": {
+      "title": "Rate Limiters",
+      "body": "Prevents excessive order submissions. Shows current message count versus the per-minute limit for each strategy and symbol."
+    },
+    "risk_limits": {
+      "title": "Portfolio Limits",
+      "body": "Hard risk limits from configuration: daily loss cap, max drawdown, and position size ceiling. Gauges show current usage percentage."
+    },
+    "circuit_breakers": {
+      "title": "Automatic Halts",
+      "body": "Trading halts triggered by threshold breaches. Shows breaker status, trip count, and cooldown remaining. Breakers auto-reset after cooldown."
+    },
+    "governance_status": {
+      "title": "Policy & Approvals",
+      "body": "Policy engine and approval workflow status. Shadow mode logs violations without blocking trades. Shows active rule count."
+    },
+    "r_distribution": {
+      "title": "R-Multiple Histogram",
+      "body": "Trade outcomes measured in R-multiples (profit per unit of risk). Positive R means profit. Distribution shape reveals your edge."
+    },
+    "edge_analysis": {
+      "title": "Win Rate Breakdown",
+      "body": "Win rate by strategy, symbol, and hour of day. Identifies where your edge is strongest and where it may be weakest."
+    },
+    "surveillance": {
+      "title": "Compliance Cases",
+      "body": "Open compliance cases and recent investigation events. Cases are created when anomalies or policy violations are detected."
+    },
+    "system_status": {
+      "title": "Agent Health",
+      "body": "Health of all running agents. Shows total count, individual status, error counts, and last candle feed timestamp."
+    }
+  }
+}

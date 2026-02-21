@@ -1,4 +1,4 @@
-<div class="card-label">DRIFT INDICATORS</div>
+<div class="card-label">DRIFT INDICATORS <span class="tooltip-wrap info-icon">&#9432;<span class="tooltip-text">Compares live strategy metrics against stored baselines. Deviation above 25% is flagged critical. Checked automatically by agents.</span></span></div>
 
 {% if drift_data is defined and drift_data %}
   {% for d in drift_data %}

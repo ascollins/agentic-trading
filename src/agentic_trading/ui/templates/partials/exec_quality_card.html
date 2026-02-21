@@ -1,4 +1,4 @@
-<div class="card-label">EXECUTION QUALITY</div>
+<div class="card-label">EXECUTION QUALITY <span class="tooltip-wrap info-icon">&#9432;<span class="tooltip-text">Order execution stats from the quality tracker. Slippage in basis points, fill rate, and total order submission counts.</span></span></div>
 
 {% if exec_quality is defined and exec_quality %}
   {% set slip = exec_quality.avg_slippage_bps | default(0) %}

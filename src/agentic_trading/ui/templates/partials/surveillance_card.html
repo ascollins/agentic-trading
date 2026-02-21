@@ -1,5 +1,6 @@
 <div class="card-label">
   SURVEILLANCE
+  <span class="tooltip-wrap info-icon">&#9432;<span class="tooltip-text">Open compliance cases and recent investigation events. Cases are created when anomalies or policy violations are detected.</span></span>
   {% if surveillance is defined and surveillance and surveillance.open_cases %}
     <span class="count-badge" style="margin-left:4px;">{{ surveillance.open_cases | length }}</span>
   {% endif %}

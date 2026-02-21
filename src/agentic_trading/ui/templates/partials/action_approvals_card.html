@@ -1,5 +1,6 @@
 <div class="card-label">
   PENDING APPROVALS
+  <span class="tooltip-wrap info-icon">&#9432;<span class="tooltip-text">Trade intents requiring human approval. Escalation level (L1–L4) reflects impact severity. Approve or deny each request.</span></span>
   {% if approvals is defined and approvals %}
     <span class="count-badge" style="margin-left:4px;">{{ approvals | length }}</span>
   {% endif %}

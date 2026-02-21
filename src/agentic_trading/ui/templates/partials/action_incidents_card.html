@@ -1,5 +1,6 @@
 <div class="card-label">
   ACTIVE INCIDENTS
+  <span class="tooltip-wrap info-icon">&#9432;<span class="tooltip-text">Incidents detected by monitoring agents. Severity indicates urgency. Click RESOLVE when the underlying issue is addressed.</span></span>
   {% if active_incidents is defined and active_incidents %}
     <span class="count-badge" style="margin-left:4px;">{{ active_incidents | length }}</span>
   {% endif %}
