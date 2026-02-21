@@ -1,0 +1,33 @@
+<div class="card-label">PRE-TRADE CHECKS</div>
+
+{% if check_stats is defined and check_stats %}
+  <div class="check-grid" style="display:grid; grid-template-columns:repeat(4, 1fr); gap:4px;">
+    {% for check in check_stats %}
+    {% set rate = check.pass_rate | default(0) %}
+    {% set status = check.status | default('ok') | lower %}
+    {% set dot_class = 'critical' if rate < 80 or status == 'critical' else ('warning' if rate < 95 or status == 'warn' else 'healthy') %}
+    <div class="check-tile" style="padding:5px; background:var(--bg-elevated); border-radius:4px; text-align:center;">
+      <div style="display:flex; align-items:center; justify-content:center; gap:3px; margin-bottom:2px;">
+        <span class="status-dot {{ dot_class }}" style="width:4px; height:4px;"></span>
+        <span style="font-size:8px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.3px;
+                     overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:60px;"
+              title="{{ check.name }}">
+          {{ check.name }}
+        </span>
+      </div>
+      <div style="font-size:12px; font-weight:700; font-family:'JetBrains Mono',monospace;
+                  color:{{ 'var(--color-negative)' if rate < 80 else ('var(--color-warning)' if rate < 95 else 'var(--color-positive)') }};">
+        {{ "%.0f" | format(rate) }}%
+      </div>
+      <div style="font-size:7px; color:var(--text-muted);">
+        {{ check.total_checks | default(0) }} CHECKS
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="empty-state" style="padding:8px 0;">
+    <div class="empty-message">NO CHECK DATA</div>
+    <div class="empty-detail">Pre-trade check statistics appear after first order intent</div>
+  </div>
+{% endif %}

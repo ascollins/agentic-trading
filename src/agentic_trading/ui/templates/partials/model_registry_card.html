@@ -1,0 +1,52 @@
+<div class="card-label">MODEL REGISTRY</div>
+
+{% if models is defined and models %}
+  <table class="positions-table" style="width:100%;">
+    <thead>
+      <tr>
+        <th>MODEL</th>
+        <th>VERSION</th>
+        <th>STAGE</th>
+        <th>KEY METRICS</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in models %}
+      {% set stage = m.stage | default('research') | lower %}
+      <tr>
+        <td style="font-weight:600;">{{ m.name }}</td>
+        <td style="font-family:'JetBrains Mono',monospace; font-size:10px;">{{ m.version | default('--') }}</td>
+        <td>
+          {% if stage == 'production' %}
+            <span class="badge badge-positive" style="font-size:8px; padding:1px 5px;">PROD</span>
+          {% elif stage == 'paper' %}
+            <span class="badge badge-warning" style="font-size:8px; padding:1px 5px;">PAPER</span>
+          {% elif stage == 'limited' %}
+            <span class="badge" style="font-size:8px; padding:1px 5px; background:var(--accent-blue); color:#fff;">LIMITED</span>
+          {% elif stage == 'retired' %}
+            <span class="badge" style="font-size:8px; padding:1px 5px; background:var(--text-muted); color:#000;">RETIRED</span>
+          {% else %}
+            <span class="badge badge-cyan" style="font-size:8px; padding:1px 5px;">RESEARCH</span>
+          {% endif %}
+        </td>
+        <td style="font-size:9px; color:var(--text-secondary);">
+          {% if m.metrics is defined and m.metrics %}
+            {% for key, val in m.metrics.items() %}
+              <span style="color:var(--text-muted);">{{ key }}:</span>
+              <span style="font-family:'JetBrains Mono',monospace; font-weight:500;">{{ val }}</span>
+              {% if not loop.last %}<span style="color:var(--border-card);"> | </span>{% endif %}
+            {% endfor %}
+          {% else %}
+            <span style="color:var(--text-muted);">--</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% else %}
+  <div class="empty-state" style="padding:8px 0;">
+    <div class="empty-message">NO MODELS REGISTERED</div>
+    <div class="empty-detail">Strategy models and their lifecycle stages appear here</div>
+  </div>
+{% endif %}

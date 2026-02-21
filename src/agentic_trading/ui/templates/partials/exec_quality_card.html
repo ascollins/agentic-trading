@@ -1,0 +1,44 @@
+<div class="card-label">EXECUTION QUALITY</div>
+
+{% if exec_quality is defined and exec_quality %}
+  {% set slip = exec_quality.avg_slippage_bps | default(0) %}
+  {% set slip_color = 'var(--color-positive)' if slip < 5 else ('var(--color-warning)' if slip <= 20 else 'var(--color-negative)') %}
+
+  <div class="grid-2" style="gap:6px;">
+    <div style="padding:6px; background:var(--bg-elevated); border-radius:4px;">
+      <div style="font-size:8px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">AVG SLIPPAGE</div>
+      <div style="font-size:14px; font-weight:700; font-family:'JetBrains Mono',monospace; color:{{ slip_color }};">
+        {{ "%.1f" | format(slip) }}<span style="font-size:9px; font-weight:400; color:var(--text-muted);"> bps</span>
+      </div>
+    </div>
+
+    <div style="padding:6px; background:var(--bg-elevated); border-radius:4px;">
+      <div style="font-size:8px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">FILL RATE</div>
+      {% set fr = exec_quality.fill_rate_pct | default(0) %}
+      <div style="font-size:14px; font-weight:700; font-family:'JetBrains Mono',monospace;
+                  color:{{ 'var(--color-positive)' if fr >= 95 else ('var(--color-warning)' if fr >= 80 else 'var(--color-negative)') }};">
+        {{ "%.1f" | format(fr) }}<span style="font-size:9px; font-weight:400; color:var(--text-muted);">%</span>
+      </div>
+    </div>
+
+    <div style="padding:6px; background:var(--bg-elevated); border-radius:4px;">
+      <div style="font-size:8px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">TOTAL FILLS</div>
+      <div style="font-size:14px; font-weight:700; font-family:'JetBrains Mono',monospace; color:var(--text-primary);">
+        {{ exec_quality.total_fills | default(0) }}
+      </div>
+    </div>
+
+    <div style="padding:6px; background:var(--bg-elevated); border-radius:4px;">
+      <div style="font-size:8px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">SUBMISSIONS</div>
+      <div style="font-size:14px; font-weight:700; font-family:'JetBrains Mono',monospace; color:var(--text-primary);">
+        {{ exec_quality.total_submissions | default(0) }}
+      </div>
+    </div>
+  </div>
+
+{% else %}
+  <div class="empty-state" style="padding:8px 0;">
+    <div class="empty-message">NO EXECUTION DATA</div>
+    <div class="empty-detail">Execution quality metrics appear after first fills</div>
+  </div>
+{% endif %}

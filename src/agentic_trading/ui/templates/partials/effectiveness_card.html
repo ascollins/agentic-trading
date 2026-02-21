@@ -1,0 +1,35 @@
+<div class="card-label">EFFECTIVENESS SCORECARD</div>
+
+{% if effectiveness is defined and effectiveness %}
+  {% set dimensions = [
+    ('EDGE', effectiveness.edge | default(0)),
+    ('EXECUTION', effectiveness.execution | default(0)),
+    ('RISK', effectiveness.risk | default(0)),
+    ('OPERATIONS', effectiveness.operations | default(0))
+  ] %}
+
+  <div class="grid-2" style="gap:6px;">
+    {% for label, score in dimensions %}
+    {% set score_class = 'score-good' if score >= 7 else ('score-ok' if score >= 4 else 'score-bad') %}
+    {% set bar_class = 'good' if score >= 7 else ('ok' if score >= 4 else 'bad') %}
+    <div style="padding:6px; background:var(--bg-elevated); border-radius:4px;">
+      <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:3px;">
+        <span style="font-size:8px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">{{ label }}</span>
+        <span style="font-size:14px; font-weight:700; font-family:'JetBrains Mono',monospace;" class="{{ score_class }}">
+          {{ "%.1f" | format(score) }}
+        </span>
+      </div>
+      <div class="progress-bar" style="height:3px;">
+        <div class="progress-fill {{ bar_class }}" style="width:{{ score * 10 }}%"></div>
+      </div>
+      <div style="font-size:8px; color:var(--text-muted); margin-top:1px; text-align:right;">/ 10</div>
+    </div>
+    {% endfor %}
+  </div>
+
+{% else %}
+  <div class="empty-state" style="padding:8px 0;">
+    <div class="empty-message">NO EFFECTIVENESS DATA</div>
+    <div class="empty-detail">Scores computed from completed trades</div>
+  </div>
+{% endif %}

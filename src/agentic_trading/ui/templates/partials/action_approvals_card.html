@@ -1,0 +1,59 @@
+<div class="card-label">
+  PENDING APPROVALS
+  {% if approvals is defined and approvals %}
+    <span class="count-badge" style="margin-left:4px;">{{ approvals | length }}</span>
+  {% endif %}
+</div>
+
+{% if approvals is defined and approvals %}
+  {% for approval in approvals %}
+  <div style="padding:6px; margin-bottom:4px; background:var(--bg-elevated); border-radius:4px;
+              border:1px solid var(--border-subtle);">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:4px;">
+      <div style="display:flex; align-items:center; gap:4px;">
+        {% set level = approval.escalation_level | default('L1') %}
+        {% if level == 'L1' or level == 'L1_AUTO' %}
+          <span class="badge badge-cyan" style="font-size:8px; padding:1px 5px;">L1</span>
+        {% elif level == 'L2' or level == 'L2_OPERATOR' %}
+          <span class="badge badge-warning" style="font-size:8px; padding:1px 5px;">L2</span>
+        {% elif level == 'L3' or level == 'L3_RISK' %}
+          <span class="badge badge-negative" style="font-size:8px; padding:1px 5px;">L3</span>
+        {% elif level == 'L4' or level == 'L4_ADMIN' %}
+          <span class="badge" style="font-size:8px; padding:1px 5px; background:var(--color-critical); color:#000; font-weight:700;">L4</span>
+        {% else %}
+          <span class="badge" style="font-size:8px; padding:1px 5px;">{{ level }}</span>
+        {% endif %}
+        <span style="font-weight:600; font-size:11px; color:var(--text-primary);">{{ approval.symbol }}</span>
+      </div>
+      <div style="display:flex; gap:3px;">
+        <button class="btn btn-approve" style="font-size:9px; padding:1px 8px;"
+                hx-post="/actions/approve/{{ approval.request_id }}"
+                hx-target="#approvals-container"
+                hx-swap="innerHTML">APPROVE</button>
+        <button class="btn btn-deny" style="font-size:9px; padding:1px 8px;"
+                hx-post="/actions/deny/{{ approval.request_id }}"
+                hx-target="#approvals-container"
+                hx-swap="innerHTML">DENY</button>
+      </div>
+    </div>
+    <div style="font-size:10px; color:var(--text-secondary); margin-bottom:2px;">
+      <span style="font-weight:500;">{{ approval.strategy_id }}</span>
+      <span style="color:var(--text-muted); margin:0 3px;">|</span>
+      <span style="color:var(--text-muted);">{{ approval.trigger | default('') | replace("_", " ") | upper }}</span>
+    </div>
+    <div style="display:flex; justify-content:space-between; font-size:9px; color:var(--text-muted);">
+      <span>
+        {% if approval.notional_usd is defined and approval.notional_usd %}
+          NOTIONAL: <span style="font-weight:600; color:var(--text-primary); font-family:'JetBrains Mono',monospace;">${{ "{:,.0f}".format(approval.notional_usd) }}</span>
+        {% endif %}
+      </span>
+      <span>{{ approval.created_at | default('--') }}</span>
+    </div>
+  </div>
+  {% endfor %}
+{% else %}
+  <div class="empty-state" style="padding:8px 0;">
+    <div class="empty-message">NO PENDING APPROVALS</div>
+    <div class="empty-detail">High-impact trades requiring operator review appear here</div>
+  </div>
+{% endif %}

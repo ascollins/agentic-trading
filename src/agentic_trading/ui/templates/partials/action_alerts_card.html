@@ -1,0 +1,36 @@
+<div class="card-label">
+  ALERTS
+  {% if alerts is defined and alerts %}
+    <span class="count-badge" style="margin-left:4px;">{{ alerts | length }}</span>
+  {% endif %}
+</div>
+
+{% if alerts is defined and alerts %}
+  {% for alert in alerts %}
+  {% set sev = alert.severity | default('medium') | lower %}
+  <div style="padding:4px 0; border-bottom:1px solid var(--border-card); font-size:11px;">
+    <div style="display:flex; align-items:flex-start; gap:6px;">
+      <div style="flex-shrink:0; margin-top:1px;">
+        {% if sev == 'critical' %}
+          <span class="badge" style="font-size:8px; padding:1px 5px; background:var(--color-critical); color:#fff; font-weight:700;">CRIT</span>
+        {% elif sev == 'high' %}
+          <span class="badge badge-negative" style="font-size:8px; padding:1px 5px;">HIGH</span>
+        {% elif sev == 'medium' %}
+          <span class="badge badge-warning" style="font-size:8px; padding:1px 5px;">MED</span>
+        {% else %}
+          <span class="badge badge-cyan" style="font-size:8px; padding:1px 5px;">LOW</span>
+        {% endif %}
+      </div>
+      <div style="flex:1; min-width:0;">
+        <div style="color:var(--text-primary); line-height:1.4;">{{ alert.message }}</div>
+        <div style="font-size:8px; color:var(--text-muted); margin-top:1px;">{{ alert.timestamp | default('--') }}</div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+{% else %}
+  <div class="empty-state" style="padding:8px 0;">
+    <div class="empty-message">NO ACTIVE ALERTS</div>
+    <div class="empty-detail">System alerts and warnings appear here</div>
+  </div>
+{% endif %}

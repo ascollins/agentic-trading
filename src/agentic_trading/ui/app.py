@@ -73,6 +73,9 @@ def create_ui_app(
     risk_manager: Any = None,
     adapter: Any = None,
     trading_context: Any = None,
+    model_registry: Any = None,
+    case_manager: Any = None,
+    pre_trade_checker: Any = None,
 ) -> FastAPI:
     """Create the supervision UI FastAPI application.
 
@@ -102,6 +105,9 @@ def create_ui_app(
     app.state.risk_manager = risk_manager
     app.state.adapter = adapter
     app.state.trading_context = trading_context
+    app.state.model_registry = model_registry
+    app.state.case_manager = case_manager
+    app.state.pre_trade_checker = pre_trade_checker
 
     # Track startup time for equity curve baseline
     app.state.start_time = time.time()
@@ -254,6 +260,113 @@ def create_ui_app(
         return templates.TemplateResponse(
             "partials/circuit_breakers_card.html", _ctx(request, **data),
         )
+
+    # ------------------------------------------------------------------
+    # New dashboard section partials (P0-P2 institutional features)
+    # ------------------------------------------------------------------
+
+    @app.get("/partials/risk-pnl/summary", response_class=HTMLResponse)
+    async def partial_risk_pnl(request: Request) -> HTMLResponse:
+        data = await _build_risk_pnl_data(app)
+        return templates.TemplateResponse(
+            "partials/risk_pnl_card.html", _ctx(request, **data),
+        )
+
+    @app.get("/partials/action-queue/approvals", response_class=HTMLResponse)
+    async def partial_action_approvals(request: Request) -> HTMLResponse:
+        data = _build_action_queue_data(app)
+        return templates.TemplateResponse(
+            "partials/action_approvals_card.html", _ctx(request, **data),
+        )
+
+    @app.get("/partials/action-queue/incidents", response_class=HTMLResponse)
+    async def partial_action_incidents(request: Request) -> HTMLResponse:
+        data = _build_action_queue_data(app)
+        return templates.TemplateResponse(
+            "partials/action_incidents_card.html", _ctx(request, **data),
+        )
+
+    @app.get("/partials/action-queue/decisions", response_class=HTMLResponse)
+    async def partial_action_decisions(request: Request) -> HTMLResponse:
+        data = _build_action_queue_data(app)
+        return templates.TemplateResponse(
+            "partials/action_decisions_card.html", _ctx(request, **data),
+        )
+
+    @app.get("/partials/action-queue/alerts", response_class=HTMLResponse)
+    async def partial_action_alerts(request: Request) -> HTMLResponse:
+        data = _build_action_queue_data(app)
+        return templates.TemplateResponse(
+            "partials/action_alerts_card.html", _ctx(request, **data),
+        )
+
+    @app.get("/partials/model-scorecard/models", response_class=HTMLResponse)
+    async def partial_model_registry(request: Request) -> HTMLResponse:
+        data = _build_model_scorecard_data(app)
+        return templates.TemplateResponse(
+            "partials/model_registry_card.html", _ctx(request, **data),
+        )
+
+    @app.get("/partials/model-scorecard/drift", response_class=HTMLResponse)
+    async def partial_drift_indicators(request: Request) -> HTMLResponse:
+        data = _build_model_scorecard_data(app)
+        return templates.TemplateResponse(
+            "partials/drift_indicators_card.html", _ctx(request, **data),
+        )
+
+    @app.get("/partials/model-scorecard/effectiveness", response_class=HTMLResponse)
+    async def partial_effectiveness(request: Request) -> HTMLResponse:
+        data = _build_model_scorecard_data(app)
+        return templates.TemplateResponse(
+            "partials/effectiveness_card.html", _ctx(request, **data),
+        )
+
+    @app.get("/partials/model-scorecard/exec-quality", response_class=HTMLResponse)
+    async def partial_exec_quality(request: Request) -> HTMLResponse:
+        data = _build_model_scorecard_data(app)
+        return templates.TemplateResponse(
+            "partials/exec_quality_card.html", _ctx(request, **data),
+        )
+
+    @app.get("/partials/pre-trade/checks", response_class=HTMLResponse)
+    async def partial_pre_trade_checks(request: Request) -> HTMLResponse:
+        data = _build_pre_trade_controls_data(app)
+        return templates.TemplateResponse(
+            "partials/pre_trade_checks_card.html", _ctx(request, **data),
+        )
+
+    @app.get("/partials/pre-trade/throttles", response_class=HTMLResponse)
+    async def partial_pre_trade_throttles(request: Request) -> HTMLResponse:
+        data = _build_pre_trade_controls_data(app)
+        return templates.TemplateResponse(
+            "partials/pre_trade_throttles_card.html", _ctx(request, **data),
+        )
+
+    @app.get("/partials/micro-edge/distribution", response_class=HTMLResponse)
+    async def partial_r_distribution(request: Request) -> HTMLResponse:
+        data = _build_micro_edge_data(app)
+        return templates.TemplateResponse(
+            "partials/r_distribution_card.html", _ctx(request, **data),
+        )
+
+    @app.get("/partials/micro-edge/edge-analysis", response_class=HTMLResponse)
+    async def partial_edge_analysis(request: Request) -> HTMLResponse:
+        data = _build_micro_edge_data(app)
+        return templates.TemplateResponse(
+            "partials/edge_analysis_card.html", _ctx(request, **data),
+        )
+
+    @app.get("/partials/micro-edge/surveillance", response_class=HTMLResponse)
+    async def partial_surveillance(request: Request) -> HTMLResponse:
+        data = _build_micro_edge_data(app)
+        return templates.TemplateResponse(
+            "partials/surveillance_card.html", _ctx(request, **data),
+        )
+
+    @app.get("/api/r-distribution")
+    async def api_r_distribution() -> list[dict[str, Any]]:
+        """Return R-multiple distribution buckets for Chart.js histogram."""
+        return _build_r_distribution_buckets(app)
 
     # ------------------------------------------------------------------
     # Action routes (HTMX POST for approvals, promotions, etc.)
@@ -705,12 +818,14 @@ async def _fetch_exchange_state(
 async def _build_home_data(app: FastAPI) -> dict[str, Any]:
     """Build all data for the single-page mission control (initial full load).
 
-    Includes all 7 sections: portfolio, equity, positions, strategies,
-    activity, risk & controls, and system.
+    Includes all 12 sections: portfolio, equity, risk pnl, positions,
+    strategies, activity, model scorecard, action queue, pre-trade controls,
+    risk & controls, micro-edge & surveillance, and system.
     """
     portfolio = await _build_portfolio_data(app)
     positions = await _build_positions_data(app)
     risk_controls = await _build_risk_controls_data(app)
+    risk_pnl = await _build_risk_pnl_data(app)
     return {
         **(await _build_banner_data(app)),
         **_build_scorecard_data(app),
@@ -723,6 +838,11 @@ async def _build_home_data(app: FastAPI) -> dict[str, Any]:
         **_build_system_data(app),
         **_build_approvals_data(app),
         **_build_status_bar_data(app),
+        **risk_pnl,
+        **_build_action_queue_data(app),
+        **_build_model_scorecard_data(app),
+        **_build_pre_trade_controls_data(app),
+        **_build_micro_edge_data(app),
     }
 
 
@@ -1822,6 +1942,476 @@ def _build_kill_switch_html(active: bool) -> str:
   </div>
   <button class="btn-kill-switch activate" onclick="showKillSwitchModal('activate')">Activate Emergency Stop</button>
 </div>"""
+
+
+# ======================================================================
+# New section data builders (P0-P2 institutional features)
+# ======================================================================
+
+
+async def _build_risk_pnl_data(app: FastAPI) -> dict[str, Any]:
+    """Build Risk PnL & Posture section data."""
+    journal = app.state.journal
+    risk_mgr = app.state.risk_manager
+    settings = app.state.settings
+
+    pnl_by_strategy: list[dict[str, Any]] = []
+    exposure = 0.0
+    leverage = 0.0
+    var_1d = 0.0
+    drawdown_pct = 0.0
+    drawdown_limit = 0.15
+    daily_loss = 0.0
+    daily_loss_limit = 0.05
+    daily_loss_pct_used = 0.0
+
+    # PnL by strategy from journal
+    if journal is not None:
+        try:
+            all_stats = journal.get_all_strategy_stats()
+            for sid, stats in all_stats.items():
+                total_pnl = stats.get("total_pnl", 0)
+                total_trades = stats.get("total_trades", 0)
+                if total_trades > 0:
+                    pnl_by_strategy.append({
+                        "strategy_id": sid,
+                        "pnl": round(total_pnl, 2),
+                        "pnl_pct": round(stats.get("return_pct", 0) * 100, 2),
+                    })
+        except Exception:
+            pass
+
+    # Exposure/leverage from adapter
+    adapter = app.state.adapter
+    if adapter is not None:
+        try:
+            positions = await adapter.get_positions()
+            balances = await adapter.get_balances()
+            total_equity = sum(float(b.total) for b in balances) if balances else 0
+            gross = sum(abs(float(p.qty) * float(p.mark_price)) for p in positions if float(p.qty) > 0)
+            exposure = round(gross, 2)
+            leverage = round(gross / total_equity, 2) if total_equity > 0 else 0.0
+        except Exception:
+            pass
+
+    # Risk limits and drawdown from risk manager / settings
+    if risk_mgr is not None:
+        try:
+            dm = getattr(risk_mgr, "drawdown", None)
+            if dm is not None:
+                drawdown_pct = float(getattr(dm, "peak_drawdown", 0))
+                daily_loss = float(getattr(dm, "daily_loss", 0))
+            rm = getattr(risk_mgr, "risk_metrics", None)
+            if rm is not None:
+                var_1d = float(getattr(rm, "var_95", 0))
+        except Exception:
+            pass
+
+    if settings is not None:
+        try:
+            drawdown_limit = settings.risk.max_drawdown_pct
+            daily_loss_limit = settings.risk.max_daily_loss_pct
+        except Exception:
+            pass
+
+    if daily_loss_limit > 0:
+        daily_loss_pct_used = min(100.0, abs(daily_loss) / daily_loss_limit * 100)
+
+    return {
+        "risk_pnl": {
+            "pnl_by_strategy": pnl_by_strategy,
+            "exposure": exposure,
+            "leverage": leverage,
+            "var_1d": round(var_1d, 2),
+            "drawdown_pct": round(drawdown_pct * 100, 2),
+            "drawdown_limit": round(drawdown_limit * 100, 1),
+            "daily_loss": round(daily_loss, 2),
+            "daily_loss_limit": f"-{daily_loss_limit * 100:.1f}%",
+            "daily_loss_pct_used": round(daily_loss_pct_used, 1),
+        },
+    }
+
+
+def _build_action_queue_data(app: FastAPI) -> dict[str, Any]:
+    """Build Action Queue & Alerts section data."""
+    # Pending approvals (reuse existing builder)
+    approvals = _build_approvals_data(app).get("approvals", [])
+
+    # Active incidents
+    active_incidents: list[dict[str, Any]] = []
+    if app.state.incidents:
+        try:
+            for inc in app.state.incidents.get_active_incidents():
+                active_incidents.append({
+                    "incident_id": getattr(inc, "incident_id", ""),
+                    "title": getattr(inc, "title", "Incident"),
+                    "severity": (
+                        inc.severity.value
+                        if hasattr(inc, "severity") and hasattr(inc.severity, "value")
+                        else str(getattr(inc, "severity", ""))
+                    ),
+                    "description": getattr(inc, "description", ""),
+                    "created_at": (
+                        inc.created_at.strftime("%H:%M")
+                        if hasattr(inc, "created_at") and inc.created_at
+                        else ""
+                    ),
+                })
+        except Exception:
+            pass
+
+    # Recent governance decisions
+    recent_decisions: list[dict[str, Any]] = []
+    gate = app.state.gate
+    if gate is not None:
+        try:
+            raw_decisions = getattr(gate, "recent_decisions", [])
+            for dec in list(raw_decisions)[-10:]:
+                allowed = getattr(dec, "action", None)
+                allowed_str = allowed.value if hasattr(allowed, "value") else str(allowed)
+                is_allowed = allowed_str in ("allow", "reduce_size")
+                recent_decisions.append({
+                    "strategy_id": getattr(dec, "strategy_id", ""),
+                    "symbol": getattr(dec, "symbol", ""),
+                    "allowed": is_allowed,
+                    "reason": getattr(dec, "reason", ""),
+                    "sizing_adjustment": getattr(dec, "sizing_multiplier", 1.0),
+                    "timestamp": (
+                        dec.timestamp.strftime("%H:%M")
+                        if hasattr(dec, "timestamp") and dec.timestamp
+                        else ""
+                    ),
+                })
+        except Exception:
+            pass
+
+    # Alerts from incident manager or event bus
+    alerts: list[dict[str, Any]] = []
+    if app.state.incidents is not None:
+        try:
+            recent = getattr(app.state.incidents, "get_recent", lambda n: [])(10)
+            for inc in recent:
+                severity = getattr(inc, "severity", "")
+                severity_str = severity.value if hasattr(severity, "value") else str(severity)
+                alerts.append({
+                    "message": getattr(inc, "title", "Alert"),
+                    "severity": severity_str,
+                    "timestamp": (
+                        inc.created_at.strftime("%H:%M")
+                        if hasattr(inc, "created_at") and inc.created_at
+                        else ""
+                    ),
+                })
+        except Exception:
+            pass
+
+    return {
+        "approvals": approvals,
+        "active_incidents": active_incidents,
+        "recent_decisions": recent_decisions,
+        "alerts": alerts,
+    }
+
+
+def _build_model_scorecard_data(app: FastAPI) -> dict[str, Any]:
+    """Build Model Scorecard & Drift section data."""
+    # Model registry
+    models: list[dict[str, Any]] = []
+    registry = app.state.model_registry
+    if registry is not None:
+        try:
+            for rec in registry.list_all():
+                stage = rec.stage.value if hasattr(rec.stage, "value") else str(rec.stage)
+                metrics_summary = ""
+                if rec.metrics:
+                    # Show top 2 metrics
+                    parts = [f"{k}: {v:.3f}" for k, v in list(rec.metrics.items())[:2]]
+                    metrics_summary = ", ".join(parts)
+                models.append({
+                    "name": rec.name,
+                    "version": rec.version,
+                    "stage": stage,
+                    "model_id": rec.model_id[:8],
+                    "metrics": metrics_summary,
+                })
+        except Exception:
+            pass
+
+    # Drift indicators from governance gate
+    drift_data: list[dict[str, Any]] = []
+    gate = app.state.gate
+    if gate is not None:
+        try:
+            drift_detector = getattr(gate, "drift", None)
+            if drift_detector is not None:
+                for strategy_id in getattr(drift_detector, "_baselines", {}).keys():
+                    alerts = drift_detector.check_drift(strategy_id)
+                    for alert in alerts:
+                        dev_pct = abs(alert.deviation_pct)
+                        status = "ok" if dev_pct < 10 else ("warn" if dev_pct < 25 else "critical")
+                        drift_data.append({
+                            "strategy_id": strategy_id,
+                            "metric": alert.metric_name,
+                            "baseline": round(alert.baseline_value, 4),
+                            "live": round(alert.live_value, 4),
+                            "deviation_pct": round(dev_pct, 1),
+                            "status": status,
+                        })
+        except Exception:
+            pass
+
+    # Effectiveness scorecard
+    effectiveness: dict[str, float] = {}
+    if app.state.scorecard is not None:
+        try:
+            scores = app.state.scorecard.last_scores
+            if scores is None:
+                scores = app.state.scorecard.compute()
+            if scores:
+                effectiveness = {
+                    "edge": scores.get("edge_quality", 5.0),
+                    "execution": scores.get("execution_quality", 5.0),
+                    "risk": scores.get("risk_discipline", 5.0),
+                    "operations": scores.get("operational_integrity", 5.0),
+                }
+        except Exception:
+            pass
+
+    # Execution quality from quality tracker
+    exec_quality: dict[str, Any] = {}
+    qt = app.state.quality
+    if qt is not None:
+        try:
+            exec_quality = {
+                "avg_slippage_bps": round(getattr(qt, "avg_slippage_bps", 0), 2),
+                "fill_rate_pct": round(getattr(qt, "fill_rate", 0) * 100, 1),
+                "total_fills": getattr(qt, "total_fills", 0),
+                "total_submissions": getattr(qt, "total_submissions", 0),
+            }
+        except Exception:
+            pass
+
+    return {
+        "models": models,
+        "drift_data": drift_data,
+        "effectiveness": effectiveness,
+        "exec_quality": exec_quality,
+    }
+
+
+def _build_pre_trade_controls_data(app: FastAPI) -> dict[str, Any]:
+    """Build Pre-Trade Controls & Health section data."""
+    checker = app.state.pre_trade_checker
+    check_stats: list[dict[str, Any]] = []
+    throttle_data: dict[str, Any] = {"strategy_rates": [], "symbol_rates": []}
+
+    if checker is not None:
+        try:
+            results = checker.recent_check_results
+            if results:
+                # Aggregate pass rates per check name
+                check_counts: dict[str, dict[str, int]] = {}  # name -> {passed, total}
+                for r in results:
+                    for check_name, passed in r.get("checks", {}).items():
+                        if check_name not in check_counts:
+                            check_counts[check_name] = {"passed": 0, "total": 0}
+                        check_counts[check_name]["total"] += 1
+                        if passed:
+                            check_counts[check_name]["passed"] += 1
+
+                for name, counts in check_counts.items():
+                    rate = counts["passed"] / counts["total"] * 100 if counts["total"] > 0 else 100
+                    status = "pass" if rate > 95 else ("warn" if rate > 80 else "fail")
+                    # Abbreviate check names for display
+                    display_name = name.replace("_", " ").title()
+                    if len(display_name) > 16:
+                        display_name = display_name[:14] + ".."
+                    check_stats.append({
+                        "name": display_name,
+                        "pass_rate": round(rate, 1),
+                        "total_checks": counts["total"],
+                        "status": status,
+                    })
+
+            # Throttle data from checker state
+            for strategy_id, times in getattr(checker, "_message_times_by_strategy", {}).items():
+                limit = getattr(checker, "max_messages_per_minute_per_strategy", 60)
+                throttle_data["strategy_rates"].append({
+                    "name": strategy_id,
+                    "current": len(times),
+                    "limit": limit,
+                })
+            for symbol, times in getattr(checker, "_message_times_by_symbol", {}).items():
+                limit = getattr(checker, "max_messages_per_minute_per_symbol", 30)
+                throttle_data["symbol_rates"].append({
+                    "name": symbol,
+                    "current": len(times),
+                    "limit": limit,
+                })
+        except Exception:
+            pass
+
+    return {
+        "check_stats": check_stats,
+        "throttle_data": throttle_data,
+    }
+
+
+def _build_micro_edge_data(app: FastAPI) -> dict[str, Any]:
+    """Build Micro-Edge Distribution & Surveillance section data."""
+    journal = app.state.journal
+
+    # R-multiple stats
+    r_stats: dict[str, Any] = {}
+    edge: dict[str, Any] = {"by_strategy": [], "by_symbol": [], "by_hour": []}
+
+    if journal is not None:
+        try:
+            closed = journal.get_closed_trades()
+            if closed:
+                r_values = [float(t.r_multiple) for t in closed if hasattr(t, "r_multiple")]
+                if r_values:
+                    r_stats = {
+                        "avg_r": round(sum(r_values) / len(r_values), 3),
+                        "median_r": round(sorted(r_values)[len(r_values) // 2], 3),
+                        "total_trades": len(r_values),
+                        "chart_id": "rDistChart",
+                    }
+
+                # Edge analysis by strategy
+                strat_data: dict[str, dict[str, int]] = {}  # sid -> {wins, total}
+                sym_data: dict[str, dict[str, int]] = {}
+                hour_data: dict[int, dict[str, int]] = {}
+
+                for t in closed:
+                    sid = t.strategy_id
+                    sym = t.symbol
+                    won = t.r_multiple > 0 if hasattr(t, "r_multiple") else False
+
+                    # By strategy
+                    if sid not in strat_data:
+                        strat_data[sid] = {"wins": 0, "total": 0}
+                    strat_data[sid]["total"] += 1
+                    if won:
+                        strat_data[sid]["wins"] += 1
+
+                    # By symbol
+                    if sym not in sym_data:
+                        sym_data[sym] = {"wins": 0, "total": 0}
+                    sym_data[sym]["total"] += 1
+                    if won:
+                        sym_data[sym]["wins"] += 1
+
+                    # By hour
+                    hour = None
+                    if hasattr(t, "closed_at") and t.closed_at:
+                        hour = t.closed_at.hour
+                    elif t.exit_fills:
+                        hour = t.exit_fills[-1].timestamp.hour
+                    if hour is not None:
+                        if hour not in hour_data:
+                            hour_data[hour] = {"wins": 0, "total": 0}
+                        hour_data[hour]["total"] += 1
+                        if won:
+                            hour_data[hour]["wins"] += 1
+
+                for sid, d in strat_data.items():
+                    wr = d["wins"] / d["total"] * 100 if d["total"] > 0 else 0
+                    edge["by_strategy"].append({
+                        "name": sid, "win_rate": round(wr, 1), "trades": d["total"],
+                    })
+                for sym, d in sym_data.items():
+                    wr = d["wins"] / d["total"] * 100 if d["total"] > 0 else 0
+                    edge["by_symbol"].append({
+                        "name": sym, "win_rate": round(wr, 1), "trades": d["total"],
+                    })
+                for hr in sorted(hour_data.keys()):
+                    d = hour_data[hr]
+                    wr = d["wins"] / d["total"] * 100 if d["total"] > 0 else 0
+                    edge["by_hour"].append({
+                        "hour": f"{hr:02d}:00", "win_rate": round(wr, 1), "trades": d["total"],
+                    })
+        except Exception:
+            pass
+
+    # Surveillance from case manager
+    surveillance: dict[str, Any] = {"open_cases": [], "recent_events": []}
+    cm = app.state.case_manager
+    if cm is not None:
+        try:
+            for case in cm.list_open():
+                created = getattr(case, "created_at", None)
+                surveillance["open_cases"].append({
+                    "case_id": case.case_id[-8:],
+                    "case_type": case.case_type,
+                    "severity": case.severity,
+                    "symbol": case.symbol,
+                    "status": case.status,
+                    "created_at": created.strftime("%H:%M") if created else "",
+                })
+            # Recent timeline events from open cases
+            for case in cm.list_open()[:3]:
+                for entry in getattr(case, "timeline", [])[-3:]:
+                    surveillance["recent_events"].append({
+                        "timestamp": (
+                            entry.timestamp.strftime("%H:%M")
+                            if hasattr(entry, "timestamp") and entry.timestamp
+                            else ""
+                        ),
+                        "action": entry.action,
+                        "detail": entry.detail,
+                    })
+        except Exception:
+            pass
+
+    return {
+        "r_stats": r_stats,
+        "edge": edge,
+        "surveillance": surveillance,
+    }
+
+
+def _build_r_distribution_buckets(app: FastAPI) -> list[dict[str, Any]]:
+    """Build R-multiple histogram bucket data for the Chart.js API."""
+    journal = app.state.journal
+    if journal is None:
+        return []
+
+    try:
+        closed = journal.get_closed_trades()
+        if not closed:
+            return []
+
+        r_values = [float(t.r_multiple) for t in closed if hasattr(t, "r_multiple")]
+        if not r_values:
+            return []
+
+        # Define buckets: -3R to +3R in 0.5R increments
+        bucket_edges = [i * 0.5 for i in range(-6, 7)]  # -3.0 to 3.0
+        buckets: list[dict[str, Any]] = []
+
+        for i in range(len(bucket_edges) - 1):
+            low = bucket_edges[i]
+            high = bucket_edges[i + 1]
+            count = sum(1 for r in r_values if low <= r < high)
+            label = f"{low:+.1f}"
+            buckets.append({
+                "label": label,
+                "count": count,
+                "color": "#00ff88" if low >= 0 else "#ff4444",
+            })
+
+        # Catch outliers
+        below = sum(1 for r in r_values if r < bucket_edges[0])
+        above = sum(1 for r in r_values if r >= bucket_edges[-1])
+        if below:
+            buckets.insert(0, {"label": f"<{bucket_edges[0]:+.1f}", "count": below, "color": "#ff4444"})
+        if above:
+            buckets.append({"label": f">{bucket_edges[-1]:+.1f}", "count": above, "color": "#00ff88"})
+
+        return buckets
+    except Exception:
+        return []
 
 
 # ======================================================================

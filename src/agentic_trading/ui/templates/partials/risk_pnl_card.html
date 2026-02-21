@@ -1,0 +1,97 @@
+<div class="card-label">RISK PnL &amp; POSTURE</div>
+
+{% if risk_pnl is defined and risk_pnl %}
+  <!-- PnL Waterfall by Strategy -->
+  {% if risk_pnl.pnl_by_strategy %}
+  <div style="margin-bottom:10px;">
+    <div style="font-size:9px; color:var(--text-muted); text-transform:uppercase; margin-bottom:4px; letter-spacing:0.5px;">
+      PnL BY STRATEGY
+    </div>
+    {% for s in risk_pnl.pnl_by_strategy %}
+    {% set is_positive = s.pnl >= 0 %}
+    <div style="display:flex; align-items:center; gap:6px; margin-bottom:3px; font-size:10px;">
+      <span style="width:80px; text-align:right; color:var(--text-muted); font-family:'JetBrains Mono',monospace; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
+            title="{{ s.strategy_id }}">
+        {{ s.strategy_id }}
+      </span>
+      <div style="flex:1; height:8px; background:var(--bg-elevated); border-radius:2px; overflow:hidden;">
+        <div style="height:100%; width:{{ [([s.pnl_pct | abs, 1] | max), 100] | min }}%;
+                    background:{{ 'var(--color-positive)' if is_positive else 'var(--color-negative)' }};
+                    border-radius:2px; opacity:0.85;">
+        </div>
+      </div>
+      <span style="width:70px; text-align:right; font-weight:600; font-family:'JetBrains Mono',monospace;
+                   color:{{ 'var(--color-positive)' if is_positive else 'var(--color-negative)' }};">
+        {{ "+" if is_positive else "" }}${{ "{:,.0f}".format(s.pnl) }}
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- Posture Grid 2x2 -->
+  <div class="grid-2" style="gap:6px; margin-bottom:10px;">
+    <div style="padding:6px; background:var(--bg-elevated); border-radius:4px;">
+      <div style="font-size:8px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">EXPOSURE</div>
+      <div style="font-size:14px; font-weight:700; font-family:'JetBrains Mono',monospace; color:var(--text-primary);">
+        ${{ "{:,.0f}".format(risk_pnl.exposure | default(0)) }}
+      </div>
+    </div>
+    <div style="padding:6px; background:var(--bg-elevated); border-radius:4px;">
+      <div style="font-size:8px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">LEVERAGE</div>
+      {% set lev = risk_pnl.leverage | default(0) %}
+      <div style="font-size:14px; font-weight:700; font-family:'JetBrains Mono',monospace;
+                  color:{{ 'var(--color-negative)' if lev > 5 else ('var(--color-warning)' if lev > 3 else 'var(--text-primary)') }};">
+        {{ "%.1f" | format(lev) }}x
+      </div>
+    </div>
+    <div style="padding:6px; background:var(--bg-elevated); border-radius:4px;">
+      <div style="font-size:8px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">VaR (1D)</div>
+      <div style="font-size:14px; font-weight:700; font-family:'JetBrains Mono',monospace; color:var(--color-warning);">
+        ${{ "{:,.0f}".format(risk_pnl.var_1d | default(0)) }}
+      </div>
+    </div>
+    <div style="padding:6px; background:var(--bg-elevated); border-radius:4px;">
+      <div style="font-size:8px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">DRAWDOWN</div>
+      {% set dd = risk_pnl.drawdown_pct | default(0) %}
+      {% set dd_limit = risk_pnl.drawdown_limit | default(0) %}
+      <div style="font-size:14px; font-weight:700; font-family:'JetBrains Mono',monospace;
+                  color:{{ 'var(--color-negative)' if dd > dd_limit * 0.8 else ('var(--color-warning)' if dd > dd_limit * 0.5 else 'var(--text-primary)') }};">
+        {{ "%.1f" | format(dd) }}%
+      </div>
+    </div>
+  </div>
+
+  <!-- Daily Loss Budget Gauge -->
+  {% set dl_pct = risk_pnl.daily_loss_pct_used | default(0) %}
+  {% set dl_class = 'critical' if dl_pct >= 95 else ('warn' if dl_pct >= 80 else 'safe') %}
+  <div>
+    <div style="display:flex; justify-content:space-between; font-size:10px; margin-bottom:2px;">
+      <span style="color:var(--text-muted); text-transform:uppercase;">DAILY LOSS BUDGET</span>
+      <span>
+        <span style="font-weight:600; font-family:'JetBrains Mono',monospace;
+          color:{{ 'var(--color-negative)' if dl_pct >= 95 else ('var(--color-warning)' if dl_pct >= 80 else 'var(--text-primary)') }};">
+          ${{ "{:,.0f}".format(risk_pnl.daily_loss | default(0)) }}
+        </span>
+        <span style="color:var(--text-muted);"> / {{ risk_pnl.daily_loss_limit | default("—") }}</span>
+      </span>
+    </div>
+    <div class="risk-gauge-bar" style="height:3px;">
+      <div class="risk-gauge-fill {{ dl_class }}" style="width:{{ [dl_pct, 100] | min }}%"></div>
+    </div>
+    <div style="font-size:8px; color:var(--text-muted); margin-top:1px;">
+      {{ "%.0f" | format(dl_pct) }}% USED
+      {% if dl_pct >= 95 %}
+        <span style="color:var(--color-negative); font-weight:600;">CRITICAL</span>
+      {% elif dl_pct >= 80 %}
+        <span style="color:var(--color-warning);">WARN</span>
+      {% endif %}
+    </div>
+  </div>
+
+{% else %}
+  <div class="empty-state" style="padding:8px 0;">
+    <div class="empty-message">NO RISK DATA</div>
+    <div class="empty-detail">Risk posture data available when positions are open</div>
+  </div>
+{% endif %}

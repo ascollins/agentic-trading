@@ -1,0 +1,39 @@
+<div class="card-label">R-MULTIPLE DISTRIBUTION</div>
+
+{% if r_stats is defined and r_stats %}
+  <div style="margin-bottom:6px;">
+    <canvas id="{{ r_stats.chart_id | default('rDistChart') }}"
+            style="height:180px; width:100%;"></canvas>
+  </div>
+
+  <div class="grid-3" style="gap:6px;">
+    <div style="padding:4px; text-align:center;">
+      <div style="font-size:8px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">AVG R</div>
+      {% set avg_r = r_stats.avg_r | default(0) %}
+      <div style="font-size:13px; font-weight:700; font-family:'JetBrains Mono',monospace;
+                  color:{{ 'var(--color-positive)' if avg_r > 0 else ('var(--color-negative)' if avg_r < 0 else 'var(--text-primary)') }};">
+        {{ "%.2f" | format(avg_r) }}R
+      </div>
+    </div>
+    <div style="padding:4px; text-align:center;">
+      <div style="font-size:8px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">MEDIAN R</div>
+      {% set med_r = r_stats.median_r | default(0) %}
+      <div style="font-size:13px; font-weight:700; font-family:'JetBrains Mono',monospace;
+                  color:{{ 'var(--color-positive)' if med_r > 0 else ('var(--color-negative)' if med_r < 0 else 'var(--text-primary)') }};">
+        {{ "%.2f" | format(med_r) }}R
+      </div>
+    </div>
+    <div style="padding:4px; text-align:center;">
+      <div style="font-size:8px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">TRADES</div>
+      <div style="font-size:13px; font-weight:700; font-family:'JetBrains Mono',monospace; color:var(--text-primary);">
+        {{ r_stats.total_trades | default(0) }}
+      </div>
+    </div>
+  </div>
+
+{% else %}
+  <div class="empty-state" style="padding:8px 0;">
+    <div class="empty-message">NO CLOSED TRADES</div>
+    <div class="empty-detail">R-multiple distribution appears after trades are closed</div>
+  </div>
+{% endif %}

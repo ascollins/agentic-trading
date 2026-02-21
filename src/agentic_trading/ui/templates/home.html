@@ -54,7 +54,28 @@
 </section>
 
 <!-- ═══════════════════════════════════════════════════════════════
-     SECTION 3: POSITIONS
+     SECTION 3: RISK PnL & POSTURE (NEW)
+     ═══════════════════════════════════════════════════════════════ -->
+<section id="section-risk-pnl">
+  {{ section_header("RISK PnL & POSTURE", live=True, id="section-risk-pnl") }}
+  <div class="section-body">
+    <div class="card"
+         id="risk-pnl-container"
+         hx-get="/partials/risk-pnl/summary"
+         hx-trigger="every 15s"
+         hx-swap="innerHTML">
+      {% if risk_pnl is defined %}
+        {% include "partials/risk_pnl_card.html" %}
+      {% else %}
+        <div class="card-label">RISK PnL & POSTURE</div>
+        <div class="empty-state"><div class="empty-message">Loading...</div></div>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SECTION 4: POSITIONS
      ═══════════════════════════════════════════════════════════════ -->
 <section id="section-positions">
   {{ section_header("POSITIONS", live=True, count=positions|length if positions is defined else 0, id="section-positions") }}
@@ -70,7 +91,7 @@
 </section>
 
 <!-- ═══════════════════════════════════════════════════════════════
-     SECTION 4: STRATEGIES
+     SECTION 5: STRATEGIES
      ═══════════════════════════════════════════════════════════════ -->
 <section id="section-strategies">
   {{ section_header("STRATEGIES", count=strategies|length if strategies is defined else 0, id="section-strategies") }}
@@ -86,7 +107,7 @@
 </section>
 
 <!-- ═══════════════════════════════════════════════════════════════
-     SECTION 5: ACTIVITY
+     SECTION 6: ACTIVITY
      ═══════════════════════════════════════════════════════════════ -->
 <section id="section-activity">
   {{ section_header("ACTIVITY", live=True, id="section-activity") }}
@@ -136,7 +157,181 @@
 </section>
 
 <!-- ═══════════════════════════════════════════════════════════════
-     SECTION 6: RISK & CONTROLS
+     SECTION 7: MODEL SCORECARD & DRIFT (NEW)
+     ═══════════════════════════════════════════════════════════════ -->
+<section id="section-model-scorecard">
+  {{ section_header("MODEL SCORECARD & DRIFT", id="section-model-scorecard") }}
+  <div class="section-body">
+    <div class="grid-2">
+      <!-- Model Registry -->
+      <div class="card"
+           id="model-registry-container"
+           hx-get="/partials/model-scorecard/models"
+           hx-trigger="every 30s"
+           hx-swap="innerHTML">
+        {% if models is defined %}
+          {% include "partials/model_registry_card.html" %}
+        {% else %}
+          <div class="card-label">MODEL REGISTRY</div>
+          <div class="empty-state"><div class="empty-message">Loading...</div></div>
+        {% endif %}
+      </div>
+
+      <!-- Drift Indicators -->
+      <div class="card"
+           id="drift-indicators-container"
+           hx-get="/partials/model-scorecard/drift"
+           hx-trigger="every 15s"
+           hx-swap="innerHTML">
+        {% if drift_data is defined %}
+          {% include "partials/drift_indicators_card.html" %}
+        {% else %}
+          <div class="card-label">DRIFT INDICATORS</div>
+          <div class="empty-state"><div class="empty-message">Loading...</div></div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="grid-2" style="margin-top:var(--grid-gap);">
+      <!-- Effectiveness Scorecard -->
+      <div class="card"
+           id="effectiveness-container"
+           hx-get="/partials/model-scorecard/effectiveness"
+           hx-trigger="every 10s"
+           hx-swap="innerHTML">
+        {% if effectiveness is defined %}
+          {% include "partials/effectiveness_card.html" %}
+        {% else %}
+          <div class="card-label">EFFECTIVENESS</div>
+          <div class="empty-state"><div class="empty-message">Loading...</div></div>
+        {% endif %}
+      </div>
+
+      <!-- Execution Quality -->
+      <div class="card"
+           id="exec-quality-container"
+           hx-get="/partials/model-scorecard/exec-quality"
+           hx-trigger="every 10s"
+           hx-swap="innerHTML">
+        {% if exec_quality is defined %}
+          {% include "partials/exec_quality_card.html" %}
+        {% else %}
+          <div class="card-label">EXECUTION QUALITY</div>
+          <div class="empty-state"><div class="empty-message">Loading...</div></div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SECTION 8: ACTION QUEUE & ALERTS (NEW)
+     ═══════════════════════════════════════════════════════════════ -->
+<section id="section-action-queue">
+  {{ section_header("ACTION QUEUE & ALERTS", live=True, id="section-action-queue") }}
+  <div class="section-body">
+    <div class="grid-2">
+      <!-- Pending Approvals (full cards) -->
+      <div class="card"
+           id="action-approvals-container"
+           hx-get="/partials/action-queue/approvals"
+           hx-trigger="every 5s"
+           hx-swap="innerHTML">
+        {% if approvals is defined %}
+          {% include "partials/action_approvals_card.html" %}
+        {% else %}
+          <div class="card-label">PENDING APPROVALS</div>
+          <div class="empty-state"><div class="empty-message">Loading...</div></div>
+        {% endif %}
+      </div>
+
+      <!-- Active Incidents -->
+      <div class="card"
+           id="action-incidents-container"
+           hx-get="/partials/action-queue/incidents"
+           hx-trigger="every 5s"
+           hx-swap="innerHTML">
+        {% if active_incidents is defined %}
+          {% include "partials/action_incidents_card.html" %}
+        {% else %}
+          <div class="card-label">ACTIVE INCIDENTS</div>
+          <div class="empty-state"><div class="empty-message">Loading...</div></div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="grid-2" style="margin-top:var(--grid-gap);">
+      <!-- Recent Decisions -->
+      <div class="card"
+           id="action-decisions-container"
+           hx-get="/partials/action-queue/decisions"
+           hx-trigger="every 10s"
+           hx-swap="innerHTML">
+        {% if recent_decisions is defined %}
+          {% include "partials/action_decisions_card.html" %}
+        {% else %}
+          <div class="card-label">RECENT DECISIONS</div>
+          <div class="empty-state"><div class="empty-message">Loading...</div></div>
+        {% endif %}
+      </div>
+
+      <!-- Alert Feed -->
+      <div class="card"
+           id="action-alerts-container"
+           hx-get="/partials/action-queue/alerts"
+           hx-trigger="every 10s"
+           hx-swap="innerHTML">
+        {% if alerts is defined %}
+          {% include "partials/action_alerts_card.html" %}
+        {% else %}
+          <div class="card-label">ALERTS</div>
+          <div class="empty-state"><div class="empty-message">Loading...</div></div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SECTION 9: PRE-TRADE CONTROLS (NEW)
+     ═══════════════════════════════════════════════════════════════ -->
+<section id="section-pre-trade">
+  {{ section_header("PRE-TRADE CONTROLS", live=True, id="section-pre-trade") }}
+  <div class="section-body">
+    <div class="grid-2">
+      <!-- Check Status Grid -->
+      <div class="card"
+           id="pre-trade-checks-container"
+           hx-get="/partials/pre-trade/checks"
+           hx-trigger="every 10s"
+           hx-swap="innerHTML">
+        {% if check_stats is defined %}
+          {% include "partials/pre_trade_checks_card.html" %}
+        {% else %}
+          <div class="card-label">PRE-TRADE CHECKS</div>
+          <div class="empty-state"><div class="empty-message">Loading...</div></div>
+        {% endif %}
+      </div>
+
+      <!-- Message Throttles -->
+      <div class="card"
+           id="pre-trade-throttles-container"
+           hx-get="/partials/pre-trade/throttles"
+           hx-trigger="every 5s"
+           hx-swap="innerHTML">
+        {% if throttle_data is defined %}
+          {% include "partials/pre_trade_throttles_card.html" %}
+        {% else %}
+          <div class="card-label">MESSAGE THROTTLES</div>
+          <div class="empty-state"><div class="empty-message">Loading...</div></div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SECTION 10: RISK & CONTROLS (circuit breakers + governance)
      ═══════════════════════════════════════════════════════════════ -->
 <section id="section-risk">
   {{ section_header("RISK & CONTROLS", id="section-risk") }}
@@ -219,29 +414,69 @@
 </section>
 
 <!-- ═══════════════════════════════════════════════════════════════
-     SECTION 7: SYSTEM
+     SECTION 11: MICRO-EDGE & SURVEILLANCE (NEW)
+     ═══════════════════════════════════════════════════════════════ -->
+<section id="section-micro-edge">
+  {{ section_header("MICRO-EDGE & SURVEILLANCE", id="section-micro-edge") }}
+  <div class="section-body">
+    <div class="grid-2">
+      <!-- R-Multiple Distribution -->
+      <div class="card"
+           id="r-distribution-container"
+           hx-get="/partials/micro-edge/distribution"
+           hx-trigger="every 30s"
+           hx-swap="innerHTML">
+        {% if r_stats is defined %}
+          {% include "partials/r_distribution_card.html" %}
+        {% else %}
+          <div class="card-label">R-MULTIPLE DISTRIBUTION</div>
+          <div class="empty-state"><div class="empty-message">Loading...</div></div>
+        {% endif %}
+      </div>
+
+      <!-- Edge Analysis -->
+      <div class="card"
+           id="edge-analysis-container"
+           hx-get="/partials/micro-edge/edge-analysis"
+           hx-trigger="every 30s"
+           hx-swap="innerHTML">
+        {% if edge is defined %}
+          {% include "partials/edge_analysis_card.html" %}
+        {% else %}
+          <div class="card-label">EDGE ANALYSIS</div>
+          <div class="empty-state"><div class="empty-message">Loading...</div></div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Surveillance -->
+    <div class="card" style="margin-top:var(--grid-gap);"
+         id="surveillance-container"
+         hx-get="/partials/micro-edge/surveillance"
+         hx-trigger="every 10s"
+         hx-swap="innerHTML">
+      {% if surveillance is defined %}
+        {% include "partials/surveillance_card.html" %}
+      {% else %}
+        <div class="card-label">SURVEILLANCE</div>
+        <div class="empty-state"><div class="empty-message">Loading...</div></div>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     SECTION 12: SYSTEM (agent health only)
      ═══════════════════════════════════════════════════════════════ -->
 <section id="section-system">
   {{ section_header("SYSTEM", id="section-system") }}
   <div class="section-body">
-    <div class="grid-2">
-      <!-- Agent Health -->
-      <div class="card"
-           id="system-container"
-           hx-get="/partials/home/system"
-           hx-trigger="every 10s"
-           hx-swap="innerHTML">
-        {% include "partials/system_card.html" %}
-      </div>
-
-      <!-- Pending Approvals -->
-      <div class="card"
-           id="approvals-container"
-           hx-get="/partials/home/approvals"
-           hx-trigger="every 5s"
-           hx-swap="innerHTML">
-        {% include "partials/approvals_card.html" %}
-      </div>
+    <div class="card"
+         id="system-container"
+         hx-get="/partials/home/system"
+         hx-trigger="every 10s"
+         hx-swap="innerHTML">
+      {% include "partials/system_card.html" %}
     </div>
   </div>
 </section>
@@ -486,5 +721,59 @@
       });
     })
     .catch(function() { /* Equity API not available yet */ });
+
+  /* ═══════════════════════════════════════════════
+     R-MULTIPLE HISTOGRAM
+     ═══════════════════════════════════════════════ */
+  fetch('/api/r-distribution')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var el = document.getElementById('rDistChart');
+      if (!el || !data.length) return;
+      var ctx = el.getContext('2d');
+      new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: data.map(function(d) { return d.label; }),
+          datasets: [{
+            data: data.map(function(d) { return d.count; }),
+            backgroundColor: data.map(function(d) { return d.color; }),
+            borderWidth: 0,
+            borderRadius: 2,
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: '#111125',
+              borderColor: 'rgba(0,255,136,0.3)',
+              borderWidth: 1,
+              titleColor: '#8b95a5',
+              bodyColor: '#e0e0e0',
+              bodyFont: { family: '"JetBrains Mono", monospace', size: 11 },
+              padding: 6,
+              cornerRadius: 3,
+              callbacks: {
+                label: function(ctx) { return ctx.parsed.y + ' trades'; }
+              }
+            }
+          },
+          scales: {
+            x: {
+              grid: { display: false },
+              ticks: { color: '#5a6577', font: { size: 8, family: '"JetBrains Mono", monospace' } }
+            },
+            y: {
+              grid: { color: 'rgba(255,255,255,0.04)' },
+              ticks: { color: '#5a6577', font: { size: 9, family: '"JetBrains Mono", monospace' }, precision: 0 }
+            }
+          }
+        }
+      });
+    })
+    .catch(function() { /* R-distribution API not available yet */ });
 </script>
 {% endblock %}

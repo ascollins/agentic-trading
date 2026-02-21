@@ -1,0 +1,113 @@
+<div class="card-label">EDGE ANALYSIS</div>
+
+{% if edge is defined and edge %}
+  <div class="grid-3" style="gap:6px;">
+
+    <!-- By Strategy -->
+    <div>
+      <div style="font-size:9px; color:var(--text-muted); text-transform:uppercase; margin-bottom:4px; letter-spacing:0.5px;">
+        BY STRATEGY
+      </div>
+      {% if edge.by_strategy %}
+      <table class="positions-table" style="width:100%;">
+        <thead>
+          <tr>
+            <th>NAME</th>
+            <th>WIN%</th>
+            <th>N</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in edge.by_strategy %}
+          {% set wr = s.win_rate | default(0) %}
+          <tr>
+            <td style="font-weight:500; font-size:9px; max-width:60px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
+                title="{{ s.name }}">{{ s.name }}</td>
+            <td style="font-family:'JetBrains Mono',monospace; font-weight:600;
+                       color:{{ 'var(--color-positive)' if wr >= 55 else ('var(--color-warning)' if wr >= 45 else 'var(--color-negative)') }};">
+              {{ "%.0f" | format(wr) }}%
+            </td>
+            <td style="color:var(--text-muted);">{{ s.trades }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+        <div style="font-size:9px; color:var(--text-muted);">--</div>
+      {% endif %}
+    </div>
+
+    <!-- By Symbol -->
+    <div>
+      <div style="font-size:9px; color:var(--text-muted); text-transform:uppercase; margin-bottom:4px; letter-spacing:0.5px;">
+        BY SYMBOL
+      </div>
+      {% if edge.by_symbol %}
+      <table class="positions-table" style="width:100%;">
+        <thead>
+          <tr>
+            <th>SYMBOL</th>
+            <th>WIN%</th>
+            <th>N</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in edge.by_symbol %}
+          {% set wr = s.win_rate | default(0) %}
+          <tr>
+            <td style="font-weight:500; font-size:9px;">{{ s.name }}</td>
+            <td style="font-family:'JetBrains Mono',monospace; font-weight:600;
+                       color:{{ 'var(--color-positive)' if wr >= 55 else ('var(--color-warning)' if wr >= 45 else 'var(--color-negative)') }};">
+              {{ "%.0f" | format(wr) }}%
+            </td>
+            <td style="color:var(--text-muted);">{{ s.trades }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+        <div style="font-size:9px; color:var(--text-muted);">--</div>
+      {% endif %}
+    </div>
+
+    <!-- By Hour -->
+    <div>
+      <div style="font-size:9px; color:var(--text-muted); text-transform:uppercase; margin-bottom:4px; letter-spacing:0.5px;">
+        BY HOUR
+      </div>
+      {% if edge.by_hour %}
+      <table class="positions-table" style="width:100%;">
+        <thead>
+          <tr>
+            <th>HOUR</th>
+            <th>WIN%</th>
+            <th>N</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for h in edge.by_hour %}
+          {% set wr = h.win_rate | default(0) %}
+          <tr>
+            <td style="font-weight:500; font-size:9px; font-family:'JetBrains Mono',monospace;">{{ "%02d" | format(h.hour) }}:00</td>
+            <td style="font-family:'JetBrains Mono',monospace; font-weight:600;
+                       color:{{ 'var(--color-positive)' if wr >= 55 else ('var(--color-warning)' if wr >= 45 else 'var(--color-negative)') }};">
+              {{ "%.0f" | format(wr) }}%
+            </td>
+            <td style="color:var(--text-muted);">{{ h.trades }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+        <div style="font-size:9px; color:var(--text-muted);">--</div>
+      {% endif %}
+    </div>
+
+  </div>
+
+{% else %}
+  <div class="empty-state" style="padding:8px 0;">
+    <div class="empty-message">INSUFFICIENT DATA</div>
+    <div class="empty-detail">Edge analysis requires completed trades across strategies</div>
+  </div>
+{% endif %}

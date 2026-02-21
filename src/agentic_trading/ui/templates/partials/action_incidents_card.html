@@ -1,0 +1,44 @@
+<div class="card-label">
+  ACTIVE INCIDENTS
+  {% if active_incidents is defined and active_incidents %}
+    <span class="count-badge" style="margin-left:4px;">{{ active_incidents | length }}</span>
+  {% endif %}
+</div>
+
+{% if active_incidents is defined and active_incidents %}
+  {% for incident in active_incidents %}
+  {% set sev = incident.severity | default('medium') | lower %}
+  {% set sev_color = 'var(--color-critical)' if sev == 'critical' else ('var(--color-negative)' if sev == 'high' else ('var(--color-warning)' if sev == 'medium' else 'var(--accent-cyan)')) %}
+  <div style="padding:6px; margin-bottom:4px; background:var(--bg-elevated); border-radius:4px;
+              border-left:3px solid {{ sev_color }};">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+      <div>
+        <div style="display:flex; align-items:center; gap:4px; margin-bottom:2px;">
+          <span class="badge" style="font-size:8px; padding:1px 5px;
+            background:{{ sev_color }}; color:{{ '#000' if sev in ['medium', 'low'] else '#fff' }}; font-weight:700;">
+            {{ sev | upper }}
+          </span>
+          <span style="font-weight:600; font-size:11px; color:var(--text-primary);">
+            {{ incident.title }}
+          </span>
+        </div>
+        <div style="font-size:10px; color:var(--text-secondary); line-height:1.4;">
+          {{ incident.description | default('') }}
+        </div>
+        <div style="font-size:8px; color:var(--text-muted); margin-top:2px;">
+          {{ incident.created_at | default('--') }}
+        </div>
+      </div>
+      <button class="btn btn-approve" style="font-size:9px; padding:1px 8px; white-space:nowrap; margin-left:6px;"
+              hx-post="/actions/resolve-incident/{{ incident.incident_id }}"
+              hx-target="#incidents-container"
+              hx-swap="innerHTML">RESOLVE</button>
+    </div>
+  </div>
+  {% endfor %}
+{% else %}
+  <div class="empty-state" style="padding:8px 0;">
+    <div class="empty-message">NO ACTIVE INCIDENTS</div>
+    <div class="empty-detail">Clean operations -- no incidents reported</div>
+  </div>
+{% endif %}

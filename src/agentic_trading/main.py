@@ -2001,6 +2001,29 @@ async def _run_live_or_paper(
     )
 
     # ---------------------------------------------------------------
+    # Institutional components for Supervision UI
+    # ---------------------------------------------------------------
+    model_registry = None
+    try:
+        from .intelligence.model_registry import ModelRegistry
+
+        model_registry = ModelRegistry()
+        logger.info("ModelRegistry initialized (in-memory)")
+    except Exception:
+        logger.debug("ModelRegistry not available", exc_info=True)
+
+    case_manager = None
+    try:
+        from .compliance.case_manager import CaseManager
+
+        case_manager = CaseManager()
+        logger.info("CaseManager initialized (in-memory)")
+    except Exception:
+        logger.debug("CaseManager not available", exc_info=True)
+
+    pre_trade_checker = getattr(risk_manager, "pre_trade", None)
+
+    # ---------------------------------------------------------------
     # Supervision UI (HTMX dashboard)
     # ---------------------------------------------------------------
     ui_server = None
@@ -2025,6 +2048,9 @@ async def _run_live_or_paper(
                 risk_manager=risk_manager,
                 adapter=adapter,
                 trading_context=ctx,
+                model_registry=model_registry,
+                case_manager=case_manager,
+                pre_trade_checker=pre_trade_checker,
             )
 
             ui_config = uvicorn.Config(

@@ -1402,3 +1402,107 @@ body {
   .grid-5, .grid-4, .grid-3, .grid-2 { grid-template-columns: 1fr; }
   .scorecard-subscores { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* ============================================================
+   New Dashboard Sections (P0-P2 Institutional Features)
+   ============================================================ */
+
+/* --- PnL Waterfall --- */
+.pnl-waterfall { margin: 6px 0; }
+.waterfall-row { display:flex; align-items:center; gap:6px; margin-bottom:3px; font-size:10px; }
+.waterfall-label { width:100px; text-align:right; color:var(--text-secondary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.waterfall-bar-container { flex:1; height:12px; background:var(--bg-elevated); border-radius:2px; position:relative; overflow:hidden; }
+.waterfall-bar { height:100%; border-radius:2px; transition: width 0.5s var(--ease); min-width:1px; }
+.waterfall-bar.positive { background: var(--color-positive); }
+.waterfall-bar.negative { background: var(--color-negative); }
+.waterfall-value { width:70px; font-size:10px; font-weight:600; }
+
+/* --- Risk Posture Grid --- */
+.risk-posture-grid { display:grid; grid-template-columns:1fr 1fr; gap:var(--grid-gap); margin:6px 0; }
+.posture-item { background:var(--bg-elevated); border-radius:var(--radius-sm); padding:4px 6px; }
+.posture-label { font-size:8px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.06em; }
+.posture-value { font-size:13px; font-weight:700; margin-top:1px; }
+
+/* --- Daily Loss Budget --- */
+.daily-loss-budget { margin-top:6px; }
+.budget-header { display:flex; justify-content:space-between; font-size:10px; margin-bottom:2px; }
+.budget-label { color:var(--text-secondary); }
+.budget-values { font-weight:600; }
+
+/* --- Tier Badges (Approval Levels) --- */
+.tier-badge { display:inline-flex; align-items:center; padding:1px 6px; border-radius:2px; font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; }
+.tier-badge.l1 { background:var(--accent-cyan-dim); color:var(--accent-cyan); }
+.tier-badge.l2 { background:var(--color-warning-bg); color:var(--color-warning); }
+.tier-badge.l3 { background:var(--color-negative-bg); color:var(--color-negative); }
+.tier-badge.l4 { background:var(--color-critical-bg); color:var(--color-critical); }
+
+/* --- TTL Countdown --- */
+.ttl-countdown { font-size:9px; color:var(--text-muted); font-variant-numeric:tabular-nums; }
+
+/* --- Approval Card --- */
+.approval-card { background:var(--bg-elevated); border:1px solid var(--border-card); border-radius:var(--radius-sm); padding:6px 8px; margin-bottom:var(--grid-gap); }
+.approval-card-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; }
+.approval-card-body { font-size:10px; color:var(--text-secondary); margin-bottom:4px; }
+.approval-card-actions { display:flex; gap:4px; justify-content:flex-end; }
+
+/* --- Stage Badges (Model Registry) --- */
+.stage-badge { display:inline-flex; align-items:center; padding:1px 6px; border-radius:2px; font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; }
+.stage-badge.research { background:var(--accent-cyan-dim); color:var(--accent-cyan); }
+.stage-badge.paper { background:var(--color-warning-bg); color:var(--color-warning); }
+.stage-badge.limited { background:rgba(59,130,246,0.12); color:var(--accent-blue); }
+.stage-badge.production { background:var(--color-positive-bg); color:var(--color-positive); }
+.stage-badge.retired { background:rgba(255,255,255,0.04); color:var(--text-muted); }
+
+/* --- Drift Bar --- */
+.drift-bar-container { flex:1; height:6px; background:var(--bg-elevated); border-radius:3px; overflow:hidden; }
+.drift-bar { height:100%; border-radius:3px; transition: width 0.5s var(--ease); }
+.drift-bar.ok { background: var(--color-positive); }
+.drift-bar.warn { background: var(--color-warning); }
+.drift-bar.critical { background: var(--color-negative); }
+.drift-row { display:flex; align-items:center; gap:6px; padding:3px 0; border-bottom:1px solid var(--border-subtle); font-size:10px; }
+.drift-row:last-child { border-bottom:none; }
+
+/* --- Check Grid (Pre-Trade) --- */
+.check-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:var(--grid-gap); }
+.check-tile { background:var(--bg-elevated); border:1px solid var(--border-card); border-radius:var(--radius-sm); padding:4px 6px; text-align:center; }
+.check-tile .check-name { font-size:8px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.check-tile .check-rate { font-size:14px; font-weight:700; margin:2px 0; }
+.check-tile.pass .check-rate { color:var(--color-positive); }
+.check-tile.warn .check-rate { color:var(--color-warning); }
+.check-tile.fail .check-rate { color:var(--color-negative); }
+.check-tile .check-status { display:flex; align-items:center; justify-content:center; gap:3px; font-size:8px; color:var(--text-muted); }
+
+/* --- Case Cards (Surveillance) --- */
+.case-card { background:var(--bg-elevated); border:1px solid var(--border-card); border-radius:var(--radius-sm); padding:6px 8px; margin-bottom:var(--grid-gap); border-left:3px solid var(--border-card); }
+.case-card.severity-low { border-left-color:var(--accent-cyan); }
+.case-card.severity-medium { border-left-color:var(--color-warning); }
+.case-card.severity-high { border-left-color:var(--color-negative); }
+.case-card.severity-critical { border-left-color:var(--color-critical); }
+
+/* --- R Chart Container --- */
+.r-chart-container { position:relative; margin:4px 0; }
+.r-stats { display:flex; gap:var(--space-lg); margin-top:4px; font-size:10px; color:var(--text-secondary); }
+.r-stats .r-stat-value { font-weight:700; color:var(--text-primary); }
+
+/* --- Severity Badge --- */
+.severity-badge { display:inline-flex; align-items:center; padding:1px 6px; border-radius:2px; font-size:9px; font-weight:700; text-transform:uppercase; }
+.severity-badge.low { background:var(--accent-cyan-dim); color:var(--accent-cyan); }
+.severity-badge.medium { background:var(--color-warning-bg); color:var(--color-warning); }
+.severity-badge.high { background:var(--color-negative-bg); color:var(--color-negative); }
+.severity-badge.critical { background:var(--color-critical-bg); color:var(--color-critical); }
+
+/* --- Edge Analysis Tables --- */
+.edge-tables { display:grid; grid-template-columns:repeat(3,1fr); gap:var(--grid-gap); }
+.edge-table-section .edge-table-title { font-size:9px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:4px; }
+
+/* --- Win Rate Color --- */
+.wr-good { color:var(--color-positive); }
+.wr-ok { color:var(--color-warning); }
+.wr-bad { color:var(--color-negative); }
+
+/* --- Responsive for new sections --- */
+@media (max-width:768px) {
+  .check-grid { grid-template-columns:repeat(3,1fr); }
+  .edge-tables { grid-template-columns:1fr; }
+  .risk-posture-grid { grid-template-columns:1fr; }
+}

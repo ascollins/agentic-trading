@@ -240,3 +240,118 @@ class TestCircuitBreakersRoute:
         client = TestClient(_make_app())
         resp = client.get("/partials/risk/circuit-breakers")
         assert "NO BREAKERS" in resp.text
+
+
+# ------------------------------------------------------------------
+# New dashboard section routes (graceful degradation — all None deps)
+# ------------------------------------------------------------------
+
+
+class TestRiskPnlRoutes:
+    def test_risk_pnl_summary_returns_200(self):
+        client = TestClient(_make_app())
+        resp = client.get("/partials/risk-pnl/summary")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+
+    def test_risk_pnl_summary_shows_default_values(self):
+        client = TestClient(_make_app())
+        resp = client.get("/partials/risk-pnl/summary")
+        # With no deps, builder returns zeroed defaults — template renders data view
+        assert "DAILY LOSS BUDGET" in resp.text
+        assert "EXPOSURE" in resp.text
+
+
+class TestActionQueueRoutes:
+    def test_action_approvals_returns_200(self):
+        client = TestClient(_make_app())
+        resp = client.get("/partials/action-queue/approvals")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+
+    def test_action_incidents_returns_200(self):
+        client = TestClient(_make_app())
+        resp = client.get("/partials/action-queue/incidents")
+        assert resp.status_code == 200
+
+    def test_action_decisions_returns_200(self):
+        client = TestClient(_make_app())
+        resp = client.get("/partials/action-queue/decisions")
+        assert resp.status_code == 200
+
+    def test_action_alerts_returns_200(self):
+        client = TestClient(_make_app())
+        resp = client.get("/partials/action-queue/alerts")
+        assert resp.status_code == 200
+
+
+class TestModelScorecardRoutes:
+    def test_model_registry_returns_200(self):
+        client = TestClient(_make_app())
+        resp = client.get("/partials/model-scorecard/models")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+
+    def test_drift_indicators_returns_200(self):
+        client = TestClient(_make_app())
+        resp = client.get("/partials/model-scorecard/drift")
+        assert resp.status_code == 200
+
+    def test_effectiveness_returns_200(self):
+        client = TestClient(_make_app())
+        resp = client.get("/partials/model-scorecard/effectiveness")
+        assert resp.status_code == 200
+
+    def test_exec_quality_returns_200(self):
+        client = TestClient(_make_app())
+        resp = client.get("/partials/model-scorecard/exec-quality")
+        assert resp.status_code == 200
+
+
+class TestPreTradeControlsRoutes:
+    def test_pre_trade_checks_returns_200(self):
+        client = TestClient(_make_app())
+        resp = client.get("/partials/pre-trade/checks")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+
+    def test_pre_trade_throttles_returns_200(self):
+        client = TestClient(_make_app())
+        resp = client.get("/partials/pre-trade/throttles")
+        assert resp.status_code == 200
+
+
+class TestMicroEdgeRoutes:
+    def test_r_distribution_returns_200(self):
+        client = TestClient(_make_app())
+        resp = client.get("/partials/micro-edge/distribution")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+
+    def test_edge_analysis_returns_200(self):
+        client = TestClient(_make_app())
+        resp = client.get("/partials/micro-edge/edge-analysis")
+        assert resp.status_code == 200
+
+    def test_surveillance_returns_200(self):
+        client = TestClient(_make_app())
+        resp = client.get("/partials/micro-edge/surveillance")
+        assert resp.status_code == 200
+
+    def test_r_distribution_api_returns_json(self):
+        client = TestClient(_make_app())
+        resp = client.get("/api/r-distribution")
+        assert resp.status_code == 200
+        assert isinstance(resp.json(), list)
+
+    def test_surveillance_shows_empty_state(self):
+        client = TestClient(_make_app())
+        resp = client.get("/partials/micro-edge/surveillance")
+        assert "NO OPEN CASES" in resp.text
+
+    def test_edge_analysis_shows_dash_placeholders(self):
+        client = TestClient(_make_app())
+        resp = client.get("/partials/micro-edge/edge-analysis")
+        # With no journal, edge lists are empty — template shows "--" dashes
+        assert "EDGE ANALYSIS" in resp.text
+        assert "BY STRATEGY" in resp.text

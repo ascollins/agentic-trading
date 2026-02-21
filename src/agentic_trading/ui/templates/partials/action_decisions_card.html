@@ -1,0 +1,53 @@
+<div class="card-label">RECENT DECISIONS</div>
+
+{% if recent_decisions is defined and recent_decisions %}
+  <table class="positions-table" style="width:100%;">
+    <thead>
+      <tr>
+        <th>TIME</th>
+        <th>STRATEGY</th>
+        <th>SYMBOL</th>
+        <th>RESULT</th>
+        <th>REASON</th>
+        <th>SIZE ADJ</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for d in recent_decisions[:10] %}
+      <tr>
+        <td style="font-size:9px; color:var(--text-muted); white-space:nowrap;">
+          {{ d.timestamp | default('--') }}
+        </td>
+        <td style="font-weight:500;">{{ d.strategy_id }}</td>
+        <td>{{ d.symbol }}</td>
+        <td>
+          {% if d.allowed %}
+            <span class="badge badge-positive" style="font-size:8px; padding:1px 5px;">ALLOWED</span>
+          {% else %}
+            <span class="badge badge-negative" style="font-size:8px; padding:1px 5px;">BLOCKED</span>
+          {% endif %}
+        </td>
+        <td style="font-size:9px; color:var(--text-secondary); max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
+            title="{{ d.reason | default('') }}">
+          {{ d.reason | default('--') }}
+        </td>
+        <td style="font-family:'JetBrains Mono',monospace; font-size:10px;">
+          {% if d.sizing_adjustment is defined and d.sizing_adjustment is not none %}
+            {% set adj = d.sizing_adjustment %}
+            <span style="color:{{ 'var(--color-positive)' if adj >= 1 else 'var(--color-warning)' }};">
+              {{ "%.0f" | format(adj * 100) }}%
+            </span>
+          {% else %}
+            <span style="color:var(--text-muted);">--</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% else %}
+  <div class="empty-state" style="padding:8px 0;">
+    <div class="empty-message">NO DECISIONS</div>
+    <div class="empty-detail">Governance gate decisions appear when trading begins</div>
+  </div>
+{% endif %}

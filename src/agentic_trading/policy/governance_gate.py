@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections import deque
 from typing import Any
 
 from agentic_trading.core.config import GovernanceConfig
@@ -69,6 +70,9 @@ class GovernanceGate:
         self._event_bus = event_bus
         self._policy_engine = policy_engine
         self._approval_manager = approval_manager
+
+        # Ring buffer for recent decisions (used by UI dashboard)
+        self._recent_decisions: deque[GovernanceDecision] = deque(maxlen=50)
 
     # ------------------------------------------------------------------
     # Main evaluation
@@ -441,6 +445,11 @@ class GovernanceGate:
         """Access the approval manager (may be None)."""
         return self._approval_manager
 
+    @property
+    def recent_decisions(self) -> list[GovernanceDecision]:
+        """Return recent governance decisions for dashboard display."""
+        return list(self._recent_decisions)
+
     def get_sizing_multiplier(self, strategy_id: str) -> float:
         """Get the combined sizing multiplier for a strategy.
 
@@ -458,6 +467,7 @@ class GovernanceGate:
         self, decision: GovernanceDecision, t0: float
     ) -> None:
         """Publish decision event and log latency."""
+        self._recent_decisions.append(decision)
         elapsed = time.monotonic() - t0
         logger.info(
             "Governance decision: strategy=%s symbol=%s action=%s "

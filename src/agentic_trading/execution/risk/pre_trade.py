@@ -9,6 +9,7 @@ short-circuits the pipeline and the order is rejected.
 from __future__ import annotations
 
 import logging
+from collections import deque
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
@@ -76,6 +77,9 @@ class PreTradeChecker:
         self._message_times_by_strategy: dict[str, list[float]] = {}
         self._message_times_by_symbol: dict[str, list[float]] = {}
 
+        # Ring buffer for recent check results (used by UI dashboard)
+        self._recent_results: deque[dict[str, Any]] = deque(maxlen=100)
+
     # ------------------------------------------------------------------
     # Public entry point
     # ------------------------------------------------------------------
@@ -122,6 +126,16 @@ class PreTradeChecker:
                     intent.dedupe_key,
                     intent.symbol,
                 )
+
+        # Record result snapshot for UI dashboard
+        self._recent_results.append({
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "symbol": intent.symbol,
+            "strategy_id": intent.strategy_id,
+            "checks": {r.check_name: r.passed for r in results},
+            "all_passed": all(r.passed for r in results),
+        })
+
         return results
 
     # ------------------------------------------------------------------
@@ -464,6 +478,11 @@ class PreTradeChecker:
         date_key = now.strftime("%Y-%m-%d")
         self._daily_entry_count[date_key] = self._daily_entry_count.get(date_key, 0) + 1
         self._last_entry_time = now
+
+    @property
+    def recent_check_results(self) -> list[dict[str, Any]]:
+        """Return recent pre-trade check results for dashboard display."""
+        return list(self._recent_results)
 
     def _check_max_position_size(
         self,

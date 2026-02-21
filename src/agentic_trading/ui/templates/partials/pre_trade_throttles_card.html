@@ -1,0 +1,61 @@
+<div class="card-label">MESSAGE THROTTLES</div>
+
+{% if throttle_data is defined and throttle_data %}
+  <!-- Strategy Rates -->
+  {% if throttle_data.strategy_rates %}
+  <div style="font-size:9px; color:var(--text-muted); text-transform:uppercase; margin-bottom:4px; letter-spacing:0.5px;">
+    STRATEGY RATES
+  </div>
+  {% for rate in throttle_data.strategy_rates %}
+    {% set pct = (rate.current / rate.limit * 100) if rate.limit > 0 else 0 %}
+    {% set fill_class = 'critical' if pct >= 95 else ('warn' if pct >= 80 else 'safe') %}
+    <div style="margin-bottom:6px;">
+      <div style="display:flex; justify-content:space-between; font-size:10px; margin-bottom:2px;">
+        <span style="color:var(--text-secondary); font-weight:500;">{{ rate.name }}</span>
+        <span style="font-family:'JetBrains Mono',monospace;">
+          <span style="font-weight:600;
+            color:{{ 'var(--color-negative)' if pct >= 95 else ('var(--color-warning)' if pct >= 80 else 'var(--text-primary)') }};">
+            {{ rate.current }}
+          </span>
+          <span style="color:var(--text-muted);"> / {{ rate.limit }}</span>
+        </span>
+      </div>
+      <div class="risk-gauge-bar" style="height:3px;">
+        <div class="risk-gauge-fill {{ fill_class }}" style="width:{{ [pct, 100] | min }}%"></div>
+      </div>
+    </div>
+  {% endfor %}
+  {% endif %}
+
+  <!-- Symbol Rates -->
+  {% if throttle_data.symbol_rates %}
+  <div style="font-size:9px; color:var(--text-muted); text-transform:uppercase; margin:6px 0 4px; letter-spacing:0.5px;">
+    SYMBOL RATES
+  </div>
+  {% for rate in throttle_data.symbol_rates %}
+    {% set pct = (rate.current / rate.limit * 100) if rate.limit > 0 else 0 %}
+    {% set fill_class = 'critical' if pct >= 95 else ('warn' if pct >= 80 else 'safe') %}
+    <div style="margin-bottom:6px;">
+      <div style="display:flex; justify-content:space-between; font-size:10px; margin-bottom:2px;">
+        <span style="color:var(--text-secondary); font-weight:500;">{{ rate.name }}</span>
+        <span style="font-family:'JetBrains Mono',monospace;">
+          <span style="font-weight:600;
+            color:{{ 'var(--color-negative)' if pct >= 95 else ('var(--color-warning)' if pct >= 80 else 'var(--text-primary)') }};">
+            {{ rate.current }}
+          </span>
+          <span style="color:var(--text-muted);"> / {{ rate.limit }}</span>
+        </span>
+      </div>
+      <div class="risk-gauge-bar" style="height:3px;">
+        <div class="risk-gauge-fill {{ fill_class }}" style="width:{{ [pct, 100] | min }}%"></div>
+      </div>
+    </div>
+  {% endfor %}
+  {% endif %}
+
+{% else %}
+  <div class="empty-state" style="padding:8px 0;">
+    <div class="empty-message">NO THROTTLE DATA</div>
+    <div class="empty-detail">Message rate limits appear when strategies are active</div>
+  </div>
+{% endif %}

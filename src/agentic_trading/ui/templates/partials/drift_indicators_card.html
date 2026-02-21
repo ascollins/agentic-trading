@@ -1,0 +1,36 @@
+<div class="card-label">DRIFT INDICATORS</div>
+
+{% if drift_data is defined and drift_data %}
+  {% for d in drift_data %}
+  {% set dev = d.deviation_pct | default(0) | abs %}
+  {% set drift_status = d.status | default('ok') | lower %}
+  {% set bar_color = 'var(--color-negative)' if dev > 25 or drift_status == 'critical' else ('var(--color-warning)' if dev > 10 or drift_status == 'warn' else 'var(--color-positive)') %}
+  <div style="padding:4px 0; border-bottom:1px solid var(--border-card);">
+    <div style="display:flex; justify-content:space-between; align-items:center; font-size:10px; margin-bottom:2px;">
+      <div>
+        <span style="font-weight:600; color:var(--text-primary);">{{ d.strategy_id }}</span>
+        <span style="color:var(--text-muted); margin-left:4px;">{{ d.metric }}</span>
+      </div>
+      <div style="font-family:'JetBrains Mono',monospace; font-size:9px;">
+        <span style="color:var(--text-muted);">{{ d.baseline }}</span>
+        <span style="color:var(--text-muted); margin:0 2px;">-></span>
+        <span style="color:var(--text-primary); font-weight:500;">{{ d.live }}</span>
+      </div>
+    </div>
+    <div style="display:flex; align-items:center; gap:6px;">
+      <div class="risk-gauge-bar" style="height:3px; flex:1;">
+        <div style="height:100%; width:{{ [dev, 100] | min }}%; background:{{ bar_color }}; border-radius:2px;"></div>
+      </div>
+      <span style="font-size:9px; font-weight:600; font-family:'JetBrains Mono',monospace; width:40px; text-align:right;
+                   color:{{ bar_color }};">
+        {{ "%.1f" | format(dev) }}%
+      </span>
+    </div>
+  </div>
+  {% endfor %}
+{% else %}
+  <div class="empty-state" style="padding:8px 0;">
+    <div class="empty-message">NO DRIFT DATA</div>
+    <div class="empty-detail">Strategy drift metrics appear after baseline calibration</div>
+  </div>
+{% endif %}

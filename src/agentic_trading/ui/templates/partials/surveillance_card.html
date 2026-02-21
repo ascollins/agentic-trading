@@ -1,0 +1,88 @@
+<div class="card-label">
+  SURVEILLANCE
+  {% if surveillance is defined and surveillance and surveillance.open_cases %}
+    <span class="count-badge" style="margin-left:4px;">{{ surveillance.open_cases | length }}</span>
+  {% endif %}
+</div>
+
+{% if surveillance is defined and surveillance %}
+  <!-- Open Cases -->
+  {% if surveillance.open_cases %}
+  <div style="margin-bottom:8px;">
+    <div style="font-size:9px; color:var(--text-muted); text-transform:uppercase; margin-bottom:4px; letter-spacing:0.5px;">
+      OPEN CASES
+    </div>
+    <table class="positions-table" style="width:100%;">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>TYPE</th>
+          <th>SEVERITY</th>
+          <th>SYMBOL</th>
+          <th>STATUS</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in surveillance.open_cases %}
+        {% set sev = c.severity | default('medium') | lower %}
+        <tr>
+          <td style="font-family:'JetBrains Mono',monospace; font-size:9px; color:var(--accent-cyan);">
+            {{ c.case_id[-8:] if c.case_id | length > 8 else c.case_id }}
+          </td>
+          <td style="font-size:9px; text-transform:uppercase;">{{ c.case_type | default('--') }}</td>
+          <td>
+            {% if sev == 'critical' %}
+              <span class="badge" style="font-size:8px; padding:1px 5px; background:var(--color-critical); color:#fff; font-weight:700;">CRIT</span>
+            {% elif sev == 'high' %}
+              <span class="badge badge-negative" style="font-size:8px; padding:1px 5px;">HIGH</span>
+            {% elif sev == 'medium' %}
+              <span class="badge badge-warning" style="font-size:8px; padding:1px 5px;">MED</span>
+            {% else %}
+              <span class="badge badge-cyan" style="font-size:8px; padding:1px 5px;">LOW</span>
+            {% endif %}
+          </td>
+          <td style="font-weight:500;">{{ c.symbol | default('--') }}</td>
+          <td style="font-size:9px; color:var(--text-muted); text-transform:uppercase;">{{ c.status | default('OPEN') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  <!-- Recent Events Timeline -->
+  {% if surveillance.recent_events %}
+  <div>
+    <div style="font-size:9px; color:var(--text-muted); text-transform:uppercase; margin-bottom:4px; letter-spacing:0.5px;">
+      RECENT EVENTS
+    </div>
+    {% for ev in surveillance.recent_events %}
+    <div style="padding:3px 0; border-bottom:1px solid var(--border-card); font-size:10px;">
+      <div style="display:flex; align-items:flex-start; gap:6px;">
+        <span style="font-size:9px; color:var(--text-muted); font-family:'JetBrains Mono',monospace; white-space:nowrap; flex-shrink:0;">
+          {{ ev.timestamp | default('--') }}
+        </span>
+        <span style="font-weight:500; color:var(--text-secondary); white-space:nowrap;">{{ ev.action | default('') }}</span>
+        <span style="color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
+              title="{{ ev.detail | default('') }}">
+          {{ ev.detail | default('') }}
+        </span>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if not surveillance.open_cases and not surveillance.recent_events %}
+  <div class="empty-state" style="padding:8px 0;">
+    <div class="empty-message">NO OPEN CASES</div>
+    <div class="empty-detail">Surveillance cases appear when anomalies are detected</div>
+  </div>
+  {% endif %}
+
+{% else %}
+  <div class="empty-state" style="padding:8px 0;">
+    <div class="empty-message">NO OPEN CASES</div>
+    <div class="empty-detail">Surveillance cases appear when anomalies are detected</div>
+  </div>
+{% endif %}
