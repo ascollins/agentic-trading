@@ -10,15 +10,43 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from decimal import Decimal
 
-from agentic_trading.core.enums import Exchange
+from pydantic import BaseModel, Field as PydanticField
+
+from agentic_trading.core.enums import AssetClass, Exchange, OrderType, TimeInForce
 from agentic_trading.core.interfaces import IExchangeAdapter  # noqa: F401  re-export
 
 __all__ = [
     "IExchangeAdapter",
+    "AdapterCapabilities",
     "AdapterConfig",
     "FeeSchedule",
     "SlippageConfig",
 ]
+
+
+# ---------------------------------------------------------------------------
+# Adapter capabilities declaration
+# ---------------------------------------------------------------------------
+
+
+class AdapterCapabilities(BaseModel):
+    """Declares what an adapter supports. Checked at startup."""
+
+    asset_classes: list[AssetClass] = PydanticField(default_factory=list)
+    supports_leverage: bool = True
+    supports_short: bool = True
+    supports_funding: bool = False  # crypto perps only
+    supports_rollover: bool = False  # FX only
+    supports_batch_orders: bool = False
+    supports_amend: bool = False
+    supports_trading_stop: bool = False
+    position_mode: str = "netting"  # "netting" or "hedging"
+    supported_order_types: list[OrderType] = PydanticField(
+        default_factory=list
+    )
+    supported_tif: list[TimeInForce] = PydanticField(
+        default_factory=list
+    )
 
 
 # ---------------------------------------------------------------------------

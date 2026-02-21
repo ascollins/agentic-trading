@@ -35,8 +35,8 @@ class TestMarketIntelligenceAgent:
 
         agent = MarketIntelligenceAgent(event_bus=AsyncMock())
         caps = agent.capabilities()
-        assert "market.candle" in caps.subscribes_to
-        assert "feature.vector" in caps.publishes_to
+        # Feature computation extracted to FeatureComputationAgent
+        assert "market.candle" in caps.publishes_to
 
     @pytest.mark.asyncio
     async def test_start_stop_without_feeds(self):

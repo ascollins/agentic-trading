@@ -15,11 +15,14 @@ from typing import Any
 
 import numpy as np
 
-from agentic_trading.core.enums import Timeframe
+from agentic_trading.core.enums import AssetClass, Timeframe
 from agentic_trading.core.events import BaseEvent, CandleEvent, FeatureVector
+from agentic_trading.core.ids import content_hash
 from agentic_trading.core.interfaces import IEventBus
-from agentic_trading.core.models import Candle
+from agentic_trading.core.models import Candle, Instrument
 
+from .arima import ARIMAForecaster
+from .fourier import FourierExtractor
 from .indicators import (
     compute_adx,
     compute_atr,
@@ -27,11 +30,14 @@ from .indicators import (
     compute_bollinger_bands,
     compute_donchian,
     compute_ema,
+    compute_hyperwave,
+    compute_ichimoku,
     compute_keltner,
     compute_macd,
     compute_obv,
     compute_roc,
     compute_rsi,
+    compute_session_levels,
     compute_sma,
     compute_stochastic,
     compute_volume_delta,
@@ -65,9 +71,11 @@ class FeatureEngine:
         event_bus: IEventBus | None = None,
         buffer_size: int = _DEFAULT_BUFFER_SIZE,
         indicator_config: dict[str, Any] | None = None,
+        instruments: dict[str, Instrument] | None = None,
     ) -> None:
         self._event_bus = event_bus
         self._buffer_size = buffer_size
+        self._instruments: dict[str, Instrument] = instruments or {}
 
         # Per (symbol, timeframe) candle history.
         # Key: (symbol, Timeframe) -> deque[Candle]
@@ -94,6 +102,40 @@ class FeatureEngine:
         self._keltner_atr: int = cfg.get("keltner_atr_period", 14)
         self._keltner_mult: float = cfg.get("keltner_atr_multiplier", 1.5)
 
+        # Ichimoku Cloud parameters
+        self._ichimoku_tenkan: int = cfg.get("ichimoku_tenkan", 9)
+        self._ichimoku_kijun: int = cfg.get("ichimoku_kijun", 26)
+        self._ichimoku_senkou_b: int = cfg.get("ichimoku_senkou_b", 52)
+
+        # HyperWave oscillator parameters
+        self._hyperwave_fast: int = cfg.get("hyperwave_fast", 10)
+        self._hyperwave_slow: int = cfg.get("hyperwave_slow", 34)
+        self._hyperwave_signal: int = cfg.get("hyperwave_signal", 5)
+
+        # Session / previous period level features
+        self._session_levels_enabled: bool = cfg.get("session_levels_enabled", True)
+
+        # ARIMA forecaster
+        self._arima_enabled: bool = cfg.get("arima_enabled", True)
+        self._arima: ARIMAForecaster | None = None
+        if self._arima_enabled:
+            self._arima = ARIMAForecaster(
+                min_observations=cfg.get("arima_min_observations", 60),
+                max_window=cfg.get("arima_max_window", 200),
+                confidence_level=cfg.get("arima_confidence", 0.95),
+            )
+
+        # Fourier / FFT extractor
+        self._fft_enabled: bool = cfg.get("fft_enabled", True)
+        self._fft: FourierExtractor | None = None
+        if self._fft_enabled:
+            self._fft = FourierExtractor(
+                min_window=cfg.get("fft_min_window", 64),
+                window_size=cfg.get("fft_window_size", 128),
+                num_components=cfg.get("fft_num_components", 5),
+                detrend=cfg.get("fft_detrend", True),
+            )
+
         # Optional SMC feature computation
         self._smc_enabled: bool = cfg.get("smc_enabled", True)
         self._smc_computer = None
@@ -107,6 +149,43 @@ class FeatureEngine:
                 )
             except ImportError:
                 logger.debug("SMC module not available, skipping SMC features")
+
+        # Compute deterministic feature version hash from config
+        self._feature_version = self._compute_feature_version(cfg)
+
+    # ------------------------------------------------------------------
+    # Feature version
+    # ------------------------------------------------------------------
+
+    def _compute_feature_version(self, cfg: dict[str, Any]) -> str:
+        """Compute a deterministic hash of the indicator configuration.
+
+        This hash changes when indicator parameters change, enabling
+        downstream consumers to detect config drift.
+        """
+        parts = [
+            f"ema={sorted(self._ema_periods)}",
+            f"sma={sorted(self._sma_periods)}",
+            f"rsi={self._rsi_period}",
+            f"bb={self._bb_period},{self._bb_std}",
+            f"adx={self._adx_period}",
+            f"atr={self._atr_period}",
+            f"macd={self._macd_fast},{self._macd_slow},{self._macd_signal}",
+            f"donchian={self._donchian_period}",
+            f"stoch={self._stoch_k},{self._stoch_d}",
+            f"keltner={self._keltner_ema},{self._keltner_atr},{self._keltner_mult}",
+            f"ichimoku={self._ichimoku_tenkan},{self._ichimoku_kijun},{self._ichimoku_senkou_b}",
+            f"hyperwave={self._hyperwave_fast},{self._hyperwave_slow},{self._hyperwave_signal}",
+            f"arima={self._arima_enabled}",
+            f"fft={self._fft_enabled}",
+            f"smc={self._smc_enabled}",
+        ]
+        return content_hash(*parts)
+
+    @property
+    def feature_version(self) -> str:
+        """Deterministic hash of the current indicator configuration."""
+        return self._feature_version
 
     # ------------------------------------------------------------------
     # Event bus lifecycle
@@ -406,6 +485,76 @@ class FeatureEngine:
             if long_key in features and short_key not in features:
                 features[short_key] = features[long_key]
 
+        # ----- Ichimoku Cloud -----
+        if len(closes) >= self._ichimoku_senkou_b:
+            ichi = compute_ichimoku(
+                highs, lows, closes,
+                self._ichimoku_tenkan,
+                self._ichimoku_kijun,
+                self._ichimoku_senkou_b,
+            )
+            features["ichimoku_tenkan"] = _safe_last(ichi["tenkan_sen"])
+            features["ichimoku_kijun"] = _safe_last(ichi["kijun_sen"])
+            features["ichimoku_senkou_a"] = _safe_last(ichi["senkou_span_a"])
+            features["ichimoku_senkou_b"] = _safe_last(ichi["senkou_span_b"])
+            features["ichimoku_chikou"] = _safe_last(ichi["chikou_span"])
+            # Cloud colour: bullish (senkou_a > senkou_b) = 1, bearish = -1
+            sa = features["ichimoku_senkou_a"]
+            sb = features["ichimoku_senkou_b"]
+            if not (np.isnan(sa) or np.isnan(sb)):
+                features["ichimoku_cloud_sign"] = 1.0 if sa >= sb else -1.0
+            else:
+                features["ichimoku_cloud_sign"] = float("nan")
+            # Price vs cloud
+            c = closes[-1]
+            cloud_top = max(sa, sb) if not (np.isnan(sa) or np.isnan(sb)) else float("nan")
+            cloud_bot = min(sa, sb) if not (np.isnan(sa) or np.isnan(sb)) else float("nan")
+            if not np.isnan(cloud_top):
+                if c > cloud_top:
+                    features["ichimoku_price_location"] = 1.0   # above cloud
+                elif c < cloud_bot:
+                    features["ichimoku_price_location"] = -1.0  # below cloud
+                else:
+                    features["ichimoku_price_location"] = 0.0   # inside cloud
+            else:
+                features["ichimoku_price_location"] = float("nan")
+
+        # ----- HyperWave Momentum Oscillator -----
+        if len(closes) >= self._hyperwave_slow + 20:
+            hw_wave, hw_signal, hw_hist = compute_hyperwave(
+                highs, lows, closes,
+                self._hyperwave_fast,
+                self._hyperwave_slow,
+                self._hyperwave_signal,
+            )
+            features["hyperwave"] = _safe_last(hw_wave)
+            features["hyperwave_signal"] = _safe_last(hw_signal)
+            features["hyperwave_histogram"] = _safe_last(hw_hist)
+            # Previous values for crossover detection
+            if len(hw_wave) >= 2:
+                features["hyperwave_prev"] = _safe_last(hw_wave[:-1])
+                features["hyperwave_signal_prev"] = _safe_last(hw_signal[:-1])
+
+        # ----- Session time features -----
+        if candles:
+            last_candle = candles[-1]
+            ts = last_candle.timestamp
+            features["hour_utc"] = float(ts.hour)
+            features["minute_utc"] = float(ts.minute)
+            features["day_of_week"] = float(ts.isoweekday())  # 1=Mon, 7=Sun
+            # Session flags
+            h = ts.hour
+            features["is_asia_session"] = 1.0 if 0 <= h < 8 else 0.0
+            features["is_london_session"] = 1.0 if 8 <= h < 16 else 0.0
+            features["is_new_york_session"] = 1.0 if 13 <= h < 21 else 0.0
+            features["is_london_ny_overlap"] = 1.0 if 13 <= h < 16 else 0.0
+
+        # ----- Previous session / day / week high-low levels -----
+        if self._session_levels_enabled and len(candles) >= 2:
+            timestamps = [c.timestamp for c in candles]
+            session_lvls = compute_session_levels(timestamps, highs, lows, closes)
+            features.update(session_lvls)
+
         # ----- SMC features (swing points, order blocks, FVGs, BOS/CHoCH) -----
         if self._smc_computer is not None and len(candles) >= 50:
             try:
@@ -414,10 +563,48 @@ class FeatureEngine:
             except Exception as e:
                 logger.debug("SMC feature computation failed: %s", e)
 
+        # ----- FX session features -----
+        _inst = self._instruments.get(symbol)
+        if _inst is not None and _inst.asset_class == AssetClass.FX:
+            from agentic_trading.core.fx_normalizer import is_session_open
+
+            ts = candles[-1].timestamp
+            if ts is not None:
+                features["session_open"] = (
+                    1.0
+                    if is_session_open(
+                        _inst, ts.hour, ts.minute, ts.isoweekday()
+                    )
+                    else 0.0
+                )
+                rollover_min = ts.hour * 60 + ts.minute
+                # Rollover window: ~22:00 UTC ± 30 min (1320 ± 30 minutes)
+                features["is_rollover_window"] = (
+                    1.0 if abs(rollover_min - 1320) <= 30 else 0.0
+                )
+            features["spread_pips"] = 0.0  # placeholder until live feed
+
+        # ----- ARIMA forecast features -----
+        if self._arima is not None:
+            try:
+                arima_features = self._arima.compute(closes, symbol=symbol)
+                features.update(arima_features)
+            except Exception as e:
+                logger.debug("ARIMA feature computation failed: %s", e)
+
+        # ----- Fourier / FFT spectral features -----
+        if self._fft is not None:
+            try:
+                fft_features = self._fft.compute(closes)
+                features.update(fft_features)
+            except Exception as e:
+                logger.debug("FFT feature computation failed: %s", e)
+
         return FeatureVector(
             symbol=symbol,
             timeframe=timeframe,
             features=features,
+            feature_version=self._feature_version,
             source_module="features.engine",
         )
 

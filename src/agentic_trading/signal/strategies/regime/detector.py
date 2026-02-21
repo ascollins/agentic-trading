@@ -50,6 +50,33 @@ class RegimeDetector:
         self._switches_today: list[datetime] = []
         self._last_switch_time: datetime | None = None
 
+        # Prediction market leading indicator
+        self._pm_consensus: dict[str, float] = {}  # symbol → consensus score
+        self._pm_event_risk: dict[str, float] = {}  # symbol → event risk level
+
+    def update_pm_consensus(
+        self,
+        symbol: str,
+        consensus_score: float,
+        event_risk_level: float = 0.0,
+    ) -> None:
+        """Update prediction market leading indicators for a symbol.
+
+        Called by PredictionMarketAgent or FeatureEngine when new PM
+        data arrives. Used to accelerate regime transitions.
+
+        Parameters
+        ----------
+        symbol:
+            Trading symbol (e.g. "BTC/USDT").
+        consensus_score:
+            -1.0 (bearish) to +1.0 (bullish) from prediction markets.
+        event_risk_level:
+            0.0 (no events) to 1.0 (imminent uncertain binary event).
+        """
+        self._pm_consensus[symbol] = consensus_score
+        self._pm_event_risk[symbol] = event_risk_level
+
     def update(
         self,
         symbol: str,
@@ -100,6 +127,32 @@ class RegimeDetector:
         else:
             liquidity = LiquidityRegime.UNKNOWN
 
+        # Prediction market leading indicator: reduce hysteresis when PM
+        # data strongly supports the pending regime transition.
+        effective_hysteresis = self._hysteresis_count
+        pm_consensus = self._pm_consensus.get(symbol, 0.0)
+        pm_event_risk = self._pm_event_risk.get(symbol, 0.0)
+
+        if abs(pm_consensus) > 0.5:
+            # Strong PM consensus: if it aligns with the raw regime,
+            # reduce hysteresis by 1 (faster transition).
+            pm_suggests_trend = pm_consensus > 0.5 or pm_consensus < -0.5
+            if pm_suggests_trend and raw_regime == RegimeType.TREND:
+                effective_hysteresis = max(1, self._hysteresis_count - 1)
+                logger.debug(
+                    "PM leading indicator: reduced hysteresis to %d "
+                    "(pm_consensus=%.2f, raw=%s)",
+                    effective_hysteresis, pm_consensus, raw_regime.value,
+                )
+            elif pm_event_risk > 0.7 and raw_regime == RegimeType.RANGE:
+                # High event risk → favour range regime (defensive)
+                effective_hysteresis = max(1, self._hysteresis_count - 1)
+                logger.debug(
+                    "PM event risk: reduced hysteresis to %d "
+                    "(event_risk=%.2f, raw=%s)",
+                    effective_hysteresis, pm_event_risk, raw_regime.value,
+                )
+
         # Hysteresis: require N consecutive signals before switching
         if raw_regime != self._current_regime:
             if raw_regime == self._pending_regime:
@@ -108,7 +161,7 @@ class RegimeDetector:
                 self._pending_regime = raw_regime
                 self._consecutive_count = 1
 
-            if self._consecutive_count >= self._hysteresis_count:
+            if self._consecutive_count >= effective_hysteresis:
                 # Check cooldown and max switches
                 if self._can_switch(now):
                     self._current_regime = raw_regime

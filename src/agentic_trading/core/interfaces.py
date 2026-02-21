@@ -181,6 +181,12 @@ class IExchangeAdapter(Protocol):
         self, symbol: str, *, limit: int = 50
     ) -> list[dict[str, Any]]: ...
 
+    # ---- FX-specific methods (optional, raise NotImplementedError) ----
+
+    async def get_rollover_rates(self, symbol: str) -> dict[str, Decimal]: ...
+
+    async def get_spread(self, symbol: str) -> dict[str, Decimal]: ...
+
 
 # ---------------------------------------------------------------------------
 # Risk Checker

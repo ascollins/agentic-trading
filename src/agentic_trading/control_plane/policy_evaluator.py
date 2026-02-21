@@ -15,20 +15,19 @@ same policy sets, it will always produce the same CPPolicyDecision.
 
 from __future__ import annotations
 
-import hashlib
-import json
 import logging
 from typing import Any
 
 from agentic_trading.core.enums import GovernanceAction
+from agentic_trading.core.ids import payload_hash
 from agentic_trading.governance.policy_engine import PolicyEngine
 from agentic_trading.governance.policy_models import PolicyDecision, PolicyMode
 
 from .action_types import (
+    MUTATING_TOOLS,
     ApprovalTier,
     CPPolicyDecision,
     DegradedMode,
-    MUTATING_TOOLS,
     ProposedAction,
     ToolName,
 )
@@ -73,6 +72,19 @@ _RISK_OFF_TOOLS = _READ_ONLY_TOOLS | frozenset({
     ToolName.CANCEL_ORDER,
     ToolName.CANCEL_ALL_ORDERS,
     ToolName.SET_TRADING_STOP,
+})
+
+# STOP_NEW_ORDERS: reads + cancels + amends + TP/SL, but no new order submissions
+_STOP_NEW_ORDERS_TOOLS = _RISK_OFF_TOOLS | frozenset({
+    ToolName.AMEND_ORDER,
+    ToolName.SET_LEVERAGE,
+    ToolName.SET_POSITION_MODE,
+})
+
+# Tools that create new positions (blocked in STOP_NEW_ORDERS mode)
+_ORDER_SUBMISSION_TOOLS = frozenset({
+    ToolName.SUBMIT_ORDER,
+    ToolName.BATCH_SUBMIT_ORDERS,
 })
 
 
@@ -206,9 +218,7 @@ class CPPolicyEvaluator:
             tier = self._default_tier
 
         # 7. Compute snapshot hash for replay verification
-        snapshot_hash = hashlib.sha256(
-            json.dumps(context, sort_keys=True, default=str).encode()
-        ).hexdigest()[:16]
+        snapshot_hash = payload_hash(context)
 
         # 8. Determine if action is allowed
         # If any BLOCK/KILL/PAUSE action: not allowed
@@ -252,6 +262,7 @@ class CPPolicyEvaluator:
         context.setdefault("exchange", proposed.scope.exchange)
         context.setdefault("actor", proposed.scope.actor)
         context.setdefault("tool_name", proposed.tool_name.value)
+        context.setdefault("asset_class", proposed.scope.asset_class)
 
         # If a custom context builder is provided, use it to enrich
         if self._context_builder is not None:
@@ -309,7 +320,7 @@ class CPPolicyEvaluator:
                 allowed=False,
                 tier=ApprovalTier.T0_AUTONOMOUS,
                 sizing_multiplier=0.0,
-                reasons=[f"degraded_mode_full_stop: all tools blocked"],
+                reasons=["degraded_mode_full_stop: all tools blocked"],
                 policy_set_version="system",
             )
 
@@ -338,6 +349,37 @@ class CPPolicyEvaluator:
                     policy_set_version="system",
                 )
             return None  # Risk-off tools allowed
+
+        if mode == DegradedMode.STOP_NEW_ORDERS:
+            if tool in _ORDER_SUBMISSION_TOOLS:
+                return CPPolicyDecision(
+                    action_id=proposed.action_id,
+                    correlation_id=proposed.correlation_id,
+                    allowed=False,
+                    tier=ApprovalTier.T0_AUTONOMOUS,
+                    sizing_multiplier=0.0,
+                    reasons=[f"degraded_mode_stop_new_orders: {tool.value} blocked"],
+                    policy_set_version="system",
+                )
+            return None  # Cancels, amends, reads all allowed
+
+        if mode == DegradedMode.CAUTIOUS:
+            # CAUTIOUS: allowed but with 50% sizing multiplier.
+            # New-symbol blocking is enforced downstream via the
+            # sizing_multiplier + context flag; the policy evaluator
+            # signals the constraint via a non-blocking decision.
+            if tool in MUTATING_TOOLS:
+                return CPPolicyDecision(
+                    action_id=proposed.action_id,
+                    correlation_id=proposed.correlation_id,
+                    allowed=True,
+                    tier=ApprovalTier.T0_AUTONOMOUS,
+                    sizing_multiplier=0.5,
+                    reasons=["degraded_mode_cautious: sizing reduced to 50%"],
+                    policy_set_version="system",
+                    context_snapshot={"cautious_mode": True, "block_new_symbols": True},
+                )
+            return None  # Read-only tools unaffected
 
         return None
 

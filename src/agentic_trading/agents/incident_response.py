@@ -137,10 +137,18 @@ class IncidentResponseAgent(BaseAgent):
         """Map incident severity to degraded mode.
 
         Returns None for severities that don't trigger mode changes.
+
+        Mapping (least → most severe):
+            warning  → cautious (half sizing, no new symbols)
+            error    → stop_new_orders (block new orders, allow cancels)
+            critical → risk_off_only (cancel/reduce only)
+            emergency→ full_stop (nothing)
         """
         mapping = {
-            "emergency": "full_stop",
+            "warning": "cautious",
+            "error": "stop_new_orders",
             "critical": "risk_off_only",
+            "emergency": "full_stop",
         }
         return mapping.get(severity)
 
@@ -152,9 +160,11 @@ class IncidentResponseAgent(BaseAgent):
         """
         ranks = {
             "normal": 0,
-            "risk_off_only": 1,
-            "read_only": 2,
-            "full_stop": 3,
+            "cautious": 1,
+            "stop_new_orders": 2,
+            "risk_off_only": 3,
+            "read_only": 4,
+            "full_stop": 5,
         }
         return ranks.get(mode, 0)
 

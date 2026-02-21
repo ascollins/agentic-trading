@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-trading/schemas/core/order.json",
+  "title": "Order",
+  "description": "Full lifecycle of one exchange order. System of record: PostgreSQL (orders table).",
+  "version": 1,
+  "type": "object",
+  "required": ["order_id", "client_order_id", "symbol", "exchange", "side", "order_type", "time_in_force", "qty", "status", "created_at"],
+  "properties": {
+    "id": { "type": "string", "format": "uuid", "description": "Database surrogate PK" },
+    "order_id": { "type": "string", "description": "Exchange-assigned ID (unique)" },
+    "client_order_id": { "type": "string", "description": "Our dedupe_key = content_hash(strategy:symbol:ts_bucket)" },
+    "symbol": { "type": "string" },
+    "exchange": { "type": "string" },
+    "side": { "type": "string", "enum": ["BUY", "SELL"] },
+    "order_type": { "type": "string", "enum": ["MARKET", "LIMIT", "STOP_MARKET", "STOP_LIMIT", "TAKE_PROFIT_MARKET", "TAKE_PROFIT_LIMIT"] },
+    "time_in_force": { "type": "string", "enum": ["GTC", "IOC", "FOK", "GTD", "POST_ONLY"] },
+    "price": { "type": ["string", "null"], "description": "Limit price (null for market)" },
+    "stop_price": { "type": ["string", "null"] },
+    "qty": { "type": "string" },
+    "filled_qty": { "type": "string", "default": "0" },
+    "remaining_qty": { "type": "string" },
+    "avg_fill_price": { "type": ["string", "null"] },
+    "status": {
+      "type": "string",
+      "enum": ["PENDING", "SUBMITTED", "PARTIALLY_FILLED", "FILLED", "CANCELLED", "REJECTED", "EXPIRED"],
+      "description": "State machine: PENDING→SUBMITTED→{PARTIALLY_FILLED→}FILLED | CANCELLED | REJECTED | EXPIRED"
+    },
+    "reduce_only": { "type": "boolean", "default": false },
+    "post_only": { "type": "boolean", "default": false },
+    "leverage": { "type": ["integer", "null"] },
+    "strategy_id": { "type": "string" },
+    "trace_id": { "type": "string", "description": "Decision chain correlation" },
+    "metadata": { "type": "object", "description": "Free-form extension point" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "tenant_id": { "type": "string", "default": "default" }
+  },
+  "additionalProperties": false
+}

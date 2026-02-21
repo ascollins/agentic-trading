@@ -197,7 +197,11 @@ class TestCMTTradePlan:
         assert plan.rr_ratio == 1.67
 
     def test_short_direction(self):
-        plan = self._make_plan(direction="SHORT")
+        plan = self._make_plan(
+            direction="SHORT",
+            stop_loss=103_000.0,
+            targets=[CMTTarget(price=95_000.0, pct=50.0, source="measured_move")],
+        )
         assert plan.direction == "SHORT"
 
     def test_multiple_targets(self):

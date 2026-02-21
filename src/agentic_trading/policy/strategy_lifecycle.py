@@ -63,6 +63,25 @@ DEFAULT_DEMOTION_TRIGGERS: dict[str, float] = {
     "max_drift_pct": 30.0,
 }
 
+# Scorecard-based automation thresholds (spec §7.2).
+# Each entry: metric name → (threshold, comparison, consecutive_days_required)
+# "lt" = demote when metric < threshold for N consecutive days.
+# "gt" = demote when metric > threshold for N consecutive days.
+DEFAULT_SCORECARD_TRIGGERS: dict[str, tuple[float, str, int]] = {
+    "edge_quality": (3.0, "lt", 5),
+    "hit_rate": (0.35, "lt", 7),
+    "sharpe_ratio": (0.0, "lt", 5),
+    "profit_factor": (0.8, "lt", 5),
+}
+
+# Promotion thresholds: sustained good metrics can auto-promote
+DEFAULT_SCORECARD_PROMOTION: dict[str, tuple[float, str, int]] = {
+    "edge_quality": (7.0, "gt", 10),
+    "hit_rate": (0.55, "gt", 10),
+    "sharpe_ratio": (1.5, "gt", 10),
+    "profit_factor": (1.5, "gt", 10),
+}
+
 # Mapping: StrategyStage → MaturityLevel
 STAGE_TO_MATURITY: dict[StrategyStage, MaturityLevel] = {
     StrategyStage.CANDIDATE: MaturityLevel.L0_SHADOW,
@@ -93,6 +112,9 @@ class StrategyLifecycleManager(BaseAgent):
         *,
         evidence_gates: dict | None = None,
         demotion_triggers: dict | None = None,
+        scorecard_triggers: dict | None = None,
+        scorecard_promotion: dict | None = None,
+        scorecard: Any = None,
         interval: float = 60.0,  # Check every 60s
         agent_id: str | None = None,
     ) -> None:
@@ -102,11 +124,18 @@ class StrategyLifecycleManager(BaseAgent):
         self._governance_gate = governance_gate
         self._evidence_gates = evidence_gates or DEFAULT_EVIDENCE_GATES
         self._demotion_triggers = demotion_triggers or DEFAULT_DEMOTION_TRIGGERS
+        self._scorecard_triggers = scorecard_triggers or DEFAULT_SCORECARD_TRIGGERS
+        self._scorecard_promotion = scorecard_promotion or DEFAULT_SCORECARD_PROMOTION
+        self._scorecard = scorecard  # DailyEffectivenessScorecard instance
 
         # strategy_id → current stage
         self._stages: dict[str, StrategyStage] = {}
         # strategy_id → promotion history
         self._promotion_history: dict[str, list[dict]] = {}
+        # Scorecard consecutive day counters:
+        # strategy_id → metric_name → consecutive_days_triggered
+        self._demotion_streak: dict[str, dict[str, int]] = {}
+        self._promotion_streak: dict[str, dict[str, int]] = {}
 
     @property
     def agent_type(self) -> AgentType:
@@ -170,6 +199,37 @@ class StrategyLifecycleManager(BaseAgent):
                         reason="automated_demotion_trigger",
                         evidence=evidence,
                     )
+                    continue
+
+                # Scorecard-based automation (spec §7.2)
+                scorecard_data = self._collect_scorecard(strategy_id)
+                if scorecard_data:
+                    # Check scorecard demotion
+                    demotion_reason = self._check_scorecard_demotion(
+                        strategy_id, scorecard_data,
+                    )
+                    if demotion_reason:
+                        await self._transition(
+                            strategy_id,
+                            StrategyStage.DEMOTED,
+                            reason=demotion_reason,
+                            evidence={**evidence, **scorecard_data},
+                        )
+                        continue
+
+                    # Check scorecard auto-promotion
+                    promotion_reason = self._check_scorecard_promotion(
+                        strategy_id, scorecard_data,
+                    )
+                    if promotion_reason:
+                        next_stage = self._next_stage(stage)
+                        if next_stage is not None:
+                            await self._transition(
+                                strategy_id,
+                                next_stage,
+                                reason=promotion_reason,
+                                evidence={**evidence, **scorecard_data},
+                            )
 
     # ------------------------------------------------------------------
     # Promotion (called externally or via API)
@@ -276,6 +336,109 @@ class StrategyLifecycleManager(BaseAgent):
                 )
                 return True
         return False
+
+    # ------------------------------------------------------------------
+    # Scorecard automation (spec §7.2)
+    # ------------------------------------------------------------------
+
+    def _collect_scorecard(self, strategy_id: str) -> dict[str, float]:
+        """Collect current scorecard metrics for a strategy."""
+        if self._scorecard is None:
+            return {}
+        try:
+            if hasattr(self._scorecard, "compute"):
+                result = self._scorecard.compute(strategy_id)
+                if isinstance(result, dict):
+                    return result
+                # If it's a Pydantic model, dump it
+                if hasattr(result, "model_dump"):
+                    return {
+                        k: float(v) for k, v in result.model_dump().items()
+                        if isinstance(v, (int, float))
+                    }
+            return {}
+        except Exception:
+            logger.debug(
+                "Failed to collect scorecard for %s", strategy_id,
+                exc_info=True,
+            )
+            return {}
+
+    def _check_scorecard_demotion(
+        self, strategy_id: str, scorecard: dict[str, float],
+    ) -> str:
+        """Check if scorecard metrics warrant demotion.
+
+        Returns a reason string if demotion should fire, else empty string.
+        """
+        streaks = self._demotion_streak.setdefault(strategy_id, {})
+
+        for metric, (threshold, comparison, days_required) in self._scorecard_triggers.items():
+            value = scorecard.get(metric)
+            if value is None:
+                streaks.pop(metric, None)
+                continue
+
+            triggered = (
+                (comparison == "lt" and value < threshold)
+                or (comparison == "gt" and value > threshold)
+            )
+
+            if triggered:
+                streaks[metric] = streaks.get(metric, 0) + 1
+                if streaks[metric] >= days_required:
+                    return (
+                        f"scorecard_demotion: {metric}={value:.3f} "
+                        f"{comparison} {threshold} for {streaks[metric]} cycles"
+                    )
+            else:
+                streaks[metric] = 0
+
+        return ""
+
+    def _check_scorecard_promotion(
+        self, strategy_id: str, scorecard: dict[str, float],
+    ) -> str:
+        """Check if scorecard metrics warrant auto-promotion.
+
+        Returns a reason string if promotion should fire, else empty string.
+        All promotion thresholds must be satisfied simultaneously.
+        """
+        streaks = self._promotion_streak.setdefault(strategy_id, {})
+        all_met = True
+        min_days = 0
+
+        for metric, (threshold, comparison, days_required) in self._scorecard_promotion.items():
+            value = scorecard.get(metric)
+            if value is None:
+                all_met = False
+                streaks.pop(metric, None)
+                continue
+
+            met = (
+                (comparison == "gt" and value > threshold)
+                or (comparison == "lt" and value < threshold)
+            )
+
+            if met:
+                streaks[metric] = streaks.get(metric, 0) + 1
+            else:
+                streaks[metric] = 0
+                all_met = False
+
+            if streaks.get(metric, 0) < days_required:
+                all_met = False
+            min_days = max(min_days, days_required)
+
+        if all_met:
+            # Reset streaks after promotion
+            for metric in self._scorecard_promotion:
+                streaks[metric] = 0
+            return (
+                f"scorecard_auto_promotion: all metrics sustained "
+                f"for {min_days}+ cycles"
+            )
+        return ""
 
     # ------------------------------------------------------------------
     # State transitions

@@ -6,6 +6,7 @@ Used for serialization/deserialization and validation.
 
 from __future__ import annotations
 
+from agentic_trading.agents.reporting import DailyReportEvent
 from agentic_trading.core.events import (
     ApprovalRequested,
     ApprovalResolved,
@@ -16,6 +17,7 @@ from agentic_trading.core.events import (
     CMTAssessment,
     DegradedModeEnabled,
     EfficacyAnalysisCompleted,
+    ExecutionPlanCreated,
     FeatureVector,
     FillEvent,
     FundingPaymentEvent,
@@ -30,12 +32,15 @@ from agentic_trading.core.events import (
     OrderUpdate,
     ParameterChangeApplied,
     PositionUpdate,
+    PredictionConsensus,
+    PredictionMarketEvent,
     ReconciliationResult,
     RegimeState,
     RiskAlert,
     RiskCheckResult,
     Signal,
     StrategyOptimizationResult,
+    SurveillanceCaseEvent,
     SystemHealth,
     TargetPosition,
     TickEvent,
@@ -75,10 +80,22 @@ TOPIC_SCHEMAS: dict[str, list[type[BaseEvent]]] = {
     "governance.approval": [ApprovalRequested, ApprovalResolved],
     "control_plane.tool_call": [ToolCallRecorded],
     "intelligence.cmt": [CMTAssessment],
+    "intelligence.prediction": [PredictionMarketEvent, PredictionConsensus],
+    "execution.plan": [ExecutionPlanCreated],
     "optimizer.result": [
         OptimizationCompleted, StrategyOptimizationResult, ParameterChangeApplied,
         EfficacyAnalysisCompleted,
     ],
+    "surveillance": [SurveillanceCaseEvent],
+    "reporting": [DailyReportEvent],
+}
+
+# Current schema version per event type.  Bump when a schema changes
+# in a backward-incompatible way so consumers can detect mismatches.
+SCHEMA_VERSIONS: dict[str, int] = {
+    cls.__name__: 1
+    for schemas in TOPIC_SCHEMAS.values()
+    for cls in schemas
 }
 
 # Flat map: event class name → event class (for deserialization)

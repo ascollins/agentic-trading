@@ -18,24 +18,13 @@ pipeline layer is migrated.
 
 from __future__ import annotations
 
-import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _uuid() -> str:
-    return str(uuid.uuid4())
-
-
-def _now() -> datetime:
-    return datetime.now(timezone.utc)
-
+from agentic_trading.core.ids import new_id as _uuid
+from agentic_trading.core.ids import utc_now as _now
 
 # ---------------------------------------------------------------------------
 # Base

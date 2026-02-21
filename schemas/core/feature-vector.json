@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-trading/schemas/core/feature-vector.json",
+  "title": "FeatureVector",
+  "description": "Computed indicator values for one symbol/timeframe. System of record: event log (feature.vector topic).",
+  "version": 1,
+  "type": "object",
+  "required": ["event_id", "timestamp", "trace_id", "schema_version", "symbol", "timeframe", "features"],
+  "properties": {
+    "event_id": { "type": "string", "format": "uuid" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "trace_id": { "type": "string", "format": "uuid" },
+    "causation_id": { "type": "string", "default": "" },
+    "source_module": { "type": "string", "default": "" },
+    "schema_version": { "type": "integer", "minimum": 1, "default": 1 },
+    "symbol": { "type": "string" },
+    "timeframe": { "type": "string", "enum": ["1m", "5m", "15m", "1h", "4h", "1d"] },
+    "features": {
+      "type": "object",
+      "additionalProperties": { "type": ["number", "null"] },
+      "description": "40+ indicator values; null when not computable"
+    },
+    "tenant_id": { "type": "string", "default": "default" }
+  },
+  "additionalProperties": false
+}

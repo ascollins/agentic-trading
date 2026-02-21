@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-trading/schemas/events/agent-step-completed.json",
+  "title": "AgentStepCompletedEvent",
+  "description": "An agent processing step has completed with output (signal created, feature vector computed, etc.).",
+  "version": 1,
+  "type": "object",
+  "required": ["event_id", "trace_id", "span_id", "tenant_id", "actor", "component", "timestamp", "schema_version", "event_type", "payload"],
+  "properties": {
+    "event_id": { "type": "string", "format": "uuid" },
+    "trace_id": { "type": "string", "format": "uuid" },
+    "span_id": { "type": "string", "format": "uuid" },
+    "tenant_id": { "type": "string", "default": "default" },
+    "actor": { "type": "string" },
+    "component": { "type": "string" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "input_hash": { "type": "string" },
+    "output_hash": { "type": "string" },
+    "schema_version": { "type": "integer", "minimum": 1 },
+    "event_type": { "type": "string", "const": "agent_step_completed" },
+    "causation_id": { "type": "string" },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "step_name": { "type": "string", "description": "Name of the completed step" },
+        "agent_type": { "type": "string", "description": "Type of agent that executed" },
+        "output_summary": { "type": "string", "description": "Brief summary of the output" },
+        "output_events": { "type": "array", "items": { "type": "string" }, "description": "Event IDs produced by this step" }
+      }
+    },
+    "latency_ms": { "type": ["number", "null"] },
+    "error": { "type": ["string", "null"] }
+  },
+  "additionalProperties": false
+}

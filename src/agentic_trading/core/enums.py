@@ -63,6 +63,8 @@ class InstrumentType(str, Enum):
     SPOT = "spot"
     PERP = "perp"  # Perpetual futures
     FUTURE = "future"  # Dated futures
+    FX_SPOT = "fx_spot"  # FX spot (T+2 settlement)
+    FX_CFD = "fx_cfd"  # FX contract for difference
 
 
 class RegimeType(str, Enum):
@@ -123,9 +125,25 @@ class RiskAlertSeverity(str, Enum):
     EMERGENCY = "emergency"
 
 
+class AssetClass(str, Enum):
+    """Asset class identifier for multi-asset support."""
+
+    CRYPTO = "crypto"
+    FX = "fx"
+
+
+class QtyUnit(str, Enum):
+    """How order quantity is denominated."""
+
+    BASE = "base"   # Crypto: 0.5 BTC; FX: 10000 EUR
+    LOTS = "lots"   # FX standard: 1 lot = 100,000 base units
+
+
 class Exchange(str, Enum):
     BINANCE = "binance"
     BYBIT = "bybit"
+    OANDA = "oanda"
+    LMAX = "lmax"
 
 
 class ConvictionLevel(str, Enum):
@@ -212,6 +230,9 @@ class AgentType(str, Enum):
     DATA_QUALITY = "data_quality"
     INCIDENT_RESPONSE = "incident_response"
     CMT_ANALYST = "cmt_analyst"
+    PREDICTION_MARKET = "prediction_market"
+    EXECUTION_PLANNER = "execution_planner"
+    FEATURE_COMPUTATION = "feature_computation"
     CUSTOM = "custom"
 
 

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-trading/schemas/core/balance.json",
+  "title": "Balance",
+  "description": "Account balance for one currency. System of record: PostgreSQL (balance_snapshots), Redis hot cache.",
+  "version": 1,
+  "type": "object",
+  "required": ["currency", "exchange", "total", "free", "used"],
+  "properties": {
+    "currency": { "type": "string" },
+    "exchange": { "type": "string" },
+    "total": { "type": "string" },
+    "free": { "type": "string" },
+    "used": { "type": "string" },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "tenant_id": { "type": "string", "default": "default" }
+  },
+  "additionalProperties": false
+}

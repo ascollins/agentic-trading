@@ -1,0 +1,218 @@
+# =============================================================================
+# Retrieval Policy — Per-Node Configuration
+# =============================================================================
+#
+# This file configures retrieval behaviour for every node in the knowledge
+# taxonomy (see docs/knowledge/taxonomy.md).  The ContextManager and memory
+# store use these settings to control what gets returned to downstream agents.
+#
+# Parameters:
+#   top_k          Max items returned per query for this node.
+#   ttl_hours      Time-to-live for exponential relevance decay.
+#                  0 = no decay (permanent knowledge).
+#   freshness_bias Multiplier on the decay lambda.
+#                  >1 = faster decay (prefer very recent).
+#                  <1 = slower decay (tolerate older entries).
+#                   1 = neutral.
+#   min_trust      Minimum trust level.  Entries below this are filtered.
+#                  Values: verified | high | medium | low | untrusted
+#   min_relevance  Minimum effective relevance after decay + trust weighting.
+#                  Entries below this score are dropped from results.
+#   prefer_recent  Sort by recency before relevance (for fast-moving nodes).
+#
+# Retrieval formula (applied per entry):
+#
+#   lambda           = ln(10) / ttl_hours
+#   time_decay       = exp(-lambda * freshness_bias * age_hours)
+#   trust_weight     = TRUST_WEIGHTS[trust_level]
+#   effective_relevance = base_relevance * time_decay * trust_weight * quality_score
+#
+#   Items with effective_relevance < min_relevance are dropped.
+#   Results sorted by effective_relevance descending, truncated to top_k.
+#
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Tier 1 — Market
+# ---------------------------------------------------------------------------
+# Raw market data.  Stale prices are dangerous — aggressive decay.
+
+market.price_action:
+  top_k: 5
+  ttl_hours: 1
+  freshness_bias: 2.0
+  min_trust: medium
+  min_relevance: 0.3
+  prefer_recent: true
+
+market.regime:
+  top_k: 3
+  ttl_hours: 4
+  freshness_bias: 1.5
+  min_trust: medium
+  min_relevance: 0.3
+  prefer_recent: true
+
+market.structure:
+  top_k: 5
+  ttl_hours: 6
+  freshness_bias: 1.2
+  min_trust: medium
+  min_relevance: 0.25
+  prefer_recent: true
+
+market.external:
+  top_k: 5
+  ttl_hours: 6
+  freshness_bias: 1.5
+  min_trust: low
+  min_relevance: 0.2
+  prefer_recent: true
+
+# ---------------------------------------------------------------------------
+# Tier 2 — Analysis
+# ---------------------------------------------------------------------------
+# Agent-produced analysis.  Yesterday's analysis is rarely relevant.
+
+analysis.htf_assessment:
+  top_k: 3
+  ttl_hours: 24
+  freshness_bias: 1.2
+  min_trust: low
+  min_relevance: 0.3
+  prefer_recent: false
+
+analysis.smc_report:
+  top_k: 3
+  ttl_hours: 24
+  freshness_bias: 1.2
+  min_trust: low
+  min_relevance: 0.3
+  prefer_recent: false
+
+analysis.cmt_assessment:
+  top_k: 3
+  ttl_hours: 24
+  freshness_bias: 1.0
+  min_trust: low
+  min_relevance: 0.3
+  prefer_recent: false
+
+analysis.market_context:
+  top_k: 3
+  ttl_hours: 12
+  freshness_bias: 1.5
+  min_trust: medium
+  min_relevance: 0.3
+  prefer_recent: true
+
+analysis.data_quality:
+  top_k: 5
+  ttl_hours: 48
+  freshness_bias: 0.8
+  min_trust: low
+  min_relevance: 0.2
+  prefer_recent: false
+
+# ---------------------------------------------------------------------------
+# Tier 3 — Decision
+# ---------------------------------------------------------------------------
+# Trade plans, signals, risk events, governance, reasoning traces.
+
+decision.trade_plan:
+  top_k: 5
+  ttl_hours: 24
+  freshness_bias: 1.0
+  min_trust: medium
+  min_relevance: 0.3
+  prefer_recent: false
+
+decision.signal:
+  top_k: 5
+  ttl_hours: 12
+  freshness_bias: 1.5
+  min_trust: medium
+  min_relevance: 0.3
+  prefer_recent: true
+
+decision.risk_event:
+  top_k: 10
+  ttl_hours: 48
+  freshness_bias: 0.8
+  min_trust: medium
+  min_relevance: 0.2
+  prefer_recent: false
+
+decision.governance:
+  top_k: 5
+  ttl_hours: 0          # permanent — no decay
+  freshness_bias: 1.0
+  min_trust: verified
+  min_relevance: 0.0
+  prefer_recent: false
+
+decision.reasoning_trace:
+  top_k: 3
+  ttl_hours: 72
+  freshness_bias: 0.5
+  min_trust: low
+  min_relevance: 0.2
+  prefer_recent: false
+
+# ---------------------------------------------------------------------------
+# Tier 4 — Execution
+# ---------------------------------------------------------------------------
+# Ground truth — permanent records.  No decay.
+
+execution.order_lifecycle:
+  top_k: 10
+  ttl_hours: 0          # permanent
+  freshness_bias: 1.0
+  min_trust: verified
+  min_relevance: 0.0
+  prefer_recent: false
+
+execution.fill_record:
+  top_k: 10
+  ttl_hours: 0          # permanent
+  freshness_bias: 1.0
+  min_trust: verified
+  min_relevance: 0.0
+  prefer_recent: false
+
+execution.position_state:
+  top_k: 5
+  ttl_hours: 0          # permanent
+  freshness_bias: 1.0
+  min_trust: verified
+  min_relevance: 0.0
+  prefer_recent: true
+
+# ---------------------------------------------------------------------------
+# Tier 5 — Reference
+# ---------------------------------------------------------------------------
+# Standing knowledge.  Permanent, stable, high trust.
+
+reference.policy_rule:
+  top_k: 3
+  ttl_hours: 0          # permanent
+  freshness_bias: 1.0
+  min_trust: verified
+  min_relevance: 0.0
+  prefer_recent: false
+
+reference.strategy_config:
+  top_k: 3
+  ttl_hours: 0          # permanent
+  freshness_bias: 1.0
+  min_trust: verified
+  min_relevance: 0.0
+  prefer_recent: false
+
+reference.instrument_spec:
+  top_k: 3
+  ttl_hours: 0          # permanent
+  freshness_bias: 1.0
+  min_trust: verified
+  min_relevance: 0.0
+  prefer_recent: false

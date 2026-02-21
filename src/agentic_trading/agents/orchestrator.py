@@ -175,7 +175,21 @@ class AgentOrchestrator:
             )
             self._registry.register(optimizer)
 
-        # --- 7. EfficacyAgent ---
+        # --- 7. PredictionMarketAgent ---
+        if settings.prediction_market.enabled:
+            from agentic_trading.agents.prediction_market import (
+                PredictionMarketAgent,
+            )
+
+            pm_agent = PredictionMarketAgent(
+                event_bus=ctx.event_bus,
+                config=settings.prediction_market,
+                symbols=symbols,
+                agent_id="prediction-market",
+            )
+            self._registry.register(pm_agent)
+
+        # --- 8. EfficacyAgent ---
         if settings.efficacy_agent.enabled:
             from agentic_trading.optimizer.efficacy_agent import EfficacyAgent
 

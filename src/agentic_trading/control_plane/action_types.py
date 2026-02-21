@@ -9,24 +9,26 @@ audit integrity.
 
 from __future__ import annotations
 
-import hashlib
 import json
-import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from decimal import Decimal
 from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel, Field
 
-
-def _uuid() -> str:
-    return str(uuid.uuid4())
-
-
-def _now() -> datetime:
-    return datetime.now(timezone.utc)
-
+from agentic_trading.core.ids import (
+    content_hash as _content_hash,
+)
+from agentic_trading.core.ids import (
+    new_id as _uuid,
+)
+from agentic_trading.core.ids import (
+    payload_hash as _payload_hash,
+)
+from agentic_trading.core.ids import (
+    utc_now as _now,
+)
 
 # ---------------------------------------------------------------------------
 # Tool allowlist
@@ -95,12 +97,18 @@ TIER_RANK: dict[ApprovalTier, int] = {
 
 
 class DegradedMode(str, Enum):
-    """System degraded mode levels."""
+    """System degraded mode levels.
+
+    Ordered from least restrictive to most restrictive:
+        NORMAL -> CAUTIOUS -> STOP_NEW_ORDERS -> RISK_OFF_ONLY -> READ_ONLY -> FULL_STOP
+    """
 
     NORMAL = "normal"
-    RISK_OFF_ONLY = "risk_off_only"   # Cancel/reduce only
-    READ_ONLY = "read_only"           # No mutations at all
-    FULL_STOP = "full_stop"           # Nothing (not even reads)
+    CAUTIOUS = "cautious"                     # Half sizing, no new symbols
+    STOP_NEW_ORDERS = "stop_new_orders"       # Block new orders, allow cancels/amends
+    RISK_OFF_ONLY = "risk_off_only"           # Cancel/reduce only
+    READ_ONLY = "read_only"                   # No mutations at all
+    FULL_STOP = "full_stop"                   # Nothing (not even reads)
 
 
 # ---------------------------------------------------------------------------
@@ -115,6 +123,8 @@ class ActionScope(BaseModel):
     symbol: str = ""
     exchange: str = "bybit"
     actor: str = ""  # agent_id that proposed this
+    actor_role: str = ""  # role of the actor (e.g. "trader", "risk", "admin")
+    asset_class: str = "crypto"  # "crypto" or "fx"
 
 
 # ---------------------------------------------------------------------------
@@ -135,6 +145,9 @@ class ProposedAction(BaseModel):
     request_params: dict[str, Any] = Field(default_factory=dict)
     idempotency_key: str = ""
 
+    # Information barrier (spec §7.2): role required to execute this action
+    required_role: str | None = None
+
     # Computed at creation
     request_hash: str = ""
 
@@ -144,9 +157,7 @@ class ProposedAction(BaseModel):
                 f"{self.tool_name.value}:{self.idempotency_key}:"
                 f"{self.scope.model_dump_json()}"
             )
-            self.request_hash = hashlib.sha256(
-                payload.encode()
-            ).hexdigest()[:16]
+            self.request_hash = _content_hash(payload)
 
 
 # ---------------------------------------------------------------------------
@@ -250,5 +261,4 @@ class AuditEntry(BaseModel):
 
     def model_post_init(self, __context: Any) -> None:
         if not self.payload_hash:
-            raw = json.dumps(self.payload, sort_keys=True, default=str)
-            self.payload_hash = hashlib.sha256(raw.encode()).hexdigest()[:16]
+            self.payload_hash = _payload_hash(self.payload)

@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-trading/schemas/core/governance-decision.json",
+  "title": "GovernanceDecision",
+  "description": "Result of the 10-step governance pipeline. System of record: PostgreSQL (governance_logs).",
+  "version": 1,
+  "type": "object",
+  "required": ["trace_id", "strategy_id", "symbol", "action", "decision_at"],
+  "properties": {
+    "trace_id": { "type": "string", "description": "Decision chain correlation" },
+    "strategy_id": { "type": "string" },
+    "symbol": { "type": "string" },
+    "action": { "type": "string", "enum": ["ALLOW", "REDUCE_SIZE", "BLOCK", "DEMOTE", "PAUSE", "KILL"] },
+    "reason": { "type": "string" },
+    "sizing_multiplier": { "type": "string", "description": "0.0-1.0" },
+    "maturity_level": { "type": "string", "enum": ["L0_SHADOW", "L1_PAPER", "L2_GATED", "L3_CONSTRAINED", "L4_AUTONOMOUS"] },
+    "impact_tier": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"] },
+    "health_score": { "type": "string" },
+    "details": { "type": "object", "description": "Full evaluation context" },
+    "decision_at": { "type": "string", "format": "date-time" },
+    "tenant_id": { "type": "string", "default": "default" }
+  },
+  "additionalProperties": false
+}

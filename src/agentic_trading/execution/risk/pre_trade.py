@@ -52,6 +52,9 @@ class PreTradeChecker:
         max_concurrent_positions: int = 4,
         max_daily_entries: int = 10,
         portfolio_cooldown_seconds: int = 3600,
+        price_collar_bps: float = 200.0,
+        max_messages_per_minute_per_strategy: int = 60,
+        max_messages_per_minute_per_symbol: int = 30,
     ) -> None:
         self.max_position_pct = max_position_pct
         self.max_notional = Decimal(str(max_notional))
@@ -61,10 +64,17 @@ class PreTradeChecker:
         self.max_concurrent_positions = max_concurrent_positions
         self.max_daily_entries = max_daily_entries
         self.portfolio_cooldown_seconds = portfolio_cooldown_seconds
+        self.price_collar_bps = price_collar_bps
+        self.max_messages_per_minute_per_strategy = max_messages_per_minute_per_strategy
+        self.max_messages_per_minute_per_symbol = max_messages_per_minute_per_symbol
 
         # Stateful tracking for rate-limiting
         self._daily_entry_count: dict[str, int] = {}  # date_str → count
         self._last_entry_time: datetime | None = None
+
+        # Stateful tracking for message throttle (sliding window)
+        self._message_times_by_strategy: dict[str, list[float]] = {}
+        self._message_times_by_symbol: dict[str, list[float]] = {}
 
     # ------------------------------------------------------------------
     # Public entry point
@@ -74,12 +84,15 @@ class PreTradeChecker:
         self,
         intent: OrderIntent,
         portfolio: PortfolioState,
+        open_orders: list[Any] | None = None,
     ) -> list[RiskCheckResult]:
         """Run all pre-trade checks.
 
         Args:
             intent: The order the strategy wants to place.
             portfolio: Current portfolio snapshot.
+            open_orders: List of resting orders for self-match prevention.
+                Each item should have ``symbol``, ``side``, ``price`` attrs.
 
         Returns:
             A list of :class:`RiskCheckResult`, one per check.
@@ -90,6 +103,9 @@ class PreTradeChecker:
             self._check_max_concurrent_positions(intent, portfolio),
             self._check_daily_entry_limit(intent),
             self._check_portfolio_cooldown(intent),
+            self._check_price_collar(intent, portfolio),
+            self._check_self_match(intent, open_orders),
+            self._check_message_throttle(intent),
             self._check_max_position_size(intent, portfolio),
             self._check_max_notional(intent),
             self._check_max_leverage(intent, portfolio),
@@ -255,6 +271,192 @@ class PreTradeChecker:
                     },
                 )
         return self._pass("portfolio_cooldown", intent)
+
+    def _check_price_collar(
+        self,
+        intent: OrderIntent,
+        portfolio: PortfolioState,
+    ) -> RiskCheckResult:
+        """Reject limit orders whose price deviates beyond the collar band.
+
+        The collar is defined as ``price_collar_bps`` basis points around
+        the reference price (mark price from the current position, or the
+        intent's own limit price as a last resort).  Market orders are
+        exempt since they have no limit price to check.
+        """
+        # Market orders have no limit price to collar
+        if intent.price is None or intent.price <= 0:
+            return self._pass("price_collar", intent, {
+                "reason": "market_order_or_no_price",
+            })
+
+        # Get reference price (mark price from position)
+        ref_price = self._last_price_estimate(intent, portfolio)
+        if ref_price is None or ref_price <= 0:
+            # No reference price available — cannot enforce collar
+            return self._pass("price_collar", intent, {
+                "reason": "no_reference_price",
+            })
+
+        deviation_bps = abs(float(intent.price - ref_price)) / float(ref_price) * 10_000
+
+        if deviation_bps > self.price_collar_bps:
+            return self._fail(
+                "price_collar",
+                intent,
+                f"Limit price {intent.price} deviates {deviation_bps:.0f} bps "
+                f"from reference {ref_price} (max {self.price_collar_bps:.0f} bps)",
+                {
+                    "limit_price": float(intent.price),
+                    "reference_price": float(ref_price),
+                    "deviation_bps": deviation_bps,
+                    "max_bps": self.price_collar_bps,
+                },
+            )
+        return self._pass("price_collar", intent, {
+            "deviation_bps": deviation_bps,
+            "reference_price": float(ref_price),
+        })
+
+    def _check_self_match(
+        self,
+        intent: OrderIntent,
+        open_orders: list[Any] | None,
+    ) -> RiskCheckResult:
+        """Prevent orders that would match against own resting orders.
+
+        An order self-matches if it is on the opposite side and its price
+        would cross a resting order's price on the same symbol.
+
+        Args:
+            intent: The incoming order intent.
+            open_orders: List of resting orders on the venue.  Each should
+                expose ``symbol``, ``side`` (str or enum), and ``price``
+                (Decimal or float) attributes.
+        """
+        if open_orders is None or not open_orders:
+            return self._pass("self_match_prevention", intent, {
+                "reason": "no_open_orders",
+            })
+
+        intent_side_str = (
+            intent.side.value if hasattr(intent.side, "value") else str(intent.side)
+        ).lower()
+
+        for order in open_orders:
+            # Only check same-symbol resting orders
+            order_symbol = getattr(order, "symbol", None)
+            if order_symbol != intent.symbol:
+                continue
+
+            order_side = getattr(order, "side", None)
+            if order_side is None:
+                continue
+            order_side_str = (
+                order_side.value if hasattr(order_side, "value") else str(order_side)
+            ).lower()
+
+            # Self-match requires opposite sides
+            if order_side_str == intent_side_str:
+                continue
+
+            order_price = getattr(order, "price", None)
+            if order_price is None or intent.price is None:
+                continue
+
+            order_price_d = Decimal(str(order_price))
+            # Would these cross?
+            # Buy crossing a resting sell: buy_price >= sell_price
+            # Sell crossing a resting buy: sell_price <= buy_price
+            would_cross = False
+            if intent_side_str == "buy" and intent.price >= order_price_d:
+                would_cross = True
+            elif intent_side_str == "sell" and intent.price <= order_price_d:
+                would_cross = True
+
+            if would_cross:
+                return self._fail(
+                    "self_match_prevention",
+                    intent,
+                    f"Order would self-match against resting "
+                    f"{order_side_str} {intent.symbol} @ {order_price_d}",
+                    {
+                        "intent_side": intent_side_str,
+                        "intent_price": float(intent.price),
+                        "resting_side": order_side_str,
+                        "resting_price": float(order_price_d),
+                    },
+                )
+
+        return self._pass("self_match_prevention", intent, {
+            "open_orders_checked": len([
+                o for o in open_orders
+                if getattr(o, "symbol", None) == intent.symbol
+            ]),
+        })
+
+    def _check_message_throttle(
+        self,
+        intent: OrderIntent,
+    ) -> RiskCheckResult:
+        """Enforce per-strategy and per-symbol message rate limits.
+
+        Uses a sliding 60-second window.  Each call to ``check()`` is
+        counted as one message.  When the rate exceeds the configured
+        threshold, the order is blocked.
+        """
+        import time
+
+        now = time.monotonic()
+        window = 60.0  # 1-minute sliding window
+
+        # Per-strategy throttle
+        strategy_key = intent.strategy_id
+        strategy_times = self._message_times_by_strategy.setdefault(strategy_key, [])
+        # Prune old entries
+        strategy_times[:] = [t for t in strategy_times if now - t < window]
+        strategy_times.append(now)
+
+        if len(strategy_times) > self.max_messages_per_minute_per_strategy:
+            return self._fail(
+                "message_throttle",
+                intent,
+                f"Strategy '{strategy_key}' exceeded message rate: "
+                f"{len(strategy_times)} msgs/min "
+                f"(max {self.max_messages_per_minute_per_strategy})",
+                {
+                    "throttle_type": "per_strategy",
+                    "strategy_id": strategy_key,
+                    "current_rate": len(strategy_times),
+                    "max_rate": self.max_messages_per_minute_per_strategy,
+                },
+            )
+
+        # Per-symbol throttle
+        symbol_key = intent.symbol
+        symbol_times = self._message_times_by_symbol.setdefault(symbol_key, [])
+        symbol_times[:] = [t for t in symbol_times if now - t < window]
+        symbol_times.append(now)
+
+        if len(symbol_times) > self.max_messages_per_minute_per_symbol:
+            return self._fail(
+                "message_throttle",
+                intent,
+                f"Symbol '{symbol_key}' exceeded message rate: "
+                f"{len(symbol_times)} msgs/min "
+                f"(max {self.max_messages_per_minute_per_symbol})",
+                {
+                    "throttle_type": "per_symbol",
+                    "symbol": symbol_key,
+                    "current_rate": len(symbol_times),
+                    "max_rate": self.max_messages_per_minute_per_symbol,
+                },
+            )
+
+        return self._pass("message_throttle", intent, {
+            "strategy_rate": len(strategy_times),
+            "symbol_rate": len(symbol_times),
+        })
 
     def record_entry(self) -> None:
         """Call after a successful order fill to update rate-limit state."""

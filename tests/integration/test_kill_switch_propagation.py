@@ -46,9 +46,12 @@ class _DummyAdapter:
 
     def __init__(self):
         self.submitted = []
+        self._fill_prices: dict[str, Decimal] = {}
 
     async def submit_order(self, intent: OrderIntent) -> OrderAck:
         self.submitted.append(intent)
+        # Store fill price so _resolve_fill_price can find it
+        self._fill_prices["fake-order-id"] = Decimal("50000")
         return OrderAck(
             order_id="fake-order-id",
             client_order_id=intent.dedupe_key,

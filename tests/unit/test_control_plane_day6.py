@@ -525,7 +525,7 @@ class TestIncidentResponseAgent:
         await agent.stop()
 
     @pytest.mark.asyncio
-    async def test_warning_does_not_change_mode(self):
+    async def test_warning_escalates_to_cautious(self):
         from agentic_trading.agents.incident_response import (
             IncidentResponseAgent,
         )
@@ -540,10 +540,10 @@ class TestIncidentResponseAgent:
         )
         await agent._handle_incident(incident)
 
-        assert agent.current_mode == "normal"
+        assert agent.current_mode == "cautious"
         assert incident.incident_id in agent.active_incidents
-        # No DegradedModeEnabled published for warnings
-        event_bus.publish.assert_not_called()
+        # DegradedModeEnabled published for warning → cautious
+        event_bus.publish.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_critical_escalates_to_risk_off(self):

@@ -14,24 +14,18 @@ from __future__ import annotations
 import json
 import logging
 import math
-import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field
 
 from agentic_trading.core.enums import MemoryEntryType
+from agentic_trading.core.file_io import safe_append_line
+from agentic_trading.core.ids import new_id as _uuid
+from agentic_trading.core.ids import utc_now as _now
 
 logger = logging.getLogger(__name__)
-
-
-def _uuid() -> str:
-    return str(uuid.uuid4())
-
-
-def _now() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 # ---------------------------------------------------------------------------
@@ -246,10 +240,8 @@ class JsonFileMemoryStore:
         """Store entry in memory and append to JSONL file."""
         self._inner.store(entry)
 
-        self._path.parent.mkdir(parents=True, exist_ok=True)
         try:
-            with open(self._path, "a") as f:
-                f.write(entry.model_dump_json() + "\n")
+            safe_append_line(self._path, entry.model_dump_json())
         except Exception:
             logger.exception("Failed to persist memory entry to %s", self._path)
 

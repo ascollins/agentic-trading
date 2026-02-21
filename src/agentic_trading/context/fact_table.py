@@ -11,15 +11,12 @@ partial updates.
 from __future__ import annotations
 
 import threading
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
 
-
-def _now() -> datetime:
-    return datetime.now(timezone.utc)
-
+from agentic_trading.core.ids import utc_now as _now
 
 # ---------------------------------------------------------------------------
 # Structured state models

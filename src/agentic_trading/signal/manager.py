@@ -29,13 +29,14 @@ Signal processing::
 
 from __future__ import annotations
 
-import hashlib
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 from typing import Any
+
+from agentic_trading.core.ids import content_hash
 
 logger = logging.getLogger(__name__)
 
@@ -328,6 +329,7 @@ class SignalManager:
         exchange,
         timestamp: datetime,
         order_type=None,
+        instruments: dict | None = None,
     ) -> list:
         """Convert target positions into order intents.
 
@@ -344,6 +346,8 @@ class SignalManager:
         }
         if order_type is not None:
             kwargs["order_type"] = order_type
+        if instruments is not None:
+            kwargs["instruments"] = instruments
         return build_order_intents(**kwargs)
 
     # ------------------------------------------------------------------
@@ -443,7 +447,9 @@ class SignalManager:
             )
             if open_trade is not None and open_trade.entry_fills:
                 from agentic_trading.core.enums import (
+                    AssetClass,
                     OrderType,
+                    QtyUnit,
                     Side,
                     TimeInForce,
                 )
@@ -461,9 +467,12 @@ class SignalManager:
                         f"exit:{signal.strategy_id}:"
                         f"{signal.symbol}:{ts_bucket}"
                     )
-                    dedupe_key = hashlib.sha256(
-                        raw_key.encode(),
-                    ).hexdigest()[:16]
+                    dedupe_key = content_hash(raw_key)
+
+                    # Enrich with instrument metadata
+                    _inst = ctx.instruments.get(signal.symbol) if hasattr(ctx, "instruments") else None
+                    _asset_class = _inst.asset_class if _inst is not None else AssetClass.CRYPTO
+                    _inst_hash = _inst.instrument_hash if _inst is not None else ""
 
                     exit_intent = OrderIntent(
                         dedupe_key=dedupe_key,
@@ -477,6 +486,9 @@ class SignalManager:
                         price=None,
                         reduce_only=True,
                         trace_id=signal.trace_id,
+                        asset_class=_asset_class,
+                        qty_unit=QtyUnit.BASE,
+                        instrument_hash=_inst_hash,
                     )
 
                     result.intents = [exit_intent]
@@ -494,8 +506,10 @@ class SignalManager:
             self._portfolio_manager.on_signal(signal)
             targets = self._portfolio_manager.generate_targets(ctx, capital)
             if targets:
+                _instruments = ctx.instruments if hasattr(ctx, "instruments") else None
                 result.intents = self.build_intents(
                     targets, exchange, ctx.clock.now(),
+                    instruments=_instruments,
                 )
 
         return result
@@ -565,7 +579,11 @@ class SignalManager:
         targets = self._portfolio_manager.generate_targets(ctx, capital)
 
         if targets:
-            intents = self.build_intents(targets, exchange, ctx.clock.now())
+            _instruments = ctx.instruments if hasattr(ctx, "instruments") else None
+            intents = self.build_intents(
+                targets, exchange, ctx.clock.now(),
+                instruments=_instruments,
+            )
             # Create one SignalResult per intent
             for intent in intents:
                 result = SignalResult()

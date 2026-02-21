@@ -200,6 +200,29 @@ class CPApprovalService:
 
         # If auto-approved (L1_AUTO level in manager), return approved
         if approval_request.status.value == "approved":
+            # Information barrier: proposer ≠ approver (spec §7.2)
+            approver = approval_request.decided_by
+            proposer = proposed.scope.actor
+            if (
+                proposer
+                and approver
+                and proposer == approver
+                and tier in (ApprovalTier.T2_APPROVE, ApprovalTier.T3_DUAL_APPROVE)
+            ):
+                logger.warning(
+                    "Information barrier: proposer=%s cannot self-approve at %s",
+                    proposer, tier.value,
+                )
+                decision = CPApprovalDecision(
+                    action_id=proposed.action_id,
+                    correlation_id=proposed.correlation_id,
+                    approved=False,
+                    tier=tier,
+                    reason=f"information_barrier: proposer '{proposer}' cannot self-approve",
+                )
+                await self._audit_decision(proposed, decision)
+                return decision
+
             decision = CPApprovalDecision(
                 action_id=proposed.action_id,
                 correlation_id=proposed.correlation_id,

@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-trading/schemas/core/policy-set.json",
+  "title": "PolicySet",
+  "description": "Versioned collection of declarative governance rules. System of record: JSON file (via PolicyStore).",
+  "version": 1,
+  "type": "object",
+  "required": ["version", "name", "rules", "created_at", "is_active"],
+  "properties": {
+    "version": { "type": "integer", "minimum": 1 },
+    "name": { "type": "string" },
+    "description": { "type": "string" },
+    "rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["rule_id", "name", "field", "operator", "value", "action", "enabled"],
+        "properties": {
+          "rule_id": { "type": "string" },
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "field": { "type": "string", "description": "Dot-path, e.g. risk.leverage" },
+          "operator": { "type": "string", "enum": ["LT", "LE", "GT", "GE", "EQ", "NE", "IN", "NOT_IN", "BETWEEN"] },
+          "value": { "description": "Threshold value — type depends on operator" },
+          "action": { "type": "string", "enum": ["BLOCK", "REDUCE_SIZE", "WARN"] },
+          "sizing_multiplier": { "type": "number", "minimum": 0, "maximum": 1 },
+          "scope": {
+            "type": "object",
+            "properties": {
+              "strategy_ids": { "type": "array", "items": { "type": "string" } },
+              "symbols": { "type": "array", "items": { "type": "string" } }
+            }
+          },
+          "shadow": { "type": "boolean", "default": false, "description": "Log-only, don't enforce" },
+          "enabled": { "type": "boolean" }
+        }
+      }
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "is_active": { "type": "boolean" },
+    "tenant_id": { "type": "string", "default": "default" }
+  },
+  "additionalProperties": false
+}

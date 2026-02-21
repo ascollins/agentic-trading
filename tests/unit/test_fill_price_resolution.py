@@ -5,7 +5,7 @@ Covers:
 - CCXTAdapter _last_fill_price provides fill price.
 - Intent price provides fill price (limit orders).
 - Adapter get_market_price provides fallback price.
-- Returns 0 only when ALL sources fail.
+- Raises OrderRejectedError when ALL sources fail (E1 fix).
 - Priority ordering: response > paper > ccxt > intent > market.
 """
 
@@ -18,6 +18,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from agentic_trading.core.enums import Exchange, OrderStatus, OrderType, Side, TimeInForce
+from agentic_trading.core.errors import OrderRejectedError
 from agentic_trading.core.events import OrderAck, OrderIntent
 from agentic_trading.execution.engine import ExecutionEngine
 
@@ -144,20 +145,20 @@ class TestResolveFillPrice:
         )
         assert price == Decimal("50200")
 
-    def test_all_sources_fail_returns_zero(self) -> None:
-        """Returns 0 only when all sources exhausted."""
+    def test_all_sources_fail_raises_rejected(self) -> None:
+        """Raises OrderRejectedError when all sources exhausted (E1 fix)."""
         adapter = MagicMock()
         del adapter._orders
         del adapter._last_fill_price
         del adapter.get_market_price
         engine = _make_engine(adapter)
 
-        price = engine._resolve_fill_price(
-            _make_intent(),  # Market order, no intent.price
-            _make_ack(),
-            response=None,
-        )
-        assert price == Decimal("0")
+        with pytest.raises(OrderRejectedError, match="all 5 price sources exhausted"):
+            engine._resolve_fill_price(
+                _make_intent(),  # Market order, no intent.price
+                _make_ack(),
+                response=None,
+            )
 
     def test_priority_response_over_paper(self) -> None:
         """Response has higher priority than PaperAdapter."""

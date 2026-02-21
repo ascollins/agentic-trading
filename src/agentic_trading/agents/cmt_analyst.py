@@ -408,7 +408,12 @@ class CMTAnalystAgent(BaseAgent):
         symbol: str,
         response: CMTAssessmentResponse,
     ) -> None:
-        """Emit a Signal event from a CMT trade plan."""
+        """Emit a Signal event from a CMT trade plan.
+
+        Performs pre-emission sanity checks on LLM-generated values
+        before publishing.  If any check fails the signal is dropped
+        with a warning — no trade is emitted.
+        """
         plan = response.trade_plan
         if plan is None:
             return
@@ -424,6 +429,51 @@ class CMTAnalystAgent(BaseAgent):
             )
             return
 
+        # ── Pre-emission sanity gate (defense-in-depth) ──────────
+        # The Pydantic validators on CMTTradePlan catch most issues at
+        # parse time.  These checks guard against edge cases where a
+        # valid-looking plan is still dangerous (e.g. stop == entry
+        # after rounding, or zero-price target).
+        stop_dec = Decimal(str(plan.stop_loss)) if plan.stop_loss else None
+        tp_dec = (
+            Decimal(str(plan.targets[0].price))
+            if plan.targets
+            else None
+        )
+
+        if stop_dec is not None and stop_dec <= 0:
+            logger.warning(
+                "Dropping CMT signal for %s: stop_loss=%s is non-positive",
+                symbol, stop_dec,
+            )
+            return
+
+        if tp_dec is not None and tp_dec <= 0:
+            logger.warning(
+                "Dropping CMT signal for %s: take_profit=%s is non-positive",
+                symbol, tp_dec,
+            )
+            return
+
+        if stop_dec is not None and tp_dec is not None:
+            entry_dec = Decimal(str(plan.entry_price))
+            if direction == SignalDirection.LONG:
+                if stop_dec >= entry_dec or tp_dec <= entry_dec:
+                    logger.warning(
+                        "Dropping CMT LONG signal for %s: "
+                        "stop=%s entry=%s tp=%s — invalid geometry",
+                        symbol, stop_dec, entry_dec, tp_dec,
+                    )
+                    return
+            elif direction == SignalDirection.SHORT:
+                if stop_dec <= entry_dec or tp_dec >= entry_dec:
+                    logger.warning(
+                        "Dropping CMT SHORT signal for %s: "
+                        "stop=%s entry=%s tp=%s — invalid geometry",
+                        symbol, stop_dec, entry_dec, tp_dec,
+                    )
+                    return
+
         # Map confluence total to 0-1 confidence
         # Confluence range is -10 to +11, threshold is 5
         raw_conf = response.confluence.total
@@ -436,14 +486,8 @@ class CMTAnalystAgent(BaseAgent):
             confidence=confidence,
             rationale=response.thesis[:500],
             timeframe=Timeframe.H4,
-            stop_loss=(
-                Decimal(str(plan.stop_loss)) if plan.stop_loss else None
-            ),
-            take_profit=(
-                Decimal(str(plan.targets[0].price))
-                if plan.targets
-                else None
-            ),
+            stop_loss=stop_dec,
+            take_profit=tp_dec,
             risk_constraints={
                 "cmt_confluence": response.confluence.total,
                 "cmt_rr_ratio": plan.rr_ratio,

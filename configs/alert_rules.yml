@@ -1,0 +1,128 @@
+groups:
+  - name: trading_critical
+    rules:
+      # Kill switch activated — immediate attention required
+      - alert: KillSwitchActive
+        expr: trading_kill_switch_active == 1
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Kill switch is ACTIVE"
+          description: "The trading kill switch has been activated. All new order submissions are blocked."
+
+      # Portfolio drawdown exceeding threshold
+      - alert: DrawdownExceedsThreshold
+        expr: trading_drawdown_pct > 10
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Portfolio drawdown exceeds 10%"
+          description: "Current drawdown is {{ $value }}%. Risk limit is 15%."
+
+      # Severe drawdown — approaching hard limit
+      - alert: DrawdownApproachingLimit
+        expr: trading_drawdown_pct > 13
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Portfolio drawdown approaching kill switch limit (15%)"
+          description: "Current drawdown is {{ $value }}%. Kill switch triggers at 15%."
+
+      # Dead letters accumulating — handler failures
+      - alert: DeadLettersAccumulating
+        expr: increase(trading_dead_letters_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Dead-letter messages detected"
+          description: "{{ $value }} messages sent to dead-letter queue in the last 5 minutes on topic {{ $labels.topic }}."
+
+      # LLM circuit breaker open
+      - alert: LLMCircuitBreakerOpen
+        expr: trading_llm_circuit_breaker_open == 1
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "LLM circuit breaker is open"
+          description: "The CMT analysis engine circuit breaker has tripped. LLM-based analysis is disabled until cooldown expires."
+
+  - name: trading_risk
+    rules:
+      # Risk check failures spiking
+      - alert: RiskCheckFailureSpike
+        expr: increase(trading_risk_check_failures_total[5m]) > 5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Elevated risk check failures"
+          description: "{{ $value }} risk check failures in 5 minutes for check {{ $labels.check_name }}."
+
+      # Circuit breaker tripped
+      - alert: CircuitBreakerTripped
+        expr: increase(trading_circuit_breaker_trips_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Circuit breaker tripped"
+          description: "Circuit breaker {{ $labels.breaker_type }} has tripped."
+
+      # Gross exposure too high
+      - alert: GrossExposureHigh
+        expr: trading_gross_exposure > 0 and trading_equity > 0 and (trading_gross_exposure / trading_equity) > 4
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Gross exposure exceeding 4x equity"
+          description: "Portfolio leverage is approximately {{ $value }}x. Max allowed is 5x."
+
+  - name: trading_data
+    rules:
+      # Data feed stale for any symbol
+      - alert: DataFeedStale
+        expr: trading_data_staleness_seconds > 120
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Data feed stale for {{ $labels.symbol }}"
+          description: "No data received for {{ $labels.symbol }} in {{ $value }}s."
+
+      # WebSocket reconnections spiking
+      - alert: WebSocketReconnectionSpike
+        expr: increase(trading_ws_reconnections_total[5m]) > 3
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Frequent WebSocket reconnections"
+          description: "{{ $value }} reconnections in 5 minutes for {{ $labels.exchange }}."
+
+  - name: trading_quality
+    rules:
+      # Strategy quality score dropping below passing threshold
+      - alert: StrategyQualityFailing
+        expr: trading_quality_passing == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Strategy {{ $labels.strategy_id }} failing quality checks"
+          description: "Strategy is below minimum quality threshold."
+
+      # Canary component unhealthy
+      - alert: CanaryUnhealthy
+        expr: trading_canary_status == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Canary component {{ $labels.component }} unhealthy"
+          description: "Governance canary detected unhealthy component."

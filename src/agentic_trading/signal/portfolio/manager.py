@@ -34,11 +34,15 @@ class PortfolioManager:
         max_gross_exposure_pct: float = 1.0,
         sizing_multiplier: float = 1.0,
         governance_sizing_fn: Callable[[str], float] | None = None,
+        prediction_market_agent: Any = None,
     ) -> None:
         self._max_position_pct = max_position_pct
         self._max_gross_exposure = max_gross_exposure_pct
         self._sizing_multiplier = sizing_multiplier
         self._governance_sizing_fn = governance_sizing_fn
+        self._prediction_market_agent = prediction_market_agent
+        self._pm_max_boost: float = 0.15  # Max confidence adjustment
+        self._pm_shadow_mode: bool = True  # Log only, don't affect sizing
         self._pending_signals: list[Signal] = []
 
     def on_signal(self, signal: Signal) -> None:
@@ -256,6 +260,28 @@ class PortfolioManager:
 
         risk_pct = min(self._max_position_pct, confidence * 0.05)
 
+        # --- Prediction market confidence adjustment ---
+        pm_adjustment = self._get_pm_confidence_adjustment(
+            best_signal.symbol, best_signal.direction
+        )
+        if pm_adjustment != 0.0:
+            original_risk = risk_pct
+            adjusted_confidence = max(0.0, min(1.0, confidence + pm_adjustment))
+            risk_pct = min(self._max_position_pct, adjusted_confidence * 0.05)
+            logger.info(
+                "PM adjustment for %s: confidence %.3f → %.3f "
+                "(pm_adj=%+.3f, risk_pct %.4f → %.4f)%s",
+                best_signal.symbol,
+                confidence,
+                adjusted_confidence,
+                pm_adjustment,
+                original_risk,
+                risk_pct,
+                " [SHADOW]" if self._pm_shadow_mode else "",
+            )
+            if self._pm_shadow_mode:
+                risk_pct = original_risk  # Don't apply in shadow mode
+
         if sizing_method == "volatility_adjusted" and atr > 0:
             qty = volatility_adjusted_size(
                 capital=capital,
@@ -304,7 +330,11 @@ class PortfolioManager:
         # Volatility-adjusted sizing with tiny ATR (e.g. 1-minute candles)
         # can produce enormous positions that exceed available capital.
         max_notional = capital * self._max_position_pct
-        notional = float(qty) * price
+        from agentic_trading.core.enums import AssetClass
+        if instrument is not None and instrument.asset_class == AssetClass.FX:
+            notional = float(instrument.notional_value(qty, Decimal(str(price))))
+        else:
+            notional = float(qty) * price
         if notional > max_notional and notional > 0:
             scale = max_notional / notional
             qty = Decimal(str(float(qty) * scale))
@@ -333,3 +363,57 @@ class PortfolioManager:
     def set_sizing_multiplier(self, mult: float) -> None:
         """Update sizing multiplier (called by regime policy)."""
         self._sizing_multiplier = max(0.0, min(2.0, mult))
+
+    def set_prediction_market_agent(self, agent: Any) -> None:
+        """Inject prediction market agent after construction."""
+        self._prediction_market_agent = agent
+
+    def configure_pm(
+        self,
+        max_boost: float = 0.15,
+        shadow_mode: bool = True,
+    ) -> None:
+        """Configure prediction market integration parameters."""
+        self._pm_max_boost = max_boost
+        self._pm_shadow_mode = shadow_mode
+
+    def _get_pm_confidence_adjustment(
+        self,
+        symbol: str,
+        direction: SignalDirection,
+    ) -> float:
+        """Compute confidence adjustment from prediction market consensus.
+
+        Returns a value in [-max_boost, +max_boost]:
+        - Positive: PM consensus aligns with signal direction → boost
+        - Negative: PM consensus diverges from signal direction → penalize
+        - Zero: No PM data or neutral consensus
+        """
+        if self._prediction_market_agent is None:
+            return 0.0
+
+        try:
+            consensus = self._prediction_market_agent.get_consensus(symbol)
+        except Exception:
+            return 0.0
+
+        if consensus is None or consensus.market_count == 0:
+            return 0.0
+
+        score = consensus.consensus_score  # -1.0 to +1.0
+
+        # Check alignment with signal direction
+        if direction == SignalDirection.LONG:
+            # Positive consensus = aligned, negative = divergent
+            alignment = score
+        elif direction == SignalDirection.SHORT:
+            # Negative consensus = aligned, positive = divergent
+            alignment = -score
+        else:
+            return 0.0  # FLAT signals don't get PM adjustment
+
+        # Scale alignment to max_boost range
+        adjustment = alignment * self._pm_max_boost
+
+        # Clamp to max boost
+        return max(-self._pm_max_boost, min(self._pm_max_boost, adjustment))

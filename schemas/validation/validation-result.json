@@ -1,0 +1,204 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-trading/schemas/validation/validation-result.json",
+  "title": "ValidationResult",
+  "description": "Aggregate result from the multi-layer validation pipeline for LLM agent outputs.",
+  "version": 1,
+  "type": "object",
+  "required": ["validation_id", "overall_passed", "quality_score"],
+  "additionalProperties": false,
+  "properties": {
+    "validation_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier for this validation run."
+    },
+    "trace_id": {
+      "type": "string",
+      "default": "",
+      "description": "Correlation ID from the originating LLMEnvelope."
+    },
+    "envelope_id": {
+      "type": "string",
+      "default": "",
+      "description": "ID of the LLMEnvelope that produced the validated output."
+    },
+    "agent_id": {
+      "type": "string",
+      "default": "",
+      "description": "Agent that produced the output."
+    },
+    "agent_type": {
+      "type": "string",
+      "default": "",
+      "description": "Type of agent (e.g. cmt_analyst, signal)."
+    },
+    "output_type": {
+      "type": "string",
+      "default": "",
+      "description": "Output model type (e.g. CMTAssessmentResponse, Signal)."
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When validation was performed."
+    },
+    "schema_passed": {
+      "type": "boolean",
+      "description": "Layer 1 (schema) result."
+    },
+    "evidence_passed": {
+      "type": "boolean",
+      "description": "Layer 2 (evidence) result."
+    },
+    "business_rules_passed": {
+      "type": "boolean",
+      "description": "Layer 3 (business rules) result."
+    },
+    "critique_passed": {
+      "type": ["boolean", "null"],
+      "default": null,
+      "description": "Layer 4 (critique) result. Null if not triggered."
+    },
+    "overall_passed": {
+      "type": "boolean",
+      "description": "All layers passed."
+    },
+    "quality_score": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "Computed quality score (0.0-1.0). Maps to MetadataStandard.quality_score."
+    },
+    "issues": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/ValidationIssue" },
+      "description": "All issues from all validation layers."
+    },
+    "claims": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/ClaimAnnotation" },
+      "description": "Evidence citation analysis."
+    },
+    "critique": {
+      "oneOf": [
+        { "$ref": "#/$defs/CritiqueResult" },
+        { "type": "null" }
+      ],
+      "default": null,
+      "description": "Second-model critique output (if triggered)."
+    },
+    "remediation": {
+      "oneOf": [
+        { "$ref": "#/$defs/RemediationRecord" },
+        { "type": "null" }
+      ],
+      "default": null,
+      "description": "Remediation tracking record."
+    },
+    "recommended_action": {
+      "type": "string",
+      "enum": ["retry", "re_retrieve", "escalate", "insufficient_evidence", "accept_with_warnings"],
+      "default": "accept_with_warnings",
+      "description": "Recommended next action."
+    },
+    "latency_ms": {
+      "type": "number",
+      "default": 0.0,
+      "description": "Total validation pipeline latency in milliseconds."
+    },
+    "output_hash": {
+      "type": "string",
+      "default": "",
+      "description": "SHA256[:16] of the validated output for integrity."
+    }
+  },
+  "$defs": {
+    "ValidationIssue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["issue_id", "layer", "severity", "code", "message"],
+      "properties": {
+        "issue_id": { "type": "string", "format": "uuid" },
+        "layer": {
+          "type": "string",
+          "enum": ["schema", "evidence", "business_rule", "critique"]
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["info", "warning", "error", "critical"]
+        },
+        "code": { "type": "string" },
+        "message": { "type": "string" },
+        "field_path": { "type": "string", "default": "" },
+        "expected": { "default": null },
+        "actual": { "default": null },
+        "metadata": { "type": "object", "default": {} }
+      }
+    },
+    "ClaimAnnotation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claim_id", "field_path", "claim_text", "claim_type"],
+      "properties": {
+        "claim_id": { "type": "string", "format": "uuid" },
+        "field_path": { "type": "string" },
+        "claim_text": { "type": "string" },
+        "claim_type": {
+          "type": "string",
+          "enum": ["cited", "assumption", "uncited", "derived"]
+        },
+        "evidence_ids": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        },
+        "confidence": { "type": "number", "default": 1.0 },
+        "validator_confidence": { "type": "number", "default": 0.0 }
+      }
+    },
+    "CritiqueResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "critique_id": { "type": "string", "format": "uuid" },
+        "model_used": { "type": "string", "default": "" },
+        "triggered_by": { "type": "string", "default": "" },
+        "overall_score": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "issues_found": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ValidationIssue" },
+          "default": []
+        },
+        "reasoning": { "type": "string", "default": "" },
+        "cost_usd": { "type": "number", "default": 0.0 },
+        "latency_ms": { "type": "number", "default": 0.0 },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
+    },
+    "RemediationRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["remediation_id", "validation_id"],
+      "properties": {
+        "remediation_id": { "type": "string", "format": "uuid" },
+        "validation_id": { "type": "string" },
+        "state": {
+          "type": "string",
+          "enum": ["pending", "retrying", "re_retrieving", "escalated", "resolved", "exhausted"],
+          "default": "pending"
+        },
+        "actions_taken": { "type": "array", "default": [] },
+        "retry_count": { "type": "integer", "default": 0 },
+        "max_retries": { "type": "integer", "default": 2 },
+        "started_at": { "type": "string", "format": "date-time" },
+        "resolved_at": {
+          "type": ["string", "null"],
+          "format": "date-time",
+          "default": null
+        },
+        "resolution": { "type": "string", "default": "" }
+      }
+    }
+  }
+}

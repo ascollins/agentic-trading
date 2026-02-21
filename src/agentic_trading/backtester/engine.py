@@ -6,7 +6,6 @@ simulated execution, producing deterministic results.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import uuid
@@ -25,6 +24,7 @@ from agentic_trading.core.events import (
     OrderIntent,
     Signal,
 )
+from agentic_trading.core.ids import payload_hash
 from agentic_trading.core.interfaces import PortfolioState, TradingContext
 from agentic_trading.core.models import Balance, Candle, Instrument, Position
 from agentic_trading.event_bus.memory_bus import MemoryEventBus
@@ -470,12 +470,31 @@ class BacktestEngine:
         self._sim_positions.pop(pos.symbol, None)
 
     def _close_position_at_stop(self, pos: _SimPosition, candle: Candle) -> None:
-        """Close a position at its stop price (not candle close).
+        """Close a position at its stop price *with slippage applied*.
 
-        Uses the stop price for fill calculation to simulate realistic
-        stop-loss execution.  Fees are still applied via the fee model.
+        Stop-loss orders execute as aggressive market orders once the
+        trigger level is breached, so they are subject to slippage
+        beyond the stop price itself.  The slippage model is applied
+        in the adverse direction (buy-to-close for shorts, sell-to-close
+        for longs) to produce a realistic fill.
+
+        Fees are still applied via the fee model.
         """
-        stop_price = pos.stop_price
+        # Apply slippage to the stop price (adverse direction).
+        # is_buy=True for short closes (buy-to-cover), False for long closes.
+        is_buy_close = pos.side == "short"
+        fill_price = self._slippage.compute_slippage(
+            price=pos.stop_price,
+            qty=pos.qty,
+            is_buy=is_buy_close,
+        )
+        # Clamp: slippage must not improve on the stop price.
+        if pos.side == "long":
+            fill_price = min(fill_price, pos.stop_price)
+        else:
+            fill_price = max(fill_price, pos.stop_price)
+
+        stop_price = fill_price  # keep downstream variable name
         fee = float(self._fee_model.compute_fee(
             price=stop_price,
             qty=pos.qty,
@@ -660,16 +679,12 @@ class BacktestEngine:
 
     def _compute_hash(self) -> str:
         """Compute deterministic hash of the backtest results."""
-        data = json.dumps(
-            {
-                "equity_curve": [round(e, 6) for e in self._equity_curve],
-                "trade_returns": [round(r, 8) for _, r in self._trade_returns],
-                "total_fees": round(self._total_fees, 6),
-                "seed": self._seed,
-            },
-            sort_keys=True,
-        )
-        return hashlib.sha256(data.encode()).hexdigest()[:16]
+        return payload_hash({
+            "equity_curve": [round(e, 6) for e in self._equity_curve],
+            "trade_returns": [round(r, 8) for _, r in self._trade_returns],
+            "total_fees": round(self._total_fees, 6),
+            "seed": self._seed,
+        })
 
     @property
     def event_log(self) -> list[dict[str, Any]]:

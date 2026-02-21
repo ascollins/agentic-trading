@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-trading/schemas/events/decision.json",
+  "title": "DecisionEvent",
+  "description": "A deterministic decision (risk check, policy evaluation, governance gate).",
+  "version": 1,
+  "type": "object",
+  "required": ["event_id", "trace_id", "span_id", "tenant_id", "actor", "component", "timestamp", "schema_version", "event_type", "payload"],
+  "properties": {
+    "event_id": { "type": "string", "format": "uuid" },
+    "trace_id": { "type": "string", "format": "uuid" },
+    "span_id": { "type": "string", "format": "uuid" },
+    "tenant_id": { "type": "string", "default": "default" },
+    "actor": { "type": "string" },
+    "component": { "type": "string" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "input_hash": { "type": "string" },
+    "output_hash": { "type": "string" },
+    "schema_version": { "type": "integer", "minimum": 1 },
+    "event_type": { "type": "string", "const": "decision" },
+    "causation_id": { "type": "string" },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "decision_type": { "type": "string", "description": "Type of decision (e.g. 'risk_check', 'policy_eval', 'governance_gate')" },
+        "outcome": { "type": "string", "description": "Decision result (e.g. 'allowed', 'blocked', 'reduced')" },
+        "rules_evaluated": { "type": "integer", "description": "Number of rules evaluated" },
+        "failed_rules": { "type": "array", "items": { "type": "string" }, "description": "Names of failed rules" },
+        "context_snapshot": { "type": "object", "description": "Snapshot of context used for the decision" }
+      }
+    },
+    "latency_ms": { "type": ["number", "null"] },
+    "error": { "type": ["string", "null"] }
+  },
+  "additionalProperties": false
+}

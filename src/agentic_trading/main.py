@@ -53,18 +53,19 @@ async def run(
 
     # 4. Import strategy modules to trigger @register_strategy decorators.
     # Must happen before Orchestrator.from_config() which calls create_strategy().
-    import agentic_trading.strategies.trend_following  # noqa: F401
-    import agentic_trading.strategies.mean_reversion  # noqa: F401
+    import agentic_trading.strategies.bb_squeeze  # noqa: F401
     import agentic_trading.strategies.breakout  # noqa: F401
+    import agentic_trading.strategies.fibonacci_confluence  # noqa: F401
     import agentic_trading.strategies.funding_arb  # noqa: F401
+    import agentic_trading.strategies.mean_reversion  # noqa: F401
+    import agentic_trading.strategies.mean_reversion_enhanced  # noqa: F401
     import agentic_trading.strategies.multi_tf_ma  # noqa: F401
+    import agentic_trading.strategies.obv_divergence  # noqa: F401
     import agentic_trading.strategies.rsi_divergence  # noqa: F401
     import agentic_trading.strategies.stochastic_macd  # noqa: F401
-    import agentic_trading.strategies.bb_squeeze  # noqa: F401
-    import agentic_trading.strategies.mean_reversion_enhanced  # noqa: F401
-    import agentic_trading.strategies.fibonacci_confluence  # noqa: F401
-    import agentic_trading.strategies.obv_divergence  # noqa: F401
     import agentic_trading.strategies.supply_demand  # noqa: F401
+    import agentic_trading.strategies.trend_following  # noqa: F401
+    import agentic_trading.strategies.prediction_consensus  # noqa: F401
 
     # 5. Build Orchestrator (clock, bus, context, all layer managers)
     orch = Orchestrator.from_config(settings)
@@ -136,24 +137,25 @@ def _aggregate_candles(candles: list, target_tf: Timeframe) -> list:
 
 async def _run_backtest(settings: Settings, ctx: TradingContext) -> None:
     """Run backtest mode with BacktestEngine."""
+    import agentic_trading.strategies.bb_squeeze  # noqa: F401
+    import agentic_trading.strategies.breakout  # noqa: F401
+    import agentic_trading.strategies.fibonacci_confluence  # noqa: F401
+    import agentic_trading.strategies.funding_arb  # noqa: F401
+    import agentic_trading.strategies.mean_reversion  # noqa: F401
+    import agentic_trading.strategies.mean_reversion_enhanced  # noqa: F401
+    import agentic_trading.strategies.multi_tf_ma  # noqa: F401
+    import agentic_trading.strategies.obv_divergence  # noqa: F401
+    import agentic_trading.strategies.rsi_divergence  # noqa: F401
+    import agentic_trading.strategies.stochastic_macd  # noqa: F401
+    import agentic_trading.strategies.supply_demand  # noqa: F401
+
+    # Import strategy modules to trigger @register_strategy decorators
+    import agentic_trading.strategies.trend_following  # noqa: F401
+
     from .backtester.engine import BacktestEngine
     from .data.historical import HistoricalDataLoader
     from .features.engine import FeatureEngine
     from .strategies.registry import create_strategy
-
-    # Import strategy modules to trigger @register_strategy decorators
-    import agentic_trading.strategies.trend_following  # noqa: F401
-    import agentic_trading.strategies.mean_reversion  # noqa: F401
-    import agentic_trading.strategies.breakout  # noqa: F401
-    import agentic_trading.strategies.funding_arb  # noqa: F401
-    import agentic_trading.strategies.multi_tf_ma  # noqa: F401
-    import agentic_trading.strategies.rsi_divergence  # noqa: F401
-    import agentic_trading.strategies.stochastic_macd  # noqa: F401
-    import agentic_trading.strategies.bb_squeeze  # noqa: F401
-    import agentic_trading.strategies.mean_reversion_enhanced  # noqa: F401
-    import agentic_trading.strategies.fibonacci_confluence  # noqa: F401
-    import agentic_trading.strategies.obv_divergence  # noqa: F401
-    import agentic_trading.strategies.supply_demand  # noqa: F401
 
     bt = settings.backtest
     logger.info("Backtest mode: %s to %s", bt.start_date, bt.end_date)
@@ -288,39 +290,39 @@ async def _run_live_or_paper(
     # Import metrics helpers (server already started in run())
     try:
         from .observability.metrics import (
-            record_signal,
             record_candle_processed,
+            record_decision_latency,
+            record_fill,
+            record_governance_block,
+            record_governance_decision,
+            record_governance_latency,
+            record_journal_mistake,
+            record_journal_trade,
+            record_order,
+            record_signal,
+            update_active_tokens,
+            update_canary_status,
+            update_daily_pnl,
+            update_data_staleness,
+            update_drawdown,
             update_equity,
             update_gross_exposure,
-            update_drawdown,
-            update_daily_pnl,
-            update_kill_switch,
-            update_position,
-            record_order,
-            record_fill,
-            record_decision_latency,
-            update_data_staleness,
-            record_governance_decision,
-            record_governance_block,
-            record_governance_latency,
-            update_maturity_level,
             update_health_score,
-            update_canary_status,
-            update_active_tokens,
-            record_journal_trade,
-            update_journal_rolling_metrics,
-            update_journal_counts,
-            update_journal_confidence,
-            update_journal_overtrading,
-            update_journal_edge,
-            update_journal_monte_carlo,
-            record_journal_mistake,
-            update_journal_mistake_impact,
-            update_journal_session_metrics,
-            update_journal_correlation,
             update_journal_best_session,
-            update_quality_scores,
+            update_journal_confidence,
+            update_journal_correlation,
+            update_journal_counts,
+            update_journal_edge,
+            update_journal_mistake_impact,
+            update_journal_monte_carlo,
+            update_journal_overtrading,
+            update_journal_rolling_metrics,
+            update_journal_session_metrics,
+            update_kill_switch,
+            update_maturity_level,
             update_portfolio_quality,
+            update_position,
+            update_quality_scores,
         )
     except Exception:
         pass
@@ -346,9 +348,10 @@ async def _run_live_or_paper(
         for strat in strategies:
             logger.info("Loaded strategy: %s", getattr(strat, "strategy_id", "?"))
     else:
+        import agentic_trading.strategies.trend_following  # noqa: F401
+
         from .strategies.registry import create_strategy
         from .strategies.trend_following import TrendFollowingStrategy  # noqa: F401
-        import agentic_trading.strategies.trend_following  # noqa: F401
         strategies = [TrendFollowingStrategy()]
         logger.info("No strategies configured, using default trend_following")
 
@@ -356,13 +359,13 @@ async def _run_live_or_paper(
     governance_gate = None
     governance_canary = None
     if settings.governance.enabled:
+        from .governance.canary import GovernanceCanary
+        from .governance.drift_detector import DriftDetector
         from .governance.gate import GovernanceGate
-        from .governance.maturity import MaturityManager
         from .governance.health_score import HealthTracker
         from .governance.impact_classifier import ImpactClassifier
-        from .governance.drift_detector import DriftDetector
+        from .governance.maturity import MaturityManager
         from .governance.tokens import TokenManager
-        from .governance.canary import GovernanceCanary
 
         maturity_mgr = MaturityManager(settings.governance.maturity)
         health_tracker = HealthTracker(settings.governance.health_score)
@@ -399,15 +402,15 @@ async def _run_live_or_paper(
 
     # Wire Trade Journal & Analytics (Edgewonk-inspired, Tiers 1-3)
     from .journal import (
-        TradeJournal,
-        RollingTracker,
+        CoinFlipBaseline,
         ConfidenceCalibrator,
+        CorrelationMatrix,
+        MistakeDetector,
         MonteCarloProjector,
         OvertradingDetector,
-        CoinFlipBaseline,
-        MistakeDetector,
+        RollingTracker,
         SessionAnalyser,
-        CorrelationMatrix,
+        TradeJournal,
         TradeReplayer,
     )
 
@@ -581,8 +584,8 @@ async def _run_live_or_paper(
     # Wire journal persistence to PostgreSQL
     _journal_repo = None
     try:
-        from .storage.postgres.connection import init_engine, get_session
         from .journal.persistence import JournalRepo
+        from .storage.postgres.connection import get_session, init_engine
         _db_engine = await init_engine(
             settings.postgres_url, create_tables=True
         )
@@ -602,8 +605,8 @@ async def _run_live_or_paper(
     async def _persist_trade(trade):
         """Persist a closed trade to PostgreSQL."""
         try:
-            from .storage.postgres.connection import get_session
             from .journal.persistence import JournalRepo
+            from .storage.postgres.connection import get_session
             async with get_session() as session:
                 repo = JournalRepo(session)
                 await repo.save_trade(trade)
@@ -620,15 +623,16 @@ async def _run_live_or_paper(
     narration_store = None
     narration_runner = None
     if settings.narration.enabled:
-        from .narration.service import NarrationService, Verbosity as NarrVerbosity
-        from .narration.store import NarrationStore as NarrStore
         from .narration.schema import (
-            DecisionExplanation,
             ConsideredSetup,
-            RiskSummary,
+            DecisionExplanation,
             PositionSnapshot,
+            RiskSummary,
         )
         from .narration.server import start_narration_server
+        from .narration.service import NarrationService
+        from .narration.service import Verbosity as NarrVerbosity
+        from .narration.store import NarrationStore as NarrStore
 
         _verb_map = {
             "quiet": NarrVerbosity.QUIET,
@@ -643,7 +647,13 @@ async def _run_live_or_paper(
             heartbeat_seconds=settings.narration.heartbeat_seconds,
             dedupe_window_seconds=settings.narration.dedupe_window_seconds,
         )
-        narration_store = NarrStore(max_items=settings.narration.max_stored_items)
+        _narration_persist = None
+        if settings.mode != Mode.BACKTEST:
+            _narration_persist = "data/narration_history.jsonl"
+        narration_store = NarrStore(
+            max_items=settings.narration.max_stored_items,
+            persistence_path=_narration_persist,
+        )
 
         if settings.narration.tavus_mock:
             from .narration.tavus import MockTavusAdapter
@@ -688,9 +698,9 @@ async def _run_live_or_paper(
     # ---------------------------------------------------------------
     # Exchange adapter + Execution pipeline
     # ---------------------------------------------------------------
-    from .risk.manager import RiskManager
-    from .execution.engine import ExecutionEngine
     from .core.events import FillEvent, OrderAck
+    from .execution.engine import ExecutionEngine
+    from .risk.manager import RiskManager
 
     # Read-only guard: skip execution pipeline when observing only
     _read_only = settings.read_only
@@ -711,14 +721,21 @@ async def _run_live_or_paper(
 
     adapter = None  # will be set below
 
+    # Detect FX mode from exchange
+    _is_fx = active_exchange in (Exchange.OANDA, Exchange.LMAX)
+    _balance_ccy = "USD" if _is_fx else "USDT"
+
     if settings.mode == Mode.PAPER:
         from .execution.adapters.paper import PaperAdapter
 
         adapter = PaperAdapter(
             exchange=active_exchange,
-            initial_balances={"USDT": Decimal("100000")},
+            initial_balances={_balance_ccy: Decimal("100000")},
         )
-        logger.info("Paper adapter ready with 100,000 USDT on %s", active_exchange.value)
+        logger.info(
+            "Paper adapter ready with 100,000 %s on %s",
+            _balance_ccy, active_exchange.value,
+        )
 
         try:
             update_equity(100_000.0)
@@ -747,7 +764,27 @@ async def _run_live_or_paper(
 
     # Fetch instrument metadata from exchange and populate ctx.instruments
     _sym_list = settings.symbols.symbols or []
-    if adapter is not None and _sym_list:
+
+    # FX paper mode: pre-load hardcoded instrument definitions
+    # (no exchange API to query for FX paper trading)
+    if _is_fx and settings.mode == Mode.PAPER and _sym_list:
+        from .core.fx_instruments import build_fx_instruments
+
+        _fx_instruments = build_fx_instruments(_sym_list, exchange=active_exchange)
+        for sym, inst in _fx_instruments.items():
+            ctx.instruments[sym] = inst
+            if adapter is not None:
+                adapter.load_instrument(inst)
+            logger.info(
+                "  FX %s: pip=%s lot=%s tick=%s",
+                sym, inst.pip_size, inst.lot_size, inst.tick_size,
+            )
+        logger.info(
+            "FX instruments pre-loaded: %d/%d symbols",
+            len(_fx_instruments), len(_sym_list),
+        )
+
+    if adapter is not None and _sym_list and not ctx.instruments:
         logger.info("Fetching instrument metadata for %d symbols...", len(_sym_list))
         for sym in _sym_list:
             try:
@@ -764,6 +801,10 @@ async def _run_live_or_paper(
             "Instruments loaded: %d/%d symbols",
             len(ctx.instruments), len(_sym_list),
         )
+
+    # Wire instruments into FeatureEngine (loaded after orchestrator creation)
+    if ctx.instruments:
+        feature_engine._instruments = ctx.instruments
 
     # Risk manager
     risk_manager = RiskManager(
@@ -836,8 +877,9 @@ async def _run_live_or_paper(
     _reasoning_bus = ReasoningMessageBus()
     _consensus_store = None
     try:
-        from .reasoning.conversation_store import JsonFileConversationStore
         import os
+
+        from .reasoning.conversation_store import JsonFileConversationStore
         _store_path = os.path.join(
             settings.backtest.data_dir if hasattr(settings.backtest, "data_dir") else "data",
             "conversations.jsonl",
@@ -856,10 +898,10 @@ async def _run_live_or_paper(
         }
 
     from .reasoning.consensus import (
-        MarketStructureDesk,
-        SMCAnalystDesk,
         CMTTechnicianDesk,
+        MarketStructureDesk,
         RiskManagerDesk,
+        SMCAnalystDesk,
     )
 
     _consensus_gate = ConsensusGate(
@@ -1089,8 +1131,8 @@ async def _run_live_or_paper(
                 try:
                     from .narration.schema import (
                         DecisionExplanation,
-                        RiskSummary,
                         PositionSnapshot,
+                        RiskSummary,
                     )
 
                     # Determine action based on consensus outcome
@@ -1218,8 +1260,8 @@ async def _run_live_or_paper(
                 try:
                     from .narration.schema import (
                         DecisionExplanation,
-                        RiskSummary,
                         PositionSnapshot,
+                        RiskSummary,
                     )
 
                     regime_str = ""
@@ -1417,7 +1459,11 @@ async def _run_live_or_paper(
                                 if tool_gateway is not None:
                                     from agentic_trading.control_plane.action_types import (
                                         ActionScope as _AS,
+                                    )
+                                    from agentic_trading.control_plane.action_types import (
                                         ProposedAction as _PA,
+                                    )
+                                    from agentic_trading.control_plane.action_types import (
                                         ToolName as _TN,
                                     )
                                     _tp_params: dict[str, Any] = {"symbol": event.symbol}
@@ -1497,8 +1543,8 @@ async def _run_live_or_paper(
                 try:
                     from .narration.schema import (
                         DecisionExplanation,
-                        RiskSummary,
                         PositionSnapshot,
+                        RiskSummary,
                     )
 
                     regime_str = ""
@@ -1620,8 +1666,8 @@ async def _run_live_or_paper(
     symbols = settings.symbols.symbols or _DEFAULT_SYMBOLS
     if settings.exchanges:
         try:
-            from .data.feed_manager import FeedManager
             from .data.candle_builder import CandleBuilder
+            from .data.feed_manager import FeedManager
 
             candle_builder = CandleBuilder(event_bus=ctx.event_bus)
             feed_manager = FeedManager(
@@ -1776,7 +1822,11 @@ async def _run_live_or_paper(
                             if tool_gateway is not None:
                                 from agentic_trading.control_plane.action_types import (
                                     ActionScope as _AS,
+                                )
+                                from agentic_trading.control_plane.action_types import (
                                     ProposedAction as _PA,
+                                )
+                                from agentic_trading.control_plane.action_types import (
                                     ToolName as _TN,
                                 )
                                 _stp_params: dict[str, Any] = {"symbol": _pos.symbol}
@@ -1841,10 +1891,10 @@ async def _run_live_or_paper(
     # IncidentManager, DailyEffectivenessScorecard
     # ---------------------------------------------------------------
     from .agents.registry import AgentRegistry
-    from .governance.approval_manager import ApprovalManager
     from .execution.quality_tracker import ExecutionQualityTracker
-    from .governance.strategy_lifecycle import StrategyLifecycleManager
+    from .governance.approval_manager import ApprovalManager
     from .governance.incident_manager import IncidentManager
+    from .governance.strategy_lifecycle import StrategyLifecycleManager
     from .observability.daily_scorecard import DailyEffectivenessScorecard
 
     agent_registry = AgentRegistry()
@@ -1917,7 +1967,31 @@ async def _run_live_or_paper(
     )
     agent_registry.register(tpsl_watchdog)
 
-    # Start all registered agents (IncidentManager, StrategyLifecycleManager, TpSlWatchdog)
+    # PredictionMarketAgent — polls Polymarket Gamma API for consensus data
+    if settings.prediction_market.enabled:
+        from .agents.prediction_market import PredictionMarketAgent
+
+        pm_agent = PredictionMarketAgent(
+            event_bus=ctx.event_bus,
+            config=settings.prediction_market,
+            symbols=settings.symbols.symbols or [],
+            agent_id="prediction-market",
+        )
+        agent_registry.register(pm_agent)
+
+        # Wire PM agent into PortfolioManager for confidence adjustment
+        _signal_mgr.portfolio_manager.set_prediction_market_agent(pm_agent)
+        _signal_mgr.portfolio_manager.configure_pm(
+            max_boost=settings.prediction_market.max_confidence_boost,
+            shadow_mode=settings.prediction_market.shadow_mode,
+        )
+        logger.info(
+            "PredictionMarketAgent created (max_boost=%.2f, shadow_mode=%s)",
+            settings.prediction_market.max_confidence_boost,
+            settings.prediction_market.shadow_mode,
+        )
+
+    # Start all registered agents
     await agent_registry.start_all()
     logger.info(
         "Refurb components wired: AgentRegistry(%d agents), ApprovalManager, "
@@ -1934,6 +2008,7 @@ async def _run_live_or_paper(
     if settings.ui.enabled:
         try:
             import uvicorn
+
             from .ui.app import create_ui_app
 
             ui_app = create_ui_app(
@@ -2027,27 +2102,32 @@ async def run_walk_forward(
     Splits historical data into train/test windows, runs backtest on each,
     and reports overfitting metrics.
     """
+    import agentic_trading.strategies.bb_squeeze  # noqa: F401
+    import agentic_trading.strategies.breakout  # noqa: F401
+    import agentic_trading.strategies.fibonacci_confluence  # noqa: F401
+    import agentic_trading.strategies.funding_arb  # noqa: F401
+    import agentic_trading.strategies.mean_reversion  # noqa: F401
+    import agentic_trading.strategies.mean_reversion_enhanced  # noqa: F401
+    import agentic_trading.strategies.multi_tf_ma  # noqa: F401
+    import agentic_trading.strategies.obv_divergence  # noqa: F401
+    import agentic_trading.strategies.rsi_divergence  # noqa: F401
+    import agentic_trading.strategies.stochastic_macd  # noqa: F401
+    import agentic_trading.strategies.supply_demand  # noqa: F401
+
+    # Import strategy modules to trigger @register_strategy decorators
+    import agentic_trading.strategies.trend_following  # noqa: F401
+
     from .backtester.engine import BacktestEngine
     from .core.config import load_settings
     from .data.historical import HistoricalDataLoader
     from .features.engine import FeatureEngine
     from .strategies.registry import create_strategy
-    from .strategies.research.walk_forward import WalkForwardValidator, WalkForwardResult
-    from .strategies.research.experiment_log import ExperimentLogger, ExperimentConfig, ExperimentResult
-
-    # Import strategy modules to trigger @register_strategy decorators
-    import agentic_trading.strategies.trend_following  # noqa: F401
-    import agentic_trading.strategies.mean_reversion  # noqa: F401
-    import agentic_trading.strategies.breakout  # noqa: F401
-    import agentic_trading.strategies.funding_arb  # noqa: F401
-    import agentic_trading.strategies.multi_tf_ma  # noqa: F401
-    import agentic_trading.strategies.rsi_divergence  # noqa: F401
-    import agentic_trading.strategies.stochastic_macd  # noqa: F401
-    import agentic_trading.strategies.bb_squeeze  # noqa: F401
-    import agentic_trading.strategies.mean_reversion_enhanced  # noqa: F401
-    import agentic_trading.strategies.fibonacci_confluence  # noqa: F401
-    import agentic_trading.strategies.obv_divergence  # noqa: F401
-    import agentic_trading.strategies.supply_demand  # noqa: F401
+    from .strategies.research.experiment_log import (
+        ExperimentConfig,
+        ExperimentLogger,
+        ExperimentResult,
+    )
+    from .strategies.research.walk_forward import WalkForwardResult, WalkForwardValidator
 
     settings = load_settings(config_path=config_path, overrides=overrides)
     _setup_logging(settings)
@@ -2228,25 +2308,26 @@ async def run_optimize(
     Loads historical data and runs ParameterOptimizer for each enabled
     strategy (or a single specified strategy).
     """
+    import agentic_trading.strategies.bb_squeeze  # noqa: F401
+    import agentic_trading.strategies.breakout  # noqa: F401
+    import agentic_trading.strategies.fibonacci_confluence  # noqa: F401
+    import agentic_trading.strategies.funding_arb  # noqa: F401
+    import agentic_trading.strategies.mean_reversion  # noqa: F401
+    import agentic_trading.strategies.mean_reversion_enhanced  # noqa: F401
+    import agentic_trading.strategies.multi_tf_ma  # noqa: F401
+    import agentic_trading.strategies.obv_divergence  # noqa: F401
+    import agentic_trading.strategies.rsi_divergence  # noqa: F401
+    import agentic_trading.strategies.stochastic_macd  # noqa: F401
+    import agentic_trading.strategies.supply_demand  # noqa: F401
+
+    # Import strategy modules to trigger @register_strategy decorators
+    import agentic_trading.strategies.trend_following  # noqa: F401
+
     from .core.config import load_settings
     from .data.historical import HistoricalDataLoader
     from .features.engine import FeatureEngine
     from .optimizer.engine import ParameterOptimizer
     from .optimizer.report import print_summary
-
-    # Import strategy modules to trigger @register_strategy decorators
-    import agentic_trading.strategies.trend_following  # noqa: F401
-    import agentic_trading.strategies.mean_reversion  # noqa: F401
-    import agentic_trading.strategies.breakout  # noqa: F401
-    import agentic_trading.strategies.funding_arb  # noqa: F401
-    import agentic_trading.strategies.multi_tf_ma  # noqa: F401
-    import agentic_trading.strategies.rsi_divergence  # noqa: F401
-    import agentic_trading.strategies.stochastic_macd  # noqa: F401
-    import agentic_trading.strategies.bb_squeeze  # noqa: F401
-    import agentic_trading.strategies.mean_reversion_enhanced  # noqa: F401
-    import agentic_trading.strategies.fibonacci_confluence  # noqa: F401
-    import agentic_trading.strategies.obv_divergence  # noqa: F401
-    import agentic_trading.strategies.supply_demand  # noqa: F401
 
     settings = load_settings(config_path=config_path, overrides=overrides)
     _setup_logging(settings)

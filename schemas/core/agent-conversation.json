@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-trading/schemas/core/agent-conversation.json",
+  "title": "AgentConversation",
+  "description": "Multi-agent discussion with messages, traces, and outcome. System of record: PostgreSQL (agent_conversations) + JSONL.",
+  "version": 1,
+  "type": "object",
+  "required": ["conversation_id", "symbol", "started_at", "outcome"],
+  "properties": {
+    "conversation_id": { "type": "string", "format": "uuid" },
+    "symbol": { "type": "string" },
+    "timeframe": { "type": "string" },
+    "trigger_event": { "type": "string" },
+    "strategy_id": { "type": "string" },
+    "started_at": { "type": "string", "format": "date-time" },
+    "completed_at": { "type": ["string", "null"], "format": "date-time" },
+    "messages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["message_id", "conversation_id", "sender", "message_type", "content", "timestamp"],
+        "properties": {
+          "message_id": { "type": "string", "format": "uuid" },
+          "conversation_id": { "type": "string" },
+          "sender": { "type": "string", "enum": ["MARKET_STRUCTURE", "SMC_ANALYST", "CMT_TECHNICIAN", "RISK_MANAGER", "EXECUTION", "ORCHESTRATOR", "BROADCAST"] },
+          "recipients": { "type": "array", "items": { "type": "string" } },
+          "message_type": {
+            "type": "string",
+            "enum": ["MORNING_BRIEF", "MARKET_UPDATE", "ANALYSIS", "SIGNAL", "CHALLENGE", "RESPONSE", "RISK_ASSESSMENT", "VETO", "EXECUTION_PLAN", "FILL_REPORT", "DEBRIEF", "SYSTEM", "DISAGREEMENT"]
+          },
+          "content": { "type": "string" },
+          "structured_data": { "type": "object" },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+          "references": { "type": "array", "items": { "type": "string" } },
+          "metadata": { "type": "object" },
+          "timestamp": { "type": "string", "format": "date-time" }
+        }
+      }
+    },
+    "traces": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["trace_id", "agent_id", "agent_role", "started_at", "steps"],
+        "properties": {
+          "trace_id": { "type": "string", "format": "uuid" },
+          "conversation_id": { "type": "string" },
+          "agent_id": { "type": "string" },
+          "agent_role": { "type": "string" },
+          "symbol": { "type": "string" },
+          "started_at": { "type": "string", "format": "date-time" },
+          "completed_at": { "type": ["string", "null"], "format": "date-time" },
+          "steps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["step_id", "step_type", "content", "timestamp"],
+              "properties": {
+                "step_id": { "type": "string", "format": "uuid" },
+                "step_type": { "type": "string", "enum": ["PERCEPTION", "CONTEXT_LOAD", "HYPOTHESIS", "EVALUATION", "DECISION", "ACTION", "HANDOFF", "VETO", "OUTCOME"] },
+                "content": { "type": "string" },
+                "confidence": { "type": "number" },
+                "timestamp": { "type": "string", "format": "date-time" },
+                "evidence": { "type": "array", "items": { "type": "string" } },
+                "context_used": { "type": "array", "items": { "type": "string" } },
+                "metadata": { "type": "object" }
+              }
+            }
+          },
+          "outcome": { "type": "string" },
+          "thinking_raw": { "type": "string" },
+          "final_output": { "type": "string" }
+        }
+      }
+    },
+    "outcome": {
+      "type": "string",
+      "enum": ["TRADE_ENTERED", "TRADE_EXITED", "NO_TRADE", "VETOED", "ERROR", "DEBRIEF"]
+    },
+    "outcome_details": { "type": "object" },
+    "context_snapshot": { "type": "object" },
+    "tenant_id": { "type": "string", "default": "default" }
+  },
+  "additionalProperties": false
+}

@@ -11,7 +11,7 @@ Relationships:
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import (
@@ -32,9 +32,7 @@ from sqlalchemy.orm import (
     relationship,
 )
 
-
-def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+from agentic_trading.core.ids import utc_now as _utcnow
 
 
 def _new_uuid() -> uuid.UUID:
@@ -562,4 +560,51 @@ class AgentMessageRecord(Base):
         return (
             f"<AgentMessageRecord(message_id={self.message_id!r}, "
             f"sender={self.sender!r}, type={self.message_type!r})>"
+        )
+
+
+# ---------------------------------------------------------------------------
+# SpineEventRecord  (Telemetry audit spine)
+# ---------------------------------------------------------------------------
+
+class SpineEventRecord(Base):
+    """Append-only telemetry spine event.
+
+    Stores the unified event log that sits alongside the existing event bus.
+    No foreign-key constraints -- this is an independent, append-only log.
+    """
+
+    __tablename__ = "spine_events"
+
+    event_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    trace_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    span_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    causation_id: Mapped[str] = mapped_column(String(64), default="")
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False, default="default")
+    event_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    component: Mapped[str] = mapped_column(String(128), nullable=False)
+    actor: Mapped[str] = mapped_column(String(128), nullable=False, default="system")
+    timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False,
+    )
+    schema_version: Mapped[int] = mapped_column(Integer, default=1)
+    input_hash: Mapped[str] = mapped_column(String(32), default="")
+    output_hash: Mapped[str] = mapped_column(String(32), default="")
+    latency_ms: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
+    error: Mapped[str] = mapped_column(Text, default="")
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+
+    __table_args__ = (
+        Index("ix_spine_tenant_trace", "tenant_id", "trace_id"),
+        Index("ix_spine_tenant_timestamp", "tenant_id", "timestamp"),
+        Index("ix_spine_tenant_event_type", "tenant_id", "event_type"),
+        Index("ix_spine_tenant_component", "tenant_id", "component"),
+        Index("ix_spine_tenant_actor", "tenant_id", "actor"),
+        Index("ix_spine_span_id", "span_id"),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<SpineEventRecord(event_id={self.event_id!r}, "
+            f"event_type={self.event_type!r}, component={self.component!r})>"
         )

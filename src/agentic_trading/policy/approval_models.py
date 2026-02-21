@@ -14,12 +14,14 @@ Key concepts:
 
 from __future__ import annotations
 
-import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel, Field
+
+from agentic_trading.core.ids import new_id as _uuid
+from agentic_trading.core.ids import utc_now as _now
 
 # ---------------------------------------------------------------------------
 # Enums
@@ -56,18 +58,6 @@ class EscalationLevel(str, Enum):
     L2_OPERATOR = "L2_operator"  # Human operator approval
     L3_RISK = "L3_risk"          # Risk team approval
     L4_ADMIN = "L4_admin"        # Admin / CTO approval
-
-
-# ---------------------------------------------------------------------------
-# Models
-# ---------------------------------------------------------------------------
-
-def _uuid() -> str:
-    return str(uuid.uuid4())
-
-
-def _now() -> datetime:
-    return datetime.now(UTC)
 
 
 class ApprovalRequest(BaseModel):
@@ -108,7 +98,7 @@ class ApprovalRequest(BaseModel):
     @property
     def is_expired(self) -> bool:
         """Check if the request has exceeded its TTL."""
-        elapsed = (datetime.now(UTC) - self.created_at).total_seconds()
+        elapsed = (_now() - self.created_at).total_seconds()
         return elapsed > self.ttl_seconds
 
     @property

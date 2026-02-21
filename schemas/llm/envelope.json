@@ -1,0 +1,370 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-trading.dev/schemas/llm/envelope.json",
+  "title": "LLMEnvelope",
+  "description": "Mandatory contract for every LLM interaction — captures inputs, outputs, and validation in one auditable unit.",
+  "version": 1,
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "envelope_id",
+    "trace_id",
+    "tenant_id",
+    "created_at",
+    "workflow",
+    "instructions",
+    "budget",
+    "safety_constraints",
+    "response_format",
+    "provider",
+    "temperature",
+    "retry_policy"
+  ],
+  "properties": {
+    "envelope_id": {
+      "type": "string",
+      "description": "Unique UUID v4 identifier for this envelope."
+    },
+    "trace_id": {
+      "type": "string",
+      "description": "Correlation ID linking related interactions."
+    },
+    "causation_id": {
+      "type": "string",
+      "default": "",
+      "description": "ID of the direct cause event."
+    },
+    "tenant_id": {
+      "type": "string",
+      "default": "default",
+      "description": "Multi-tenant isolation key."
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp of envelope creation."
+    },
+    "workflow": {
+      "type": "string",
+      "enum": ["analysis", "planning", "execution", "general"],
+      "description": "Classification of the LLM interaction purpose."
+    },
+    "agent_id": {
+      "type": "string",
+      "default": "",
+      "description": "Identifier of the agent making the call."
+    },
+    "agent_type": {
+      "type": "string",
+      "default": "",
+      "description": "Type classification of the calling agent."
+    },
+    "instructions": {
+      "type": "string",
+      "minLength": 1,
+      "description": "System prompt or task description sent to the LLM."
+    },
+    "context": {
+      "type": "object",
+      "default": {},
+      "description": "Platform state snapshot provided as context."
+    },
+    "retrieved_evidence": {
+      "type": "array",
+      "default": [],
+      "items": { "$ref": "#/$defs/EvidenceItem" },
+      "description": "Evidence items retrieved for the LLM to consider."
+    },
+    "tools_allowed": {
+      "type": "array",
+      "default": [],
+      "items": { "type": "string" },
+      "description": "LLM tool-use allowlist."
+    },
+    "budget": {
+      "$ref": "#/$defs/LLMBudget",
+      "description": "Token and cost budget for this call."
+    },
+    "expected_output_schema": {
+      "type": "object",
+      "default": {},
+      "description": "JSON Schema the LLM response must conform to."
+    },
+    "safety_constraints": {
+      "$ref": "#/$defs/SafetyConstraints",
+      "description": "Safety guardrails applied to this call."
+    },
+    "response_format": {
+      "type": "string",
+      "enum": ["json", "text", "structured"],
+      "description": "Expected response format from the LLM."
+    },
+    "provider": {
+      "type": "string",
+      "enum": ["anthropic", "openai", "local"],
+      "description": "LLM provider to use."
+    },
+    "model": {
+      "type": "string",
+      "default": "",
+      "description": "Model identifier (e.g. claude-sonnet-4-5-20250929)."
+    },
+    "temperature": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 2.0,
+      "default": 0.0,
+      "description": "Sampling temperature. 0.0 = deterministic."
+    },
+    "retry_policy": {
+      "$ref": "#/$defs/RetryPolicy",
+      "description": "Retry rules for this call."
+    },
+    "envelope_hash": {
+      "type": "string",
+      "default": "",
+      "description": "SHA256[:16] integrity hash of instructions+context+evidence+model+workflow."
+    }
+  },
+  "$defs": {
+    "EvidenceItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source"],
+      "properties": {
+        "source": {
+          "type": "string",
+          "description": "Origin of this evidence (e.g. fact_table, candle_history)."
+        },
+        "content": {
+          "type": "object",
+          "default": {},
+          "description": "Evidence payload."
+        },
+        "relevance": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "default": 1.0,
+          "description": "Relevance score (0.0-1.0)."
+        },
+        "retrieved_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When this evidence was retrieved."
+        }
+      }
+    },
+    "LLMBudget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_tokens": {
+          "type": "integer",
+          "default": 4096,
+          "description": "Total max tokens (input + output)."
+        },
+        "max_input_tokens": {
+          "type": ["integer", "null"],
+          "default": null,
+          "description": "Separate input token cap. null = no cap."
+        },
+        "max_output_tokens": {
+          "type": "integer",
+          "default": 4096,
+          "description": "Maximum output tokens."
+        },
+        "max_cost_usd": {
+          "type": ["number", "null"],
+          "default": null,
+          "description": "Per-call cost ceiling in USD."
+        },
+        "thinking_budget_tokens": {
+          "type": ["integer", "null"],
+          "default": null,
+          "description": "Extended thinking budget (Anthropic-specific)."
+        }
+      }
+    },
+    "SafetyConstraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "banned_topics": {
+          "type": "array",
+          "default": [],
+          "items": { "type": "string" },
+          "description": "Topics the LLM must not discuss."
+        },
+        "max_output_length": {
+          "type": "integer",
+          "default": 50000,
+          "description": "Maximum output length in characters."
+        },
+        "require_json_output": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether the LLM must return valid JSON."
+        },
+        "pii_filter": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether to filter PII from inputs/outputs."
+        },
+        "require_deterministic": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true, temperature must be 0.0."
+        }
+      }
+    },
+    "RetryPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_retries": {
+          "type": "integer",
+          "default": 3,
+          "description": "Maximum retry attempts."
+        },
+        "backoff_base_seconds": {
+          "type": "number",
+          "default": 1.0,
+          "description": "Base delay for exponential backoff."
+        },
+        "backoff_max_seconds": {
+          "type": "number",
+          "default": 30.0,
+          "description": "Maximum backoff delay."
+        },
+        "retryable_errors": {
+          "type": "array",
+          "default": ["rate_limit", "timeout", "server_error"],
+          "items": { "type": "string" },
+          "description": "Error types eligible for retry."
+        }
+      }
+    },
+    "LLMResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["result_id", "envelope_id"],
+      "properties": {
+        "result_id": {
+          "type": "string",
+          "description": "Unique UUID v4 identifier for this result."
+        },
+        "envelope_id": {
+          "type": "string",
+          "description": "References the originating envelope."
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the result was captured."
+        },
+        "raw_output": {
+          "type": "string",
+          "default": "",
+          "description": "Raw text output from the LLM."
+        },
+        "parsed_output": {
+          "type": "object",
+          "default": {},
+          "description": "Parsed structured output."
+        },
+        "validation_passed": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether output passed schema validation."
+        },
+        "validation_errors": {
+          "type": "array",
+          "default": [],
+          "items": { "type": "string" },
+          "description": "Validation error messages."
+        },
+        "latency_ms": {
+          "type": "number",
+          "default": 0.0,
+          "description": "Round-trip latency in milliseconds."
+        },
+        "input_tokens": {
+          "type": "integer",
+          "default": 0,
+          "description": "Input tokens consumed."
+        },
+        "output_tokens": {
+          "type": "integer",
+          "default": 0,
+          "description": "Output tokens generated."
+        },
+        "thinking_tokens": {
+          "type": "integer",
+          "default": 0,
+          "description": "Extended thinking tokens consumed."
+        },
+        "cost_usd": {
+          "type": "number",
+          "default": 0.0,
+          "description": "Estimated cost in USD."
+        },
+        "provider": {
+          "type": "string",
+          "enum": ["anthropic", "openai", "local"],
+          "description": "Provider that served this result."
+        },
+        "model": {
+          "type": "string",
+          "default": "",
+          "description": "Model that generated this result."
+        },
+        "attempt_number": {
+          "type": "integer",
+          "default": 1,
+          "minimum": 1,
+          "description": "Which retry attempt produced this result (1-based)."
+        },
+        "error": {
+          "type": ["string", "null"],
+          "default": null,
+          "description": "Error message if the call failed."
+        },
+        "success": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether the call succeeded."
+        },
+        "output_hash": {
+          "type": "string",
+          "default": "",
+          "description": "SHA256[:16] hash of raw_output."
+        }
+      }
+    },
+    "LLMInteraction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["interaction_id", "envelope", "result"],
+      "properties": {
+        "interaction_id": {
+          "type": "string",
+          "description": "Unique UUID v4 for this interaction record."
+        },
+        "envelope": {
+          "$ref": "#",
+          "description": "The input envelope."
+        },
+        "result": {
+          "$ref": "#/$defs/LLMResult",
+          "description": "The captured output."
+        },
+        "stored_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When this interaction was persisted."
+        }
+      }
+    }
+  }
+}

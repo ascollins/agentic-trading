@@ -91,6 +91,12 @@ class CMTAnalysisEngine:
         Maximum API calls per calendar day (budget guard).
     min_confluence:
         Minimum confluence total to include a trade plan.
+    circuit_breaker_threshold:
+        Number of consecutive failures before the circuit breaker opens
+        and blocks further API calls for ``circuit_breaker_cooldown_s``.
+    circuit_breaker_cooldown_s:
+        Seconds to wait after the circuit breaker opens before allowing
+        new API calls.
     """
 
     def __init__(
@@ -101,6 +107,8 @@ class CMTAnalysisEngine:
         model: str = "claude-sonnet-4-5-20250929",
         max_daily_calls: int = 50,
         min_confluence: int = 5,
+        circuit_breaker_threshold: int = 3,
+        circuit_breaker_cooldown_s: float = 900.0,  # 15 minutes
     ) -> None:
         self._model = model
         self._api_key_env = api_key_env
@@ -116,6 +124,14 @@ class CMTAnalysisEngine:
 
         # Per-symbol rate limiting
         self._last_call_per_symbol: dict[str, float] = {}
+
+        # Circuit breaker: opens after N consecutive failures,
+        # blocks API calls for cooldown period, then half-opens
+        # (allows one probe call).
+        self._cb_threshold = circuit_breaker_threshold
+        self._cb_cooldown_s = circuit_breaker_cooldown_s
+        self._cb_consecutive_failures = 0
+        self._cb_opened_at: float = 0.0  # monotonic timestamp
 
     # ------------------------------------------------------------------
     # Skill loading
@@ -153,6 +169,57 @@ class CMTAnalysisEngine:
         if today != self._budget_reset_day:
             return self._max_daily_calls
         return max(0, self._max_daily_calls - self._calls_today)
+
+    # ------------------------------------------------------------------
+    # Circuit breaker
+    # ------------------------------------------------------------------
+
+    def _is_circuit_open(self) -> bool:
+        """Return True if the circuit breaker is open (blocking calls)."""
+        if self._cb_consecutive_failures < self._cb_threshold:
+            return False
+        elapsed = time.monotonic() - self._cb_opened_at
+        if elapsed >= self._cb_cooldown_s:
+            # Half-open: allow a probe call
+            logger.info(
+                "LLM circuit breaker half-open after %.0fs cooldown — "
+                "allowing probe call",
+                elapsed,
+            )
+            return False
+        return True
+
+    def _record_success(self) -> None:
+        """Reset the circuit breaker on a successful call."""
+        if self._cb_consecutive_failures > 0:
+            logger.info(
+                "LLM circuit breaker reset after %d consecutive failures",
+                self._cb_consecutive_failures,
+            )
+        self._cb_consecutive_failures = 0
+
+    def _record_failure(self, reason: str) -> None:
+        """Increment the failure counter and open breaker if threshold hit."""
+        self._cb_consecutive_failures += 1
+        if self._cb_consecutive_failures >= self._cb_threshold:
+            self._cb_opened_at = time.monotonic()
+            logger.error(
+                "LLM circuit breaker OPEN after %d consecutive failures "
+                "(reason: %s). Blocking API calls for %.0fs.",
+                self._cb_consecutive_failures,
+                reason,
+                self._cb_cooldown_s,
+            )
+
+    @property
+    def circuit_breaker_open(self) -> bool:
+        """Public read-only access to circuit breaker state."""
+        return self._is_circuit_open()
+
+    @property
+    def consecutive_failures(self) -> int:
+        """Number of consecutive LLM failures."""
+        return self._cb_consecutive_failures
 
     # ------------------------------------------------------------------
     # Prompt construction
@@ -344,12 +411,25 @@ class CMTAnalysisEngine:
             confluence.total >= self._min_confluence and not confluence.veto
         )
 
-        # Build trade plan if present
+        # Build trade plan if present — ValidationError from Pydantic
+        # validators means the LLM produced an invalid plan (e.g. stop on
+        # wrong side of entry, negative price, oversized position).  We
+        # treat this as a no-trade and record the failure for the circuit
+        # breaker.
         trade_plan: CMTTradePlan | None = None
         tp_data = data.get("trade_plan")
         if tp_data is not None:
-            targets = [CMTTarget(**t) for t in tp_data.pop("targets", [])]
-            trade_plan = CMTTradePlan(**tp_data, targets=targets)
+            try:
+                from pydantic import ValidationError
+
+                targets = [CMTTarget(**t) for t in tp_data.pop("targets", [])]
+                trade_plan = CMTTradePlan(**tp_data, targets=targets)
+            except (ValidationError, ValueError, TypeError) as exc:
+                logger.warning(
+                    "LLM produced invalid trade plan — discarding: %s", exc
+                )
+                self._record_failure(f"invalid_trade_plan: {exc}")
+                trade_plan = None
 
         return CMTAssessmentResponse(
             symbol=data.get("symbol", "unknown"),
@@ -373,10 +453,20 @@ class CMTAnalysisEngine:
     ) -> CMTAssessmentResponse | None:
         """Run the full CMT analysis pipeline for a symbol.
 
-        Returns ``None`` if the API budget is exhausted or the call
-        fails (graceful degradation — the agent continues without
-        crashing).
+        Returns ``None`` if the API budget is exhausted, the circuit
+        breaker is open, or the call fails (graceful degradation — the
+        agent continues without crashing).
         """
+        if self._is_circuit_open():
+            logger.warning(
+                "LLM circuit breaker is open — skipping CMT analysis for %s "
+                "(%d consecutive failures, cooldown %.0fs)",
+                request.symbol,
+                self._cb_consecutive_failures,
+                self._cb_cooldown_s,
+            )
+            return None
+
         if not self._check_budget():
             logger.warning(
                 "CMT API budget exhausted (%d/%d calls today)",
@@ -391,6 +481,7 @@ class CMTAnalysisEngine:
             raw = await self.call_api(self._system_prompt, user_prompt)
         except Exception:
             logger.exception("CMT API call failed for %s", request.symbol)
+            self._record_failure("api_call_exception")
             return None
 
         self._record_call()
@@ -399,14 +490,27 @@ class CMTAnalysisEngine:
         response = self.parse_response(raw)
         response.symbol = request.symbol
 
+        # If trade plan was discarded by validators, ensure threshold_met
+        # is False so the agent does not emit a signal.
+        if response.confluence.threshold_met and response.trade_plan is None:
+            response.confluence.threshold_met = False
+            if not response.no_trade_reason:
+                response.no_trade_reason = (
+                    "Trade plan failed validation — LLM output discarded"
+                )
+
+        # Record success (resets circuit breaker)
+        self._record_success()
+
         logger.info(
             "CMT assessment for %s: confluence=%.1f, threshold_met=%s, "
-            "health=%s, calls_remaining=%d",
+            "health=%s, calls_remaining=%d, cb_failures=%d",
             request.symbol,
             response.confluence.total,
             response.confluence.threshold_met,
             response.system_health,
             self.calls_remaining_today,
+            self._cb_consecutive_failures,
         )
 
         return response
@@ -420,6 +524,13 @@ class CMTAnalysisEngine:
         Returns ``(response, raw_thinking_text)``.  Falls back to
         standard ``assess()`` if extended thinking is unavailable.
         """
+        if self._is_circuit_open():
+            logger.warning(
+                "LLM circuit breaker is open — skipping CMT analysis for %s",
+                request.symbol,
+            )
+            return None, ""
+
         if not self._check_budget():
             logger.warning(
                 "CMT API budget exhausted (%d/%d calls today)",
@@ -440,7 +551,8 @@ class CMTAnalysisEngine:
                 "falling back to standard call",
                 request.symbol,
             )
-            # Fallback to standard assess
+            self._record_failure("api_call_with_thinking_exception")
+            # Fallback to standard assess (which has its own CB check)
             response = await self.assess(request)
             return response, ""
 
@@ -450,14 +562,26 @@ class CMTAnalysisEngine:
         response = self.parse_response(raw)
         response.symbol = request.symbol
 
+        # If trade plan was discarded by validators, block signal emission
+        if response.confluence.threshold_met and response.trade_plan is None:
+            response.confluence.threshold_met = False
+            if not response.no_trade_reason:
+                response.no_trade_reason = (
+                    "Trade plan failed validation — LLM output discarded"
+                )
+
+        # Record success (resets circuit breaker)
+        self._record_success()
+
         logger.info(
             "CMT assessment (with thinking) for %s: confluence=%.1f, "
-            "threshold_met=%s, health=%s, thinking_len=%d",
+            "threshold_met=%s, health=%s, thinking_len=%d, cb_failures=%d",
             request.symbol,
             response.confluence.total,
             response.confluence.threshold_met,
             response.system_health,
             len(thinking),
+            self._cb_consecutive_failures,
         )
 
         return response, thinking

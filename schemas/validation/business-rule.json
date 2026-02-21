@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-trading/schemas/validation/business-rule.json",
+  "title": "BusinessRule",
+  "description": "Declarative business rule for agent output validation. Follows the same pattern as PolicyRule.",
+  "version": 1,
+  "type": "object",
+  "required": ["rule_id", "name", "rule_type", "field", "operator", "threshold"],
+  "additionalProperties": false,
+  "properties": {
+    "rule_id": {
+      "type": "string",
+      "description": "Unique identifier for this rule."
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable rule name."
+    },
+    "description": {
+      "type": "string",
+      "default": "",
+      "description": "Extended description of what this rule checks."
+    },
+    "rule_type": {
+      "type": "string",
+      "enum": ["range", "required", "invariant", "cross_check"],
+      "description": "Category of validation rule."
+    },
+    "field": {
+      "type": "string",
+      "description": "Dot-path into the parsed output to validate."
+    },
+    "operator": {
+      "type": "string",
+      "enum": ["lt", "le", "gt", "ge", "eq", "ne", "in", "not_in", "between"],
+      "description": "Comparison operator (same as PolicyRule)."
+    },
+    "threshold": {
+      "description": "Value to compare against. Scalar, list, or [min, max]."
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["info", "warning", "error", "critical"],
+      "default": "error",
+      "description": "Issue severity if the rule is violated."
+    },
+    "enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether this rule is active."
+    },
+    "output_types": {
+      "type": ["array", "null"],
+      "items": { "type": "string" },
+      "default": null,
+      "description": "Applicable output types (null = all)."
+    },
+    "compare_field": {
+      "type": "string",
+      "default": "",
+      "description": "Second field for INVARIANT/CROSS_CHECK rules."
+    },
+    "metadata": {
+      "type": "object",
+      "default": {},
+      "description": "Additional rule metadata."
+    }
+  }
+}

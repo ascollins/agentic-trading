@@ -12,11 +12,11 @@ from decimal import Decimal
 from typing import Any
 
 from agentic_trading.agents.base import BaseAgent
-from agentic_trading.core.enums import AgentType, Exchange, OrderStatus
+from agentic_trading.core.enums import AgentType, AssetClass, Exchange, OrderStatus
 from agentic_trading.core.errors import ExchangeError
 from agentic_trading.core.events import AgentCapabilities, ReconciliationResult
 from agentic_trading.core.interfaces import IEventBus, IExchangeAdapter
-from agentic_trading.core.models import Balance, Order, Position
+from agentic_trading.core.models import Balance, Instrument, Order, Position
 
 from agentic_trading.execution.order_manager import OrderManager
 
@@ -31,6 +31,8 @@ MISSING_LOCAL_ORDER = "missing_local_order"
 STALE_LOCAL_ORDER = "stale_local_order"
 POSITION_MISMATCH = "position_mismatch"
 BALANCE_MISMATCH = "balance_mismatch"
+ROLLOVER_MISMATCH = "rollover_mismatch"
+NETTING_POSITION_MISMATCH = "netting_position_mismatch"
 
 
 class ReconciliationLoop(BaseAgent):
@@ -80,6 +82,7 @@ class ReconciliationLoop(BaseAgent):
         local_balances: dict[str, Balance] | None = None,
         *,
         agent_id: str | None = None,
+        instruments: dict[str, Instrument] | None = None,
     ) -> None:
         super().__init__(agent_id=agent_id, interval=interval_seconds)
         self._adapter = adapter
@@ -93,6 +96,7 @@ class ReconciliationLoop(BaseAgent):
         self._local_balances: dict[str, Balance] = (
             local_balances if local_balances is not None else {}
         )
+        self._instruments: dict[str, Instrument] = instruments or {}
 
     # ------------------------------------------------------------------
     # IAgent
@@ -375,7 +379,17 @@ class ReconciliationLoop(BaseAgent):
                         self._local_positions[symbol] = exch_pos
                         repairs += 1
             else:
-                if local_pos.qty != exch_pos.qty:
+                # FX instruments may differ by fractional lot rounding
+                instrument = self._instruments.get(symbol)
+                if (
+                    instrument
+                    and instrument.asset_class == AssetClass.FX
+                ):
+                    tolerance = instrument.step_size * Decimal("2")
+                else:
+                    tolerance = Decimal("0")
+
+                if abs(local_pos.qty - exch_pos.qty) > tolerance:
                     discreps.append(
                         {
                             "type": POSITION_MISMATCH,

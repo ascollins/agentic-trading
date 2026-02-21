@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-trading/schemas/events/cost-metric.json",
+  "title": "CostMetricEvent",
+  "description": "LLM token usage, API call costs, or other measurable cost metric.",
+  "version": 1,
+  "type": "object",
+  "required": ["event_id", "trace_id", "span_id", "tenant_id", "actor", "component", "timestamp", "schema_version", "event_type", "payload"],
+  "properties": {
+    "event_id": { "type": "string", "format": "uuid" },
+    "trace_id": { "type": "string", "format": "uuid" },
+    "span_id": { "type": "string", "format": "uuid" },
+    "tenant_id": { "type": "string", "default": "default" },
+    "actor": { "type": "string" },
+    "component": { "type": "string" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "input_hash": { "type": "string" },
+    "output_hash": { "type": "string" },
+    "schema_version": { "type": "integer", "minimum": 1 },
+    "event_type": { "type": "string", "const": "cost_metric" },
+    "causation_id": { "type": "string" },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "metric_type": { "type": "string", "description": "Type of cost metric (e.g. 'llm_tokens', 'api_call', 'exchange_fee')" },
+        "provider": { "type": "string", "description": "Service provider (e.g. 'anthropic', 'openai', 'bybit')" },
+        "model": { "type": "string", "description": "Model name if applicable" },
+        "input_tokens": { "type": "integer", "description": "Input token count" },
+        "output_tokens": { "type": "integer", "description": "Output token count" },
+        "cost_usd": { "type": "number", "description": "Cost in USD" }
+      }
+    },
+    "latency_ms": { "type": ["number", "null"] },
+    "error": { "type": ["string", "null"] }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-trading/schemas/core/fill.json",
+  "title": "Fill",
+  "description": "Single fill execution against an order. System of record: PostgreSQL (fills table).",
+  "version": 1,
+  "type": "object",
+  "required": ["fill_id", "order_id", "symbol", "exchange", "side", "price", "qty", "fee", "fee_currency", "is_maker", "timestamp"],
+  "properties": {
+    "id": { "type": "string", "format": "uuid", "description": "Database surrogate PK" },
+    "fill_id": { "type": "string", "description": "Exchange fill ID or synthetic UUID (unique)" },
+    "order_id": { "type": "string", "description": "Links to Order.order_id" },
+    "client_order_id": { "type": "string" },
+    "symbol": { "type": "string" },
+    "exchange": { "type": "string" },
+    "side": { "type": "string", "enum": ["BUY", "SELL"] },
+    "price": { "type": "string" },
+    "qty": { "type": "string" },
+    "fee": { "type": "string" },
+    "fee_currency": { "type": "string" },
+    "is_maker": { "type": "boolean" },
+    "trace_id": { "type": "string", "description": "Decision chain correlation" },
+    "timestamp": { "type": "string", "format": "date-time", "description": "Fill execution time" },
+    "tenant_id": { "type": "string", "default": "default" }
+  },
+  "additionalProperties": false
+}

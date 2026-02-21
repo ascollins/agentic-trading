@@ -125,15 +125,37 @@ class PostTradeChecker:
         if pos is None:
             return self._pass("pnl_sanity", fill, {"reason": "no_position"})
 
-        # Estimate fill PnL impact: (fill_price - entry_price) * qty
-        # For sells this represents realized PnL; for buys it adjusts entry.
-        fill_notional = fill.price * fill.qty
-        entry_notional = pos.entry_price * fill.qty if pos.entry_price else Decimal("0")
+        # Determine if this fill is opening or closing the position.
+        # A closing fill has the opposite side from the position:
+        #   - Long position closed by a sell
+        #   - Short position closed by a buy
+        fill_side_str = (
+            fill.side.value if hasattr(fill.side, "value") else str(fill.side)
+        ).lower()
+        pos_side_str = (
+            pos.side.value if hasattr(pos.side, "value") else str(pos.side)
+        ).lower()
 
-        if fill.side.value == "sell":
-            estimated_pnl = fill_notional - entry_notional
+        is_closing = (
+            (pos_side_str == "long" and fill_side_str == "sell")
+            or (pos_side_str == "short" and fill_side_str == "buy")
+        )
+
+        if not is_closing:
+            # Opening fills have no realized PnL to check
+            return self._pass("pnl_sanity", fill, {
+                "reason": "opening_fill",
+                "position_side": pos_side_str,
+                "fill_side": fill_side_str,
+            })
+
+        # For closing fills, PnL depends on position direction:
+        #   Long close (sell):  PnL = (fill_price - entry_price) * qty
+        #   Short close (buy):  PnL = (entry_price - fill_price) * qty
+        if pos_side_str == "long":
+            estimated_pnl = (fill.price - pos.entry_price) * fill.qty
         else:
-            estimated_pnl = entry_notional - fill_notional
+            estimated_pnl = (pos.entry_price - fill.price) * fill.qty
 
         loss_pct = float(-estimated_pnl / total_equity) if estimated_pnl < 0 else 0.0
 
@@ -147,11 +169,13 @@ class PostTradeChecker:
                     "estimated_pnl": float(estimated_pnl),
                     "loss_pct": loss_pct,
                     "threshold": self.max_unexpected_loss_pct,
+                    "position_side": pos_side_str,
                 },
             )
         return self._pass("pnl_sanity", fill, {
             "estimated_pnl": float(estimated_pnl),
             "loss_pct": loss_pct,
+            "position_side": pos_side_str,
         })
 
     def _check_leverage_spike(

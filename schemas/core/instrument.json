@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-trading/schemas/core/instrument.json",
+  "title": "Instrument",
+  "description": "Tradeable contract metadata. System of record: exchange API (read-only).",
+  "version": 1,
+  "type": "object",
+  "required": [
+    "symbol", "exchange", "instrument_type", "base", "quote",
+    "price_precision", "qty_precision", "tick_size", "step_size",
+    "min_qty", "max_qty", "min_notional", "max_leverage",
+    "maker_fee", "taker_fee", "is_active"
+  ],
+  "properties": {
+    "symbol": { "type": "string", "description": "Unified symbol, e.g. BTC/USDT:USDT" },
+    "exchange": { "type": "string", "description": "Exchange identifier, e.g. bybit" },
+    "instrument_type": { "type": "string", "enum": ["linear", "inverse", "spot"] },
+    "base": { "type": "string" },
+    "quote": { "type": "string" },
+    "settle": { "type": "string", "description": "Settlement currency (perps)" },
+    "price_precision": { "type": "integer", "minimum": 0 },
+    "qty_precision": { "type": "integer", "minimum": 0 },
+    "tick_size": { "type": "string", "description": "Decimal string" },
+    "step_size": { "type": "string", "description": "Decimal string" },
+    "min_qty": { "type": "string" },
+    "max_qty": { "type": "string" },
+    "min_notional": { "type": "string" },
+    "margin_mode": { "type": "string", "enum": ["cross", "isolated"] },
+    "max_leverage": { "type": "integer", "minimum": 1 },
+    "funding_interval_hours": { "type": "number" },
+    "maker_fee": { "type": "string" },
+    "taker_fee": { "type": "string" },
+    "is_active": { "type": "boolean" },
+    "tenant_id": { "type": "string", "default": "default", "description": "Multi-tenant isolation (future)" }
+  },
+  "additionalProperties": false
+}

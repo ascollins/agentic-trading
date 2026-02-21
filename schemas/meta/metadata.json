@@ -1,0 +1,178 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-trading/schemas/meta/metadata.json",
+  "title": "MetadataStandard",
+  "description": "Composable metadata contract for all platform entities. Embed as an optional field on any model.",
+  "version": 1,
+  "type": "object",
+  "required": ["source_id", "source_type", "created_at", "status", "version"],
+  "additionalProperties": false,
+  "properties": {
+    "source_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier for this metadata-bearing entity."
+    },
+    "source_type": {
+      "type": "string",
+      "enum": ["agent", "strategy", "market_data", "human", "system", "derived", "external", "policy"],
+      "description": "Classification of what produced this data."
+    },
+    "author": {
+      "type": "string",
+      "default": "",
+      "description": "Who created this: agent_id, 'human:<user_id>', or component name."
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp of creation."
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp of last modification."
+    },
+    "scope": {
+      "$ref": "#/$defs/MetadataScope",
+      "description": "Jurisdiction / applicability scope."
+    },
+    "classification": {
+      "type": "string",
+      "enum": ["public", "internal", "confidential", "restricted"],
+      "default": "internal",
+      "description": "Data sensitivity classification."
+    },
+    "quality_score": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "default": 1.0,
+      "description": "Application-defined quality score (0.0-1.0)."
+    },
+    "trust_level": {
+      "type": "string",
+      "enum": ["verified", "high", "medium", "low", "untrusted"],
+      "default": "high",
+      "description": "Trust level of the source."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["active", "deprecated", "do_not_use", "archived", "expired"],
+      "default": "active",
+      "description": "Lifecycle status."
+    },
+    "expiry": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "default": null,
+      "description": "Hard expiry time. is_usable() returns false after this."
+    },
+    "deprecated_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "default": null,
+      "description": "When the entity was deprecated."
+    },
+    "deprecated_reason": {
+      "type": "string",
+      "default": "",
+      "description": "Why the entity was deprecated."
+    },
+    "superseded_by": {
+      "type": "string",
+      "default": "",
+      "description": "source_id of the replacement entity."
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 1,
+      "description": "Version number of this entity."
+    },
+    "lineage": {
+      "$ref": "#/$defs/Lineage",
+      "description": "Provenance chain."
+    },
+    "content_hash": {
+      "type": "string",
+      "default": "",
+      "description": "SHA256[:16] of entity content for integrity."
+    }
+  },
+  "$defs": {
+    "Lineage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "parent_id": {
+          "type": "string",
+          "default": "",
+          "description": "source_id of the direct parent."
+        },
+        "parent_type": {
+          "type": "string",
+          "default": "",
+          "description": "SourceType value of the parent."
+        },
+        "root_id": {
+          "type": "string",
+          "default": "",
+          "description": "source_id of the original ancestor."
+        },
+        "derivation": {
+          "type": "string",
+          "default": "",
+          "description": "How derived: aggregated, transformed, filtered, llm_generated."
+        },
+        "chain_depth": {
+          "type": "integer",
+          "default": 0,
+          "minimum": 0,
+          "description": "Hops from root (0 = root entity)."
+        },
+        "chain_ids": {
+          "type": "array",
+          "default": [],
+          "items": { "type": "string" },
+          "description": "Full chain of source_ids: [root, ..., parent]."
+        }
+      }
+    },
+    "MetadataScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "strategy_ids": {
+          "type": "array",
+          "default": [],
+          "items": { "type": "string" },
+          "description": "Applicable strategies (empty = all)."
+        },
+        "symbols": {
+          "type": "array",
+          "default": [],
+          "items": { "type": "string" },
+          "description": "Applicable symbols (empty = all)."
+        },
+        "exchanges": {
+          "type": "array",
+          "default": [],
+          "items": { "type": "string" },
+          "description": "Applicable exchanges (empty = all)."
+        },
+        "asset_classes": {
+          "type": "array",
+          "default": [],
+          "items": { "type": "string" },
+          "description": "Applicable asset classes (empty = all)."
+        },
+        "tenant_id": {
+          "type": "string",
+          "default": "default",
+          "description": "Multi-tenant isolation key."
+        }
+      }
+    }
+  }
+}

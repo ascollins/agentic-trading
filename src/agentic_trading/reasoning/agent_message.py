@@ -14,20 +14,15 @@ are about *thinking*, not *trading events*.
 
 from __future__ import annotations
 
-import uuid
-from datetime import datetime, timezone
+from datetime import datetime
+from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 from agentic_trading.core.enums import AgentType
-
-
-# ---------------------------------------------------------------------------
-# Enums  (str, Enum pattern — consistent with core/enums.py)
-# ---------------------------------------------------------------------------
-
-from enum import Enum
+from agentic_trading.core.ids import new_id as _uuid
+from agentic_trading.core.ids import utc_now as _now
 
 
 class AgentRole(str, Enum):
@@ -100,18 +95,6 @@ _ROLE_TO_AGENT_TYPE: dict[AgentRole, AgentType] = {
 def role_to_agent_type(role: AgentRole) -> AgentType:
     """Map a reasoning role to the corresponding infrastructure AgentType."""
     return _ROLE_TO_AGENT_TYPE.get(role, AgentType.CUSTOM)
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _uuid() -> str:
-    return str(uuid.uuid4())
-
-
-def _now() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 # ---------------------------------------------------------------------------

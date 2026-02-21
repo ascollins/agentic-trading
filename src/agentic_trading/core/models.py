@@ -13,16 +13,33 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from .enums import (
+    AssetClass,
     Exchange,
     InstrumentType,
     MarginMode,
     OrderStatus,
     OrderType,
     PositionSide,
+    QtyUnit,
     Side,
     Timeframe,
     TimeInForce,
 )
+
+
+# ---------------------------------------------------------------------------
+# Trading session (FX market hours)
+# ---------------------------------------------------------------------------
+
+class TradingSession(BaseModel):
+    """A named trading session window (e.g., London, New York)."""
+
+    name: str  # "london", "new_york", "tokyo", "sydney"
+    open_utc: str  # "08:00" (HH:MM)
+    close_utc: str  # "17:00"
+    days: list[int] = Field(  # ISO weekday: 1=Mon .. 5=Fri
+        default_factory=lambda: [1, 2, 3, 4, 5]
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -62,6 +79,27 @@ class Instrument(BaseModel):
     # Filters
     is_active: bool = True
 
+    # --- Asset classification ---
+    asset_class: AssetClass = AssetClass.CRYPTO
+
+    # --- FX-specific ---
+    pip_size: Decimal | None = None  # 0.0001 for EUR/USD, 0.01 for USD/JPY
+    pip_value_per_lot: Decimal | None = None  # value of 1 pip per standard lot
+    lot_size: Decimal = Decimal("100000")  # standard FX lot; ignored for crypto
+    venue_symbol: str = ""  # broker-native format ("EUR_USD" for OANDA)
+
+    # --- Session / trading hours ---
+    trading_sessions: list[TradingSession] = Field(default_factory=list)
+    weekend_close: bool = False  # True for FX (closed Sat-Sun)
+
+    # --- Rollover / swap ---
+    rollover_enabled: bool = False
+    long_swap_rate: Decimal = Decimal("0")  # daily rate
+    short_swap_rate: Decimal = Decimal("0")
+
+    # --- Versioned metadata hash ---
+    instrument_hash: str = ""  # SHA256[:16] of all spec fields
+
     def round_price(self, price: float | Decimal) -> Decimal:
         """Round price to tick size."""
         d = Decimal(str(price))
@@ -71,6 +109,51 @@ class Instrument(BaseModel):
         """Round quantity to step size."""
         d = Decimal(str(qty))
         return (d / self.step_size).quantize(Decimal("1")) * self.step_size
+
+    def price_to_pips(self, price_diff: Decimal) -> Decimal:
+        """Convert a price difference to pips."""
+        if self.pip_size is None or self.pip_size == Decimal("0"):
+            return Decimal("0")
+        return Decimal(str(price_diff)) / self.pip_size
+
+    def pips_to_price(self, pips: Decimal) -> Decimal:
+        """Convert pips to a price difference."""
+        if self.pip_size is None:
+            return Decimal("0")
+        return Decimal(str(pips)) * self.pip_size
+
+    def notional_value(self, qty: Decimal, price: Decimal) -> Decimal:
+        """Compute notional value in quote currency.
+
+        Crypto: qty * price.
+        FX lots: qty * lot_size * price.
+        """
+        q = Decimal(str(qty))
+        p = Decimal(str(price))
+        if self.asset_class == AssetClass.FX:
+            return q * self.lot_size * p
+        return q * p
+
+    def normalize_qty(
+        self, qty: Decimal, unit: QtyUnit = QtyUnit.BASE
+    ) -> Decimal:
+        """Normalize quantity to base units.
+
+        If *unit* is LOTS and asset_class is FX, multiply by lot_size.
+        """
+        q = Decimal(str(qty))
+        if unit == QtyUnit.LOTS and self.asset_class == AssetClass.FX:
+            return q * self.lot_size
+        return q
+
+    def compute_hash(self) -> str:
+        """Compute a deterministic hash of all specification fields."""
+        from .ids import instrument_hash as _ih
+        return _ih(self.model_dump(mode="json"))
+
+    def model_post_init(self, __context: Any) -> None:
+        if not self.instrument_hash:
+            object.__setattr__(self, "instrument_hash", self.compute_hash())
 
 
 # ---------------------------------------------------------------------------

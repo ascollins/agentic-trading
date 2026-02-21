@@ -13,15 +13,12 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime
 
 from agentic_trading.core.config import ExecutionTokenConfig
+from agentic_trading.core.ids import utc_now as _utcnow
 
 logger = logging.getLogger(__name__)
-
-
-def _utcnow() -> datetime:
-    return datetime.now(UTC)
 
 
 @dataclass

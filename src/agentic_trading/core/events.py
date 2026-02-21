@@ -6,8 +6,7 @@ All events inherit from BaseEvent and are Pydantic models.
 
 from __future__ import annotations
 
-import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
@@ -16,30 +15,26 @@ from pydantic import BaseModel, Field
 from .enums import (
     AgentStatus,
     AgentType,
+    AssetClass,
     CircuitBreakerType,
     Exchange,
     GovernanceAction,
     ImpactTier,
+    LiquidityRegime,
     MaturityLevel,
     OrderStatus,
     OrderType,
-    RiskAlertSeverity,
+    QtyUnit,
     RegimeType,
+    RiskAlertSeverity,
     Side,
     SignalDirection,
     Timeframe,
     TimeInForce,
     VolatilityRegime,
-    LiquidityRegime,
 )
-
-
-def _uuid() -> str:
-    return str(uuid.uuid4())
-
-
-def _now() -> datetime:
-    return datetime.now(timezone.utc)
+from .ids import new_id as _uuid
+from .ids import utc_now as _now
 
 
 class BaseEvent(BaseModel):
@@ -49,6 +44,8 @@ class BaseEvent(BaseModel):
     timestamp: datetime = Field(default_factory=_now)
     trace_id: str = Field(default_factory=_uuid)
     source_module: str = ""
+    schema_version: int = 1
+    causation_id: str = ""
 
 
 # ===========================================================================
@@ -64,6 +61,7 @@ class TickEvent(BaseEvent):
     bid_size: float = 0.0
     ask_size: float = 0.0
     last: float = 0.0
+    spread_pips: float = 0.0  # Pre-computed spread in pips (0 for crypto)
 
 
 class TradeEvent(BaseEvent):
@@ -109,6 +107,7 @@ class FeatureVector(BaseEvent):
     symbol: str
     timeframe: Timeframe
     features: dict[str, float | None] = Field(default_factory=dict)
+    feature_version: str = ""  # Hash of indicator config for provenance
 
 
 class NewsEvent(BaseEvent):
@@ -133,6 +132,45 @@ class WhaleEvent(BaseEvent):
     amount_usd: float = 0.0
     wallet: str = ""
     exchange_name: str = ""
+
+
+class PredictionMarketEvent(BaseEvent):
+    """Prediction market probability data from Polymarket or similar.
+
+    Each event represents a single prediction market's current state
+    and its directional implication for crypto trading.
+    """
+
+    source_module: str = "intelligence.prediction_market"
+    category: str = ""  # "crypto_price", "macro", "regulatory", "geopolitical"
+    market_question: str = ""
+    probability: float = 0.0  # 0.0 to 1.0 implied probability
+    volume_usd: float = 0.0  # Market liquidity
+    direction_implication: str = ""  # "bullish", "bearish", "neutral"
+    affected_symbols: list[str] = Field(default_factory=list)
+    consensus_score: float = 0.0  # -1.0 (bearish) to +1.0 (bullish)
+    confidence_in_relevance: float = 0.0  # How relevant to crypto trading
+    resolution_date: str = ""  # ISO 8601 date string
+    market_id: str = ""  # External market identifier
+    pm_source: str = "polymarket"  # Which prediction market
+
+
+class PredictionConsensus(BaseEvent):
+    """Aggregated prediction market consensus for a symbol.
+
+    Combines multiple PredictionMarketEvents into a single directional
+    signal per symbol for strategy and portfolio manager consumption.
+    """
+
+    source_module: str = "intelligence.prediction_market"
+    symbol: str = ""
+    consensus_score: float = 0.0  # -1.0 (bearish) to +1.0 (bullish)
+    market_count: int = 0  # Number of PM markets contributing
+    avg_volume_usd: float = 0.0  # Average volume across markets
+    categories: list[str] = Field(default_factory=list)  # Contributing categories
+    event_risk_level: float = 0.0  # 0.0 (no events) to 1.0 (imminent binary event)
+    hours_to_nearest_event: float = -1.0  # -1 = no events pending
+    details: dict[str, Any] = Field(default_factory=dict)
 
 
 # ===========================================================================
@@ -200,6 +238,16 @@ class OrderIntent(BaseEvent):
     post_only: bool = False
     leverage: int | None = None
 
+    # Partial exit support: 0.0 < exit_portion <= 1.0.
+    # When set, qty represents the partial amount to close (exit_portion
+    # of the current position).  None means a full entry/exit.
+    exit_portion: float | None = None
+
+    # FX / multi-asset support
+    asset_class: AssetClass = AssetClass.CRYPTO
+    qty_unit: QtyUnit = QtyUnit.BASE  # BASE for crypto, LOTS for FX
+    instrument_hash: str = ""  # Pinned instrument version for replay
+
 
 class OrderAck(BaseEvent):
     source_module: str = "execution"
@@ -235,6 +283,7 @@ class FillEvent(BaseEvent):
     qty: Decimal
     fee: Decimal
     fee_currency: str
+    strategy_id: str = ""
     is_maker: bool = False
 
 
@@ -642,3 +691,41 @@ class EfficacyAnalysisCompleted(BaseEvent):
     loss_driver_count: int = 0
     critical_drivers: int = 0
     top_recommendation: str = ""
+
+
+# ===========================================================================
+# Topic: execution.plan
+# ===========================================================================
+
+
+class ExecutionPlanCreated(BaseEvent):
+    """Published when an ExecutionPlannerAgent creates a plan."""
+
+    source_module: str = "execution.planner"
+    plan_id: str
+    intent_dedupe_key: str
+    strategy_id: str = ""
+    symbol: str = ""
+    slice_count: int = 1
+    expected_slippage_bps: float = 0.0
+    venue: str = ""
+
+
+# ===========================================================================
+# Topic: surveillance
+# ===========================================================================
+
+
+class SurveillanceCaseEvent(BaseEvent):
+    """Published when the SurveillanceAgent detects a potential violation."""
+
+    source_module: str = "surveillance"
+    case_id: str = Field(default_factory=_uuid)
+    case_type: str  # "wash_trade", "spoofing", "self_crossing"
+    severity: str  # "low", "medium", "high", "critical"
+    symbol: str = ""
+    strategy_id: str = ""
+    description: str = ""
+    evidence: list[dict[str, Any]] = Field(default_factory=list)
+    status: str = "open"  # "open", "investigating", "escalated", "closed"
+    disposition: str = ""  # "confirmed", "false_positive", "inconclusive"

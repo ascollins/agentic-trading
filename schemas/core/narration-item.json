@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-trading/schemas/core/narration-item.json",
+  "title": "NarrationItem",
+  "description": "Plain-English desk script. System of record: JSONL (data/narration_history.jsonl).",
+  "version": 1,
+  "type": "object",
+  "required": ["script_id", "timestamp", "script_text", "verbosity"],
+  "properties": {
+    "script_id": { "type": "string", "description": "Content-derived SHA256[:16] for deduplication" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "script_text": { "type": "string" },
+    "verbosity": { "type": "string", "enum": ["QUIET", "NORMAL", "DETAILED", "PRESENTER"] },
+    "decision_ref": { "type": "string", "description": "Links to DecisionExplanation" },
+    "sources": { "type": "array", "items": { "type": "string" } },
+    "metadata": { "type": "object", "description": "action, symbol, regime, etc." },
+    "playback_url": { "type": "string" },
+    "tavus_session_id": { "type": "string" },
+    "published_text": { "type": "string" },
+    "published_avatar": { "type": "string" },
+    "tenant_id": { "type": "string", "default": "default" }
+  },
+  "additionalProperties": false
+}

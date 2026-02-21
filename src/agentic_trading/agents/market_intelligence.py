@@ -1,12 +1,12 @@
 """Market Intelligence Agent.
 
-Wraps FeedManager, CandleBuilder, and FeatureEngine into a single
-agent responsible for ingesting market data, computing features,
-and publishing FeatureVector events.
+Wraps FeedManager and CandleBuilder into a single agent responsible for
+ingesting market data and publishing candle events.
 
-This is an event-driven agent (no periodic loop) -- it subscribes
-to market.candle events via the FeatureEngine and publishes
-feature.vector events.
+Feature computation has been extracted to :class:`FeatureComputationAgent`
+(see ``agents/feature_computation.py``).
+
+This is an event-driven agent (no periodic loop).
 """
 
 from __future__ import annotations
@@ -23,12 +23,14 @@ logger = logging.getLogger(__name__)
 
 
 class MarketIntelligenceAgent(BaseAgent):
-    """Ingests market data and produces feature vectors.
+    """Ingests market data via live feeds and candle aggregation.
 
     Orchestrates:
     - FeedManager (live WebSocket feeds)
     - CandleBuilder (timeframe aggregation)
-    - FeatureEngine (indicator computation)
+
+    Feature computation is handled by the separate
+    :class:`FeatureComputationAgent`.
 
     Usage::
 
@@ -70,9 +72,9 @@ class MarketIntelligenceAgent(BaseAgent):
 
     def capabilities(self) -> AgentCapabilities:
         return AgentCapabilities(
-            subscribes_to=["market.candle"],
-            publishes_to=["feature.vector"],
-            description="Ingests market data and computes technical features",
+            subscribes_to=[],
+            publishes_to=["market.candle"],
+            description="Ingests market data via live feeds and candle aggregation",
         )
 
     # ------------------------------------------------------------------

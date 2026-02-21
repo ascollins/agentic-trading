@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-trading/schemas/core/memory-entry.json",
+  "title": "MemoryEntry",
+  "description": "Persisted analysis with TTL and relevance scoring. System of record: JSONL (data/memory_store.jsonl).",
+  "version": 1,
+  "type": "object",
+  "required": ["entry_id", "entry_type", "timestamp", "tags", "content"],
+  "properties": {
+    "entry_id": { "type": "string", "format": "uuid" },
+    "entry_type": {
+      "type": "string",
+      "enum": ["HTF_ASSESSMENT", "SMC_REPORT", "CMT_ASSESSMENT", "TRADE_PLAN", "SIGNAL", "RISK_EVENT", "REASONING_TRACE"]
+    },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "symbol": { "type": "string" },
+    "timeframe": { "type": "string" },
+    "strategy_id": { "type": "string" },
+    "tags": { "type": "array", "items": { "type": "string" }, "description": "Keyword index for retrieval" },
+    "content": { "type": "object", "description": "Free-form analysis content" },
+    "summary": { "type": "string" },
+    "relevance_score": { "type": "number", "minimum": 0, "maximum": 1 },
+    "ttl_hours": { "type": "number", "description": "Time-to-live in hours" },
+    "tenant_id": { "type": "string", "default": "default" }
+  },
+  "additionalProperties": false
+}

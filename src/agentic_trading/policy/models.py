@@ -37,6 +37,8 @@ class PolicyType(str, Enum):
     CUSTODY = "custody"
     STRATEGY_CONSTRAINT = "strategy_constraint"
     OPERATIONAL = "operational"
+    FX_CONSTRAINT = "fx_constraint"
+    PRE_TRADE_CONTROL = "pre_trade_control"
 
 
 class PolicyMode(str, Enum):
@@ -105,6 +107,9 @@ class PolicyRule(BaseModel):
     symbols: list[str] | None = None        # None = all symbols
     exchanges: list[str] | None = None      # None = all exchanges
 
+    # Regulatory mapping (spec §7.2) -- links rules to external regs
+    regulatory_refs: list[str] = Field(default_factory=list)  # e.g. ["SEC-15c3-5"]
+
 
 # ---------------------------------------------------------------------------
 # PolicySet: versioned collection of rules
@@ -145,10 +150,17 @@ class PolicySet(BaseModel):
     )
     metadata: dict[str, Any] = Field(default_factory=dict)
 
+    # Regulatory mapping (spec §7.2)
+    regulatory_refs: list[str] = Field(default_factory=list)  # set-level refs
+
     @property
     def active_rules(self) -> list[PolicyRule]:
         """Return only enabled rules."""
         return [r for r in self.rules if r.enabled]
+
+    def rules_for_regulation(self, ref: str) -> list[PolicyRule]:
+        """Return all rules tagged with the given regulatory reference."""
+        return [r for r in self.rules if ref in r.regulatory_refs]
 
 
 # ---------------------------------------------------------------------------
@@ -171,6 +183,7 @@ class PolicyEvalResult(BaseModel):
     policy_type: PolicyType = PolicyType.RISK_LIMIT
     severity: str = "high"
     shadow: bool = False  # True if rule was in shadow mode
+    regulatory_refs: list[str] = Field(default_factory=list)
 
 
 class PolicyDecision(BaseModel):

@@ -237,6 +237,7 @@ class PolicyEngine:
                 policy_type=rule.policy_type,
                 severity=rule.severity,
                 shadow=shadow,
+                regulatory_refs=rule.regulatory_refs,
             )
 
         passed = self._check_condition(
@@ -263,6 +264,7 @@ class PolicyEngine:
             policy_type=rule.policy_type,
             severity=rule.severity,
             shadow=shadow,
+            regulatory_refs=rule.regulatory_refs,
         )
 
     @staticmethod

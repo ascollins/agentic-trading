@@ -6,14 +6,15 @@ Every agent reads and writes through this single entry point.
 from __future__ import annotations
 
 import logging
-import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 from agentic_trading.core.enums import MemoryEntryType, Mode
+from agentic_trading.core.ids import new_id
+from agentic_trading.core.ids import utc_now as _now
 
 from .fact_table import FactTable, FactTableSnapshot
 from .memory_store import (
@@ -23,10 +24,6 @@ from .memory_store import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-def _now() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 # ---------------------------------------------------------------------------
@@ -172,7 +169,7 @@ class ContextManager:
     ) -> str:
         """Store an analysis result in memory. Returns the entry_id."""
         entry = MemoryEntry(
-            entry_id=str(uuid.uuid4()),
+            entry_id=new_id(),
             entry_type=entry_type,
             symbol=symbol,
             timeframe=timeframe,

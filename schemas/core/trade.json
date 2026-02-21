@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-trading/schemas/core/trade.json",
+  "title": "Trade",
+  "description": "Logical trade: entry fills → mark-to-market → exit fills, with P&L. System of record: PostgreSQL (on close).",
+  "version": 1,
+  "type": "object",
+  "required": ["trade_id", "trace_id", "strategy_id", "symbol", "exchange", "direction", "phase"],
+  "properties": {
+    "trade_id": { "type": "string", "format": "uuid" },
+    "trace_id": { "type": "string", "description": "Links to originating Signal" },
+    "strategy_id": { "type": "string" },
+    "symbol": { "type": "string" },
+    "exchange": { "type": "string" },
+    "direction": { "type": "string", "enum": ["long", "short"] },
+    "phase": {
+      "type": "string",
+      "enum": ["PENDING", "OPEN", "CLOSED", "CANCELLED"],
+      "description": "PENDING→OPEN→CLOSED or PENDING→CANCELLED"
+    },
+    "signal_confidence": { "type": "string" },
+    "signal_rationale": { "type": "string" },
+    "signal_features": { "type": "object" },
+    "signal_timestamp": { "type": "string", "format": "date-time" },
+    "initial_risk_price": { "type": "string", "description": "Stop-loss price at entry" },
+    "initial_risk_amount": { "type": "string", "description": "Max loss in quote currency" },
+    "planned_target_price": { "type": "string" },
+    "entry_fills": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["fill_id", "order_id", "side", "price", "qty", "fee", "fee_currency", "is_maker", "timestamp"],
+        "properties": {
+          "fill_id": { "type": "string" },
+          "order_id": { "type": "string" },
+          "side": { "type": "string" },
+          "price": { "type": "string" },
+          "qty": { "type": "string" },
+          "fee": { "type": "string" },
+          "fee_currency": { "type": "string" },
+          "is_maker": { "type": "boolean" },
+          "timestamp": { "type": "string", "format": "date-time" }
+        }
+      }
+    },
+    "exit_fills": {
+      "type": "array",
+      "items": { "$ref": "#/properties/entry_fills/items" }
+    },
+    "mark_samples": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["timestamp", "mark_price", "unrealized_pnl"],
+        "properties": {
+          "timestamp": { "type": "string", "format": "date-time" },
+          "mark_price": { "type": "string" },
+          "unrealized_pnl": { "type": "string" }
+        }
+      },
+      "description": "MAE/MFE tracking samples"
+    },
+    "opened_at": { "type": ["string", "null"], "format": "date-time" },
+    "closed_at": { "type": ["string", "null"], "format": "date-time" },
+    "maturity_level": { "type": "string" },
+    "health_score_at_entry": { "type": "string" },
+    "governance_sizing_multiplier": { "type": "string" },
+    "tags": { "type": "array", "items": { "type": "string" } },
+    "metadata": { "type": "object" },
+    "tenant_id": { "type": "string", "default": "default" }
+  },
+  "additionalProperties": false
+}

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 # ---------------------------------------------------------------------------
@@ -86,9 +86,42 @@ class CMTTarget(BaseModel):
     pct: float  # Scale-out percentage (e.g. 50.0 for 50%)
     source: str = ""  # e.g. "measured_move", "fib_extension", "sr_level"
 
+    @field_validator("price")
+    @classmethod
+    def price_must_be_positive(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError(f"Target price must be positive, got {v}")
+        return v
+
+    @field_validator("pct")
+    @classmethod
+    def pct_must_be_valid(cls, v: float) -> float:
+        if v < 0 or v > 100:
+            raise ValueError(f"Target pct must be 0-100, got {v}")
+        return v
+
+
+# Maximum stop distance as fraction of entry price.  An LLM-generated
+# stop that is more than 50% away from entry is almost certainly a
+# hallucination (e.g. stop=0 or stop=entry*10).
+_MAX_STOP_DISTANCE_PCT = 0.50
+
+# Maximum position size the LLM is allowed to suggest (% of equity).
+# The governance/risk layer will further cap this, but we clamp early
+# to prevent wildly over-leveraged suggestions from propagating.
+_MAX_POSITION_SIZE_PCT = 5.0
+
+# Maximum R:R the LLM can suggest.  Anything above 20:1 is unrealistic.
+_MAX_RR_RATIO = 20.0
+
 
 class CMTTradePlan(BaseModel):
-    """Trade plan produced by the CMT analysis framework."""
+    """Trade plan produced by the CMT analysis framework.
+
+    All fields from LLM output are validated at parse time.  Invalid
+    values raise ``ValidationError``, which the caller (CMTAnalysisEngine)
+    catches and treats as a no-trade response.
+    """
 
     direction: str  # LONG / SHORT
     entry_price: float
@@ -101,6 +134,80 @@ class CMTTradePlan(BaseModel):
     position_size_pct: float = 0.0  # Suggested risk % of equity
     invalidation: str = ""  # What kills the thesis
     thesis: str = ""  # Human-readable trade thesis
+
+    @field_validator("direction")
+    @classmethod
+    def direction_must_be_valid(cls, v: str) -> str:
+        if v.upper() not in ("LONG", "SHORT"):
+            raise ValueError(f"direction must be LONG or SHORT, got '{v}'")
+        return v.upper()
+
+    @field_validator("entry_price")
+    @classmethod
+    def entry_price_must_be_positive(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError(f"entry_price must be positive, got {v}")
+        return v
+
+    @field_validator("stop_loss")
+    @classmethod
+    def stop_loss_must_be_positive(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError(f"stop_loss must be positive, got {v}")
+        return v
+
+    @field_validator("rr_ratio")
+    @classmethod
+    def rr_ratio_must_be_reasonable(cls, v: float) -> float:
+        if v < 0:
+            raise ValueError(f"rr_ratio must be non-negative, got {v}")
+        if v > _MAX_RR_RATIO:
+            raise ValueError(
+                f"rr_ratio {v} exceeds maximum {_MAX_RR_RATIO} — likely hallucinated"
+            )
+        return v
+
+    @field_validator("position_size_pct")
+    @classmethod
+    def position_size_must_be_bounded(cls, v: float) -> float:
+        if v < 0:
+            raise ValueError(f"position_size_pct must be non-negative, got {v}")
+        if v > _MAX_POSITION_SIZE_PCT:
+            raise ValueError(
+                f"position_size_pct {v}% exceeds max {_MAX_POSITION_SIZE_PCT}%"
+            )
+        return v
+
+    @model_validator(mode="after")
+    def stop_on_correct_side(self) -> CMTTradePlan:
+        """Verify stop_loss is on the correct side of entry_price.
+
+        For LONG trades the stop must be below entry; for SHORT trades
+        the stop must be above entry.  Also reject stops that are
+        unreasonably far from entry (> ``_MAX_STOP_DISTANCE_PCT``).
+        """
+        if self.direction == "LONG" and self.stop_loss >= self.entry_price:
+            raise ValueError(
+                f"LONG stop_loss ({self.stop_loss}) must be below "
+                f"entry_price ({self.entry_price})"
+            )
+        if self.direction == "SHORT" and self.stop_loss <= self.entry_price:
+            raise ValueError(
+                f"SHORT stop_loss ({self.stop_loss}) must be above "
+                f"entry_price ({self.entry_price})"
+            )
+
+        # Check stop distance is reasonable
+        distance_pct = abs(self.stop_loss - self.entry_price) / self.entry_price
+        if distance_pct > _MAX_STOP_DISTANCE_PCT:
+            raise ValueError(
+                f"Stop distance {distance_pct:.1%} exceeds maximum "
+                f"{_MAX_STOP_DISTANCE_PCT:.0%} of entry price — "
+                f"likely hallucinated (entry={self.entry_price}, "
+                f"stop={self.stop_loss})"
+            )
+
+        return self
 
 
 # ---------------------------------------------------------------------------

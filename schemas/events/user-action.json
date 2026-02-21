@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-trading/schemas/events/user-action.json",
+  "title": "UserActionEvent",
+  "description": "An action initiated by a human user (CLI command, API call, UI interaction).",
+  "version": 1,
+  "type": "object",
+  "required": ["event_id", "trace_id", "span_id", "tenant_id", "actor", "component", "timestamp", "schema_version", "event_type", "payload"],
+  "properties": {
+    "event_id": { "type": "string", "format": "uuid" },
+    "trace_id": { "type": "string", "format": "uuid" },
+    "span_id": { "type": "string", "format": "uuid" },
+    "tenant_id": { "type": "string", "default": "default" },
+    "actor": { "type": "string" },
+    "component": { "type": "string" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "input_hash": { "type": "string" },
+    "output_hash": { "type": "string" },
+    "schema_version": { "type": "integer", "minimum": 1 },
+    "event_type": { "type": "string", "const": "user_action" },
+    "causation_id": { "type": "string" },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "action": { "type": "string", "description": "User action name (e.g. 'start_backtest', 'stop_trading')" },
+        "params": { "type": "object", "description": "Action parameters" },
+        "session_id": { "type": "string", "description": "User session identifier" }
+      }
+    },
+    "latency_ms": { "type": ["number", "null"] },
+    "error": { "type": ["string", "null"] }
+  },
+  "additionalProperties": false
+}

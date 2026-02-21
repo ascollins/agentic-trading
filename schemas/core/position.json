@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-trading/schemas/core/position.json",
+  "title": "Position",
+  "description": "Current holdings for one symbol. System of record: PostgreSQL (position_snapshots), Redis hot cache.",
+  "version": 1,
+  "type": "object",
+  "required": ["symbol", "exchange", "side", "qty", "entry_price", "mark_price", "unrealized_pnl", "realized_pnl", "leverage", "margin_mode", "notional"],
+  "properties": {
+    "symbol": { "type": "string" },
+    "exchange": { "type": "string" },
+    "side": { "type": "string", "enum": ["long", "short", "both"] },
+    "qty": { "type": "string" },
+    "entry_price": { "type": "string" },
+    "mark_price": { "type": "string" },
+    "liquidation_price": { "type": ["string", "null"] },
+    "unrealized_pnl": { "type": "string", "default": "0" },
+    "realized_pnl": { "type": "string", "default": "0" },
+    "leverage": { "type": "integer", "default": 1 },
+    "margin_mode": { "type": "string", "enum": ["cross", "isolated"] },
+    "notional": { "type": "string", "default": "0" },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "tenant_id": { "type": "string", "default": "default" }
+  },
+  "additionalProperties": false
+}

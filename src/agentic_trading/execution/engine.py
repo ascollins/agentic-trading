@@ -17,8 +17,10 @@ during migration).
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 import logging
+import time
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -103,6 +105,11 @@ class ExecutionEngine:
         max_retries: int = 3,
         governance_gate: Any = None,
         tool_gateway: Any = None,
+        instruments: dict[str, Any] | None = None,
+        retry_timeout_s: float = 30.0,
+        retry_base_delay_s: float = 0.5,
+        feature_snapshot_store: Any = None,
+        latest_features_provider: Any = None,
     ) -> None:
         self._adapter = adapter
         self._event_bus = event_bus
@@ -113,7 +120,12 @@ class ExecutionEngine:
         self._order_manager = OrderManager(max_retries=max_retries)
         self._governance_gate = governance_gate
         self._tool_gateway = tool_gateway
+        self._instruments: dict[str, Any] = instruments or {}
         self._running: bool = False
+        self._retry_timeout_s = retry_timeout_s
+        self._retry_base_delay_s = retry_base_delay_s
+        self._feature_snapshot_store = feature_snapshot_store
+        self._latest_features_provider = latest_features_provider
 
         # OrderLifecycleManager for FSM tracking (CP mode)
         self._lifecycle_manager: Any = None
@@ -227,6 +239,9 @@ class ExecutionEngine:
         # Register the intent as PENDING
         self._order_manager.register_intent(intent)
 
+        # 1b. Persist feature snapshot for audit replay
+        snapshot_id = self._persist_feature_snapshot(intent)
+
         # 2. Create OrderLifecycle FSM
         lifecycle = self._lifecycle_manager.create(
             action_id=intent.dedupe_key,
@@ -284,8 +299,15 @@ class ExecutionEngine:
                 symbol=intent.symbol,
                 exchange=intent.exchange,
                 actor="execution_engine",
+                asset_class=intent.asset_class.value
+                if hasattr(intent, "asset_class")
+                else "crypto",
             ),
-            request_params={"intent": intent.model_dump(mode="json")},
+            request_params={
+                "intent": intent.model_dump(mode="json"),
+                "instrument_hash": getattr(intent, "instrument_hash", ""),
+                "feature_snapshot_id": snapshot_id,
+            },
             idempotency_key=intent.dedupe_key,
             causation_id=intent.event_id,
         )
@@ -405,10 +427,32 @@ class ExecutionEngine:
 
         # 7. Handle immediate fill (PaperAdapter or instant market fill)
         if ack.status == OrderStatus.FILLED:
+            try:
+                synthetic_fill = self._synthesize_fill(intent, ack, resp)
+            except OrderRejectedError:
+                logger.error(
+                    "Fill price resolution failed for %s in CP path — "
+                    "cannot synthesize fill. Marking order REJECTED.",
+                    intent.symbol,
+                )
+                lifecycle.transition(OrderState.COMPLETE)
+                lifecycle.transition(OrderState.POST_TRADE)
+                lifecycle.transition(OrderState.TERMINAL)
+                ack = OrderAck(
+                    order_id=ack.order_id,
+                    client_order_id=ack.client_order_id,
+                    symbol=intent.symbol,
+                    exchange=intent.exchange,
+                    status=OrderStatus.REJECTED,
+                    reason="Fill price resolution failed: all sources exhausted",
+                    trace_id=intent.trace_id,
+                )
+                await self._publish_ack(ack)
+                return ack
+
             # MONITORING -> COMPLETE
             lifecycle.transition(OrderState.COMPLETE)
 
-            synthetic_fill = self._synthesize_fill(intent, ack, resp)
             lifecycle.fills.append({"fill_id": synthetic_fill.fill_id})
             await self.handle_fill(synthetic_fill)
 
@@ -451,6 +495,9 @@ class ExecutionEngine:
 
         # Register the intent as PENDING
         self._order_manager.register_intent(intent)
+
+        # 2.1 Persist feature snapshot for audit replay
+        snapshot_id = self._persist_feature_snapshot(intent)
 
         # 2.5 Governance gate (if enabled)
         if self._governance_gate is not None:
@@ -552,7 +599,27 @@ class ExecutionEngine:
         #    a live market order that filled instantly), synthesize a FillEvent
         #    so the journal and narration see it.
         if ack is not None and ack.status == OrderStatus.FILLED:
-            fill_price = self._resolve_fill_price(intent, ack, response=None)
+            try:
+                fill_price = self._resolve_fill_price(intent, ack, response=None)
+            except OrderRejectedError:
+                logger.error(
+                    "Fill price resolution failed for %s — order acked as "
+                    "FILLED but cannot determine price. Marking REJECTED.",
+                    intent.symbol,
+                )
+                ack = OrderAck(
+                    order_id=ack.order_id,
+                    client_order_id=ack.client_order_id,
+                    symbol=intent.symbol,
+                    exchange=intent.exchange,
+                    status=OrderStatus.REJECTED,
+                    reason="Fill price resolution failed: all sources exhausted",
+                    trace_id=intent.trace_id,
+                )
+                await self._publish_ack(ack)
+                return ack
+            _inst = self._instruments.get(intent.symbol)
+            _fee_ccy = _inst.quote if _inst else "USDT"
             synthetic_fill = FillEvent(
                 fill_id=str(uuid.uuid4()),
                 order_id=ack.order_id,
@@ -563,7 +630,7 @@ class ExecutionEngine:
                 price=fill_price,
                 qty=intent.qty,
                 fee=Decimal("0"),
-                fee_currency="USDT",
+                fee_currency=_fee_ccy,
                 is_maker=False,
                 trace_id=intent.trace_id,
                 timestamp=datetime.now(timezone.utc),
@@ -581,10 +648,28 @@ class ExecutionEngine:
 
         Uses ``OrderManager.should_retry`` and
         ``OrderManager.record_attempt`` to track attempts.
+
+        An elapsed-time circuit breaker aborts retries if the total wall
+        time exceeds ``retry_timeout_s`` (default 30 s).  Exponential
+        backoff (with jitter) is applied between attempts to avoid
+        thundering-herd retries.
         """
         last_error: Exception | None = None
+        t0 = time.monotonic()
 
         while self._order_manager.should_retry(intent.dedupe_key):
+            # Elapsed-time circuit breaker
+            elapsed = time.monotonic() - t0
+            if elapsed >= self._retry_timeout_s:
+                logger.error(
+                    "Retry timeout (%.1fs) exceeded for dedupe_key=%s "
+                    "after %.1fs — aborting",
+                    self._retry_timeout_s,
+                    intent.dedupe_key,
+                    elapsed,
+                )
+                break
+
             self._order_manager.record_attempt(intent.dedupe_key)
             try:
                 ack: OrderAck = await self._adapter.submit_order(intent)
@@ -630,12 +715,17 @@ class ExecutionEngine:
                     intent.dedupe_key,
                     exc,
                 )
+                # Exponential backoff with jitter before next attempt
+                delay = self._retry_base_delay_s * (2 ** (attempt - 1))
+                delay = min(delay, 10.0)  # Cap at 10s
+                await asyncio.sleep(delay * (0.5 + 0.5 * (hash(intent.dedupe_key) % 100) / 100))
 
-        # All retries exhausted
+        # All retries exhausted (or timeout reached)
         logger.error(
             "Order submission failed after max retries: dedupe_key=%s "
-            "last_error=%s",
+            "elapsed=%.1fs last_error=%s",
             intent.dedupe_key,
+            time.monotonic() - t0,
             last_error,
         )
         self._order_manager.update_order(
@@ -788,6 +878,8 @@ class ExecutionEngine:
         or a live market order that filled instantly).
         """
         fill_price = self._resolve_fill_price(intent, ack, response)
+        _inst = self._instruments.get(intent.symbol)
+        _fee_ccy = _inst.quote if _inst else "USDT"
 
         return FillEvent(
             fill_id=str(uuid.uuid4()),
@@ -799,7 +891,7 @@ class ExecutionEngine:
             price=fill_price,
             qty=intent.qty,
             fee=Decimal("0"),
-            fee_currency="USDT",
+            fee_currency=_fee_ccy,
             is_maker=False,
             trace_id=intent.trace_id,
             timestamp=datetime.now(timezone.utc),
@@ -842,8 +934,12 @@ class ExecutionEngine:
         except Exception:
             pass
 
-        # 3. CCXTAdapter last fill price
+        # 3. CCXTAdapter per-order fill price (preferred) or last fill price
         try:
+            if hasattr(self._adapter, "_fill_prices"):
+                per_order_price = self._adapter._fill_prices.get(ack.order_id)
+                if isinstance(per_order_price, Decimal) and per_order_price > Decimal("0"):
+                    return per_order_price
             if hasattr(self._adapter, "_last_fill_price"):
                 last_price = self._adapter._last_fill_price
                 if isinstance(last_price, Decimal) and last_price > Decimal("0"):
@@ -872,14 +968,19 @@ class ExecutionEngine:
         except Exception:
             pass
 
-        logger.warning(
-            "Could not resolve fill price for %s — defaulting to 0 "
-            "(order_id=%s, trace_id=%s). TP/SL will use fallback.",
+        logger.error(
+            "CRITICAL: Could not resolve fill price for %s from any source "
+            "(order_id=%s, trace_id=%s). Rejecting to prevent unprotected "
+            "position with zero-price TP/SL.",
             intent.symbol,
             ack.order_id,
             intent.trace_id[:8] if intent.trace_id else "?",
         )
-        return Decimal("0")
+        raise OrderRejectedError(
+            f"Fill price resolution failed for {intent.symbol} "
+            f"(order_id={ack.order_id}): all 5 price sources exhausted. "
+            f"Cannot synthesize fill with zero price."
+        )
 
     async def _refresh_portfolio_for_post_trade(self) -> PortfolioState:
         """Refresh portfolio state from exchange for post-trade risk check.
@@ -914,6 +1015,44 @@ class ExecutionEngine:
                 exc_info=True,
             )
             return self._get_portfolio_state()
+
+    def _persist_feature_snapshot(self, intent: OrderIntent) -> str:
+        """Persist the current feature vector alongside the order intent.
+
+        Returns the snapshot_id (empty string if no store is configured).
+        """
+        if self._feature_snapshot_store is None:
+            return ""
+        try:
+            from agentic_trading.intelligence.feature_snapshot import FeatureSnapshot
+
+            features: dict[str, float | None] = {}
+            feature_version = ""
+            if self._latest_features_provider is not None:
+                fv = self._latest_features_provider(intent.symbol)
+                if fv is not None:
+                    features = getattr(fv, "features", {})
+                    feature_version = getattr(fv, "feature_version", "")
+
+            snapshot = FeatureSnapshot(
+                symbol=intent.symbol,
+                feature_vector=features,
+                feature_version=feature_version,
+                strategy_id=intent.strategy_id,
+                signal_direction=intent.side.value,
+                trace_id=intent.trace_id,
+                dedupe_key=intent.dedupe_key,
+            )
+            snapshot_id = self._feature_snapshot_store.store(snapshot)
+            logger.debug(
+                "Feature snapshot persisted: snapshot_id=%s dedupe_key=%s",
+                snapshot_id,
+                intent.dedupe_key,
+            )
+            return snapshot_id
+        except Exception:
+            logger.debug("Feature snapshot persistence failed", exc_info=True)
+            return ""
 
     async def _is_kill_switch_active(self) -> bool:
         """Check kill switch from both cached flag and callable."""

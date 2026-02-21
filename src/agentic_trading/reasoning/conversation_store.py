@@ -16,13 +16,12 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
-from typing import Any
+
+from agentic_trading.core.file_io import safe_append_line
 
 from .agent_conversation import AgentConversation, ConversationOutcome
-from .agent_message import AgentMessage, AgentRole, MessageType
-from .soteria_trace import SoteriaTrace
 
 logger = logging.getLogger(__name__)
 
@@ -255,11 +254,8 @@ class JsonFileConversationStore:
         """Store a conversation (memory + append to file)."""
         self._inner.save(conversation)
 
-        # Append to JSONL
-        self._path.parent.mkdir(parents=True, exist_ok=True)
         try:
-            with open(self._path, "a") as f:
-                f.write(conversation.model_dump_json() + "\n")
+            safe_append_line(self._path, conversation.model_dump_json())
         except Exception:
             logger.warning(
                 "Failed to persist conversation %s",

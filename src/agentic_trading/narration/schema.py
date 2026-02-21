@@ -8,17 +8,14 @@ The script generator may only use fields from this schema — no invented reason
 
 from __future__ import annotations
 
-import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
 
-
-def _now() -> datetime:
-    return datetime.now(timezone.utc)
-
+from agentic_trading.core.ids import payload_hash as _payload_hash
+from agentic_trading.core.ids import utc_now as _now
 
 # ---------------------------------------------------------------------------
 # Source of Truth: DecisionExplanation
@@ -90,6 +87,9 @@ class DecisionExplanation(BaseModel):
     # Position / exposure
     position: PositionSnapshot = Field(default_factory=PositionSnapshot)
 
+    # Prediction market context (plain English, no jargon)
+    prediction_context: str = ""  # e.g. "65% market consensus aligns with bullish thesis"
+
     # Trace
     trace_id: str = ""
     signal_id: str = ""
@@ -104,8 +104,7 @@ class DecisionExplanation(BaseModel):
             "reasons": self.reasons,
             "why_not": self.why_not,
         }
-        raw = json.dumps(payload, sort_keys=True)
-        return hashlib.sha256(raw.encode()).hexdigest()[:16]
+        return _payload_hash(payload)
 
 
 # ---------------------------------------------------------------------------

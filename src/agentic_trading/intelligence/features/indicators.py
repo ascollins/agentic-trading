@@ -9,6 +9,7 @@ with ``np.nan`` so that array lengths always match the input length.
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 
 import numpy as np
 
@@ -693,6 +694,154 @@ def compute_fibonacci_extensions(
 
 
 # ===================================================================
+# Ichimoku Cloud
+# ===================================================================
+
+def compute_ichimoku(
+    high: np.ndarray,
+    low: np.ndarray,
+    close: np.ndarray,
+    tenkan_period: int = 9,
+    kijun_period: int = 26,
+    senkou_b_period: int = 52,
+    displacement: int = 26,
+) -> dict[str, np.ndarray]:
+    """Ichimoku Kink\u014d Hy\u014d (Cloud).
+
+    Computes all five Ichimoku lines.  Senkou Span A and B are *not*
+    displaced forward in the returned arrays (the caller can shift if
+    needed for charting; for feature-vector purposes the current values
+    are more useful).
+
+    Args:
+        high: 1-D array of high prices.
+        low: 1-D array of low prices.
+        close: 1-D array of close prices.
+        tenkan_period: Conversion line period (default 9).
+        kijun_period: Base line period (default 26).
+        senkou_b_period: Senkou Span B period (default 52).
+        displacement: Chikou Span lookback (default 26).
+
+    Returns:
+        Dict with keys ``tenkan_sen``, ``kijun_sen``, ``senkou_span_a``,
+        ``senkou_span_b``, ``chikou_span``.  Each value is an ndarray of
+        the same length as *close* with leading NaN padding.
+    """
+    high = _ensure_float64(high)
+    low = _ensure_float64(low)
+    close = _ensure_float64(close)
+    n = len(close)
+
+    def _midpoint(h: np.ndarray, l: np.ndarray, period: int) -> np.ndarray:
+        out = np.full(n, np.nan)
+        for i in range(period - 1, n):
+            out[i] = (np.max(h[i - period + 1 : i + 1]) + np.min(l[i - period + 1 : i + 1])) / 2.0
+        return out
+
+    tenkan = _midpoint(high, low, tenkan_period)
+    kijun = _midpoint(high, low, kijun_period)
+    senkou_a = np.where(
+        ~np.isnan(tenkan) & ~np.isnan(kijun),
+        (tenkan + kijun) / 2.0,
+        np.nan,
+    )
+    senkou_b = _midpoint(high, low, senkou_b_period)
+
+    # Chikou span: close shifted back by *displacement* bars
+    chikou = np.full(n, np.nan)
+    if n > displacement:
+        chikou[:n - displacement] = close[displacement:]
+
+    return {
+        "tenkan_sen": tenkan,
+        "kijun_sen": kijun,
+        "senkou_span_a": senkou_a,
+        "senkou_span_b": senkou_b,
+        "chikou_span": chikou,
+    }
+
+
+# ===================================================================
+# HyperWave Momentum Oscillator
+# ===================================================================
+
+def compute_hyperwave(
+    high: np.ndarray,
+    low: np.ndarray,
+    close: np.ndarray,
+    fast_period: int = 10,
+    slow_period: int = 34,
+    signal_period: int = 5,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """HyperWave momentum oscillator.
+
+    A wave-based momentum indicator that combines True Range momentum
+    with dual-EMA smoothing to produce a zero-centred oscillator line,
+    a signal line, and a histogram.  Conceptually similar to MACD but
+    operates on normalised momentum (close change / ATR) to be
+    comparable across instruments and timeframes.
+
+    Args:
+        high: 1-D array of high prices.
+        low: 1-D array of low prices.
+        close: 1-D array of close prices.
+        fast_period: Fast EMA period (default 10).
+        slow_period: Slow EMA period (default 34).
+        signal_period: Signal-line EMA period (default 5).
+
+    Returns:
+        Tuple of (wave, signal, histogram) arrays, each same length as
+        *close*.
+    """
+    high = _ensure_float64(high)
+    low = _ensure_float64(low)
+    close = _ensure_float64(close)
+    n = len(close)
+
+    # Normalised momentum: price change / ATR (bounded ±∞ but typically ±3)
+    atr = compute_atr(high, low, close, period=max(fast_period, 14))
+    momentum = np.full(n, np.nan)
+    for i in range(1, n):
+        if not np.isnan(atr[i]) and atr[i] > 0:
+            momentum[i] = (close[i] - close[i - 1]) / atr[i]
+
+    # Fill leading NaN so EMA can operate on valid portion
+    valid_mask = ~np.isnan(momentum)
+    valid_momentum = momentum[valid_mask]
+
+    if len(valid_momentum) < slow_period:
+        empty = np.full(n, np.nan)
+        return empty, empty.copy(), empty.copy()
+
+    fast_ema = compute_ema(valid_momentum, fast_period)
+    slow_ema = compute_ema(valid_momentum, slow_period)
+    wave_raw = fast_ema - slow_ema
+
+    # Signal line
+    valid_wave = wave_raw[~np.isnan(wave_raw)]
+    if len(valid_wave) < signal_period:
+        empty = np.full(n, np.nan)
+        return empty, empty.copy(), empty.copy()
+
+    signal_raw = compute_ema(valid_wave, signal_period)
+
+    # Map back to full-length arrays
+    wave = np.full(n, np.nan)
+    signal = np.full(n, np.nan)
+
+    valid_indices = np.where(valid_mask)[0]
+    wave[valid_indices] = wave_raw
+
+    wave_valid_indices = valid_indices[~np.isnan(wave_raw)]
+    if len(wave_valid_indices) >= len(signal_raw):
+        signal[wave_valid_indices[-len(signal_raw):]] = signal_raw
+
+    histogram = wave - signal
+
+    return wave, signal, histogram
+
+
+# ===================================================================
 # Rate of Change (ROC)
 # ===================================================================
 
@@ -803,3 +952,136 @@ def compute_volume_delta(
                     trend[-1] = -1.0
 
     return delta, cumulative, ratio, trend
+
+
+# ===================================================================
+# Session / Previous Period High-Low Levels
+# ===================================================================
+
+_SESSION_HOURS: dict[str, tuple[int, int]] = {
+    "asia": (0, 8),       # 00:00-08:00 UTC
+    "london": (8, 16),    # 08:00-16:00 UTC
+    "new_york": (13, 21), # 13:00-21:00 UTC
+}
+
+
+def compute_session_levels(
+    timestamps: list[datetime],
+    highs: np.ndarray,
+    lows: np.ndarray,
+    closes: np.ndarray,
+) -> dict[str, float]:
+    """Compute previous session / day / week high-low levels.
+
+    Returns a dict of features for the *latest* bar including
+    previous-day, previous-week, and per-session high/low/close values.
+
+    Args:
+        timestamps: List of UTC-aware datetime objects (one per bar).
+        highs: 1-D array of high prices.
+        lows: 1-D array of low prices.
+        closes: 1-D array of close prices.
+
+    Returns:
+        Dict with keys like ``prev_day_high``, ``prev_week_low``,
+        ``prev_asia_high``, etc.  Values are ``nan`` when insufficient
+        data.
+    """
+    from datetime import timezone  # local import to avoid circular
+
+    result: dict[str, float] = {}
+    n = len(timestamps)
+    if n < 2:
+        for key in (
+            "prev_day_high", "prev_day_low", "prev_day_close",
+            "prev_week_high", "prev_week_low", "prev_week_close",
+        ):
+            result[key] = float("nan")
+        for sess in _SESSION_HOURS:
+            result[f"prev_{sess}_high"] = float("nan")
+            result[f"prev_{sess}_low"] = float("nan")
+        return result
+
+    current_ts = timestamps[-1]
+    current_date = current_ts.date()
+    current_week = current_date.isocalendar()[1]
+
+    # --- Previous day ---
+    prev_day_high = float("nan")
+    prev_day_low = float("nan")
+    prev_day_close = float("nan")
+    prev_day_found = False
+    for i in range(n - 2, -1, -1):
+        bar_date = timestamps[i].date()
+        if bar_date < current_date:
+            if not prev_day_found:
+                prev_day_high = float(highs[i])
+                prev_day_low = float(lows[i])
+                prev_day_close = float(closes[i])
+                prev_day_found = True
+                prev_day_date = bar_date
+            elif bar_date == prev_day_date:
+                prev_day_high = max(prev_day_high, float(highs[i]))
+                prev_day_low = min(prev_day_low, float(lows[i]))
+            else:
+                break
+
+    result["prev_day_high"] = prev_day_high
+    result["prev_day_low"] = prev_day_low
+    result["prev_day_close"] = prev_day_close
+
+    # --- Previous week ---
+    prev_week_high = float("nan")
+    prev_week_low = float("nan")
+    prev_week_close = float("nan")
+    prev_week_found = False
+    for i in range(n - 2, -1, -1):
+        bar_week = timestamps[i].date().isocalendar()[1]
+        bar_year = timestamps[i].date().isocalendar()[0]
+        cur_year = current_date.isocalendar()[0]
+        if bar_week < current_week or bar_year < cur_year:
+            if not prev_week_found:
+                prev_week_high = float(highs[i])
+                prev_week_low = float(lows[i])
+                prev_week_close = float(closes[i])
+                prev_week_found = True
+                prev_week_num = bar_week
+                prev_week_year = bar_year
+            elif bar_week == prev_week_num and bar_year == prev_week_year:
+                prev_week_high = max(prev_week_high, float(highs[i]))
+                prev_week_low = min(prev_week_low, float(lows[i]))
+            else:
+                break
+
+    result["prev_week_high"] = prev_week_high
+    result["prev_week_low"] = prev_week_low
+    result["prev_week_close"] = prev_week_close
+
+    # --- Previous session levels ---
+    for sess_name, (start_h, end_h) in _SESSION_HOURS.items():
+        sess_high = float("nan")
+        sess_low = float("nan")
+        found = False
+        for i in range(n - 2, -1, -1):
+            h = timestamps[i].hour
+            in_session = start_h <= h < end_h
+            bar_date = timestamps[i].date()
+            # Must be from a previous session (either earlier today or yesterday)
+            is_past = bar_date < current_date or (
+                bar_date == current_date and h < timestamps[-1].hour
+            )
+            if in_session and is_past:
+                if not found:
+                    sess_high = float(highs[i])
+                    sess_low = float(lows[i])
+                    found = True
+                    sess_date = bar_date
+                elif bar_date == sess_date:
+                    sess_high = max(sess_high, float(highs[i]))
+                    sess_low = min(sess_low, float(lows[i]))
+                else:
+                    break
+        result[f"prev_{sess_name}_high"] = sess_high
+        result[f"prev_{sess_name}_low"] = sess_low
+
+    return result

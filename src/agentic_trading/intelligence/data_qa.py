@@ -23,8 +23,8 @@ from typing import Sequence
 
 from pydantic import BaseModel, Field
 
-from agentic_trading.core.enums import Timeframe
-from agentic_trading.core.models import Candle
+from agentic_trading.core.enums import AssetClass, Timeframe
+from agentic_trading.core.models import Candle, Instrument
 
 logger = logging.getLogger(__name__)
 
@@ -147,6 +147,7 @@ class DataQualityChecker:
         max_age_seconds: float,
         symbol: str = "",
         now: datetime | None = None,
+        instrument: Instrument | None = None,
     ) -> DataQualityIssue | None:
         """Check whether the most recent candle is too old.
 
@@ -160,6 +161,10 @@ class DataQualityChecker:
             Symbol for the issue report.
         now:
             Current time.  Defaults to ``datetime.now(UTC)``.
+        instrument:
+            Optional instrument metadata.  When provided for an FX
+            instrument with ``weekend_close=True``, staleness is
+            suppressed during closed trading sessions.
 
         Returns
         -------
@@ -174,6 +179,15 @@ class DataQualityChecker:
             last_candle_time = last_candle_time.replace(tzinfo=timezone.utc)
         if now.tzinfo is None:
             now = now.replace(tzinfo=timezone.utc)
+
+        # FX session awareness: skip staleness when market is closed
+        if instrument is not None and instrument.asset_class == AssetClass.FX:
+            from agentic_trading.core.fx_normalizer import is_session_open
+
+            if not is_session_open(
+                instrument, now.hour, now.minute, now.isoweekday()
+            ):
+                return None  # market closed — staleness expected
 
         age_s = (now - last_candle_time).total_seconds()
 

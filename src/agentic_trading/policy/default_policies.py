@@ -19,7 +19,7 @@ Usage::
 
 from __future__ import annotations
 
-from agentic_trading.core.config import RiskConfig
+from agentic_trading.core.config import FXRiskConfig, RiskConfig
 from agentic_trading.core.enums import GovernanceAction
 
 from .models import (
@@ -300,6 +300,228 @@ def build_strategy_constraint_policies(
         set_id="strategy_constraints",
         name="Strategy Constraints",
         description="Per-strategy operating boundaries and limits.",
+        version=1,
+        mode=mode,
+        rules=rules,
+    )
+
+
+def build_fx_policies(
+    config: FXRiskConfig | None = None,
+    *,
+    mode: PolicyMode = PolicyMode.ENFORCED,
+) -> PolicySet:
+    """Build FX-specific policy rules.
+
+    These rules enforce FX-specific risk constraints: leverage, spread,
+    session hours, rollover, slippage, and pair whitelist.  All rules
+    follow the same declarative :class:`PolicyRule` pattern.
+
+    The context dict passed to ``PolicyEngine.evaluate()`` must contain
+    the pre-computed values listed in each rule's ``field``.
+    """
+    cfg = config or FXRiskConfig()
+
+    rules = [
+        PolicyRule(
+            rule_id="fx_max_leverage",
+            name="FX Maximum Leverage",
+            description=(
+                f"FX leverage must not exceed {cfg.max_leverage}x"
+            ),
+            field="projected_leverage",
+            operator=Operator.LE,
+            threshold=float(cfg.max_leverage),
+            action=GovernanceAction.BLOCK,
+            policy_type=PolicyType.FX_CONSTRAINT,
+            severity="high",
+        ),
+        PolicyRule(
+            rule_id="fx_max_notional",
+            name="FX Maximum Order Notional",
+            description=(
+                f"FX order must not exceed "
+                f"${cfg.max_notional_per_order_usd:,.0f}"
+            ),
+            field="order_notional_usd",
+            operator=Operator.LE,
+            threshold=cfg.max_notional_per_order_usd,
+            action=GovernanceAction.BLOCK,
+            policy_type=PolicyType.FX_CONSTRAINT,
+            severity="high",
+        ),
+        PolicyRule(
+            rule_id="fx_max_spread",
+            name="FX Maximum Spread",
+            description=(
+                f"Spread must not exceed {cfg.max_spread_pips} pips"
+            ),
+            field="current_spread_pips",
+            operator=Operator.LE,
+            threshold=cfg.max_spread_pips,
+            action=GovernanceAction.BLOCK,
+            policy_type=PolicyType.FX_CONSTRAINT,
+            severity="medium",
+        ),
+        PolicyRule(
+            rule_id="fx_session_guard",
+            name="FX Session Guard",
+            description="Orders only during allowed trading sessions",
+            field="session_open",
+            operator=Operator.EQ,
+            threshold=True,
+            action=GovernanceAction.BLOCK,
+            policy_type=PolicyType.FX_CONSTRAINT,
+            severity="high",
+        ),
+        PolicyRule(
+            rule_id="fx_weekend_guard",
+            name="FX Weekend Guard",
+            description="Block orders when FX markets are closed",
+            field="fx_market_open",
+            operator=Operator.EQ,
+            threshold=True,
+            action=GovernanceAction.BLOCK,
+            policy_type=PolicyType.FX_CONSTRAINT,
+            severity="critical",
+            enabled=cfg.block_weekend_orders,
+        ),
+        PolicyRule(
+            rule_id="fx_slippage_limit",
+            name="FX Slippage Limit",
+            description=(
+                f"Slippage must not exceed {cfg.max_slippage_pips} pips"
+            ),
+            field="expected_slippage_pips",
+            operator=Operator.LE,
+            threshold=cfg.max_slippage_pips,
+            action=GovernanceAction.BLOCK,
+            policy_type=PolicyType.FX_CONSTRAINT,
+            severity="medium",
+        ),
+        PolicyRule(
+            rule_id="fx_pair_whitelist",
+            name="FX Pair Whitelist",
+            description="Only trade whitelisted FX pairs",
+            field="symbol",
+            operator=Operator.IN,
+            threshold=cfg.allowed_pairs,
+            action=GovernanceAction.BLOCK,
+            policy_type=PolicyType.FX_CONSTRAINT,
+            severity="high",
+            enabled=cfg.major_pairs_only,
+        ),
+        PolicyRule(
+            rule_id="fx_rollover_limit",
+            name="FX Daily Rollover Cost Limit",
+            description=(
+                f"Daily rollover cost must not exceed "
+                f"${cfg.max_daily_rollover_cost_usd:,.0f}"
+            ),
+            field="daily_rollover_cost_usd",
+            operator=Operator.LE,
+            threshold=cfg.max_daily_rollover_cost_usd,
+            action=GovernanceAction.REDUCE_SIZE,
+            policy_type=PolicyType.FX_CONSTRAINT,
+            severity="medium",
+        ),
+    ]
+
+    return PolicySet(
+        set_id="fx_risk",
+        name="FX Risk Limits",
+        description=(
+            "FX-specific risk limits: leverage, spread, session, "
+            "rollover, slippage, and pair whitelist."
+        ),
+        version=1,
+        mode=mode,
+        rules=rules,
+    )
+
+
+def build_pre_trade_control_policies(
+    config: RiskConfig | None = None,
+    *,
+    mode: PolicyMode = PolicyMode.ENFORCED,
+) -> PolicySet:
+    """Build institutional pre-trade control policies (spec §4.5).
+
+    These declarative rules cover:
+    1. Price collars — reject orders deviating beyond a band from ref price.
+    2. Self-match prevention — block orders that would cross own resting orders.
+    3. Message throttles — rate-limit order submissions per strategy and symbol.
+
+    The context dict passed to ``PolicyEngine.evaluate()`` must contain
+    the pre-computed values listed in each rule's ``field``.
+    """
+    cfg = config or RiskConfig()
+
+    rules = [
+        PolicyRule(
+            rule_id="price_collar",
+            name="Price Collar",
+            description=(
+                f"Limit order price must not deviate more than "
+                f"{cfg.price_collar_bps:.0f} bps from reference price"
+            ),
+            field="price_deviation_bps",
+            operator=Operator.LE,
+            threshold=cfg.price_collar_bps,
+            action=GovernanceAction.BLOCK,
+            policy_type=PolicyType.PRE_TRADE_CONTROL,
+            severity="high",
+        ),
+        PolicyRule(
+            rule_id="self_match_prevention",
+            name="Self-Match Prevention",
+            description=(
+                "Orders must not cross own resting orders on same venue"
+            ),
+            field="would_self_match",
+            operator=Operator.EQ,
+            threshold=False,
+            action=GovernanceAction.BLOCK,
+            policy_type=PolicyType.PRE_TRADE_CONTROL,
+            severity="critical",
+        ),
+        PolicyRule(
+            rule_id="message_throttle_strategy",
+            name="Message Throttle (Strategy)",
+            description=(
+                f"Strategy message rate must not exceed "
+                f"{cfg.max_messages_per_minute_per_strategy} msgs/min"
+            ),
+            field="strategy_messages_per_minute",
+            operator=Operator.LE,
+            threshold=float(cfg.max_messages_per_minute_per_strategy),
+            action=GovernanceAction.BLOCK,
+            policy_type=PolicyType.PRE_TRADE_CONTROL,
+            severity="high",
+        ),
+        PolicyRule(
+            rule_id="message_throttle_symbol",
+            name="Message Throttle (Symbol)",
+            description=(
+                f"Per-symbol message rate must not exceed "
+                f"{cfg.max_messages_per_minute_per_symbol} msgs/min"
+            ),
+            field="symbol_messages_per_minute",
+            operator=Operator.LE,
+            threshold=float(cfg.max_messages_per_minute_per_symbol),
+            action=GovernanceAction.BLOCK,
+            policy_type=PolicyType.PRE_TRADE_CONTROL,
+            severity="high",
+        ),
+    ]
+
+    return PolicySet(
+        set_id="pre_trade_controls",
+        name="Pre-Trade Controls",
+        description=(
+            "Institutional pre-trade controls: price collars, self-match "
+            "prevention, and message rate throttles."
+        ),
         version=1,
         mode=mode,
         rules=rules,

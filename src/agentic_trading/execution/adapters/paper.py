@@ -110,6 +110,8 @@ class PaperAdapter:
 
         # Asyncio lock for thread safety
         self._lock = asyncio.Lock()
+        # Reentrant guard for set_market_price → _check_trading_stops
+        self._in_stop_check: bool = False
 
         # Initialise balances
         for currency, amount in (initial_balances or {}).items():
@@ -138,9 +140,22 @@ class PaperAdapter:
         Also checks whether the new price triggers any active TP/SL
         levels.  When triggered, a synthetic close fill is created
         and the stop is cleared.
+
+        Safety note: this method is synchronous and runs in the asyncio
+        event loop.  Because asyncio is single-threaded, the
+        ``_check_trading_stops`` call runs atomically with respect to
+        all other ``async`` adapter methods (which await the lock).
+        A reentrant guard prevents double-entry if a fill publication
+        callback indirectly calls ``set_market_price`` again.
         """
         self._market_prices[symbol] = price
-        self._check_trading_stops(symbol, price)
+        if self._in_stop_check:
+            return  # Prevent reentrant stop checks
+        self._in_stop_check = True
+        try:
+            self._check_trading_stops(symbol, price)
+        finally:
+            self._in_stop_check = False
 
     def get_market_price(self, symbol: str) -> Decimal | None:
         """Return the current simulated market price."""
@@ -165,9 +180,24 @@ class PaperAdapter:
                 fill_price = self._slippage.apply(
                     market_price, intent.side.value
                 )
+            elif intent.order_type == OrderType.LIMIT and intent.price is not None:
+                # Limit orders should only fill when the market price
+                # is favourable relative to the limit level.
+                #   BUY  limit: fills only if market_price <= limit
+                #   SELL limit: fills only if market_price >= limit
+                limit_ok = (
+                    (intent.side == Side.BUY and market_price <= intent.price)
+                    or (intent.side == Side.SELL and market_price >= intent.price)
+                )
+                if not limit_ok:
+                    raise ExchangeError(
+                        f"Limit price {intent.price} not reachable at "
+                        f"current market price {market_price} "
+                        f"(side={intent.side.value})"
+                    )
+                # Fill at the limit price (maker execution).
+                fill_price = intent.price
             elif intent.price is not None:
-                # For limit orders in paper mode we fill immediately at
-                # the limit price (optimistic simulation).
                 fill_price = intent.price
             else:
                 fill_price = self._slippage.apply(
@@ -177,11 +207,14 @@ class PaperAdapter:
             # Determine fee
             is_maker = intent.order_type == OrderType.LIMIT
             fee_rate = self._fees.fee_for(is_maker)
-            notional = fill_price * intent.qty
+            instrument = self._instruments.get(intent.symbol)
+            if instrument is not None:
+                notional = instrument.notional_value(intent.qty, fill_price)
+            else:
+                notional = fill_price * intent.qty
             fee_amount = notional * fee_rate
 
             # Check balance (simplified: check quote currency for buys)
-            instrument = self._instruments.get(intent.symbol)
             quote_currency = "USDT"
             if instrument is not None:
                 quote_currency = instrument.quote
@@ -370,12 +403,20 @@ class PaperAdapter:
                     # Update mark price and PnL
                     mp = self._market_prices.get(sym)
                     if mp is not None:
-                        pnl = self._calculate_unrealized_pnl(pos, mp)
+                        _inst = self._instruments.get(sym)
+                        pnl = self._calculate_unrealized_pnl(
+                            pos, mp, instrument=_inst,
+                        )
+                        _notional = (
+                            _inst.notional_value(abs(pos.qty), mp)
+                            if _inst is not None
+                            else abs(pos.qty * mp)
+                        )
                         pos = pos.model_copy(
                             update={
                                 "mark_price": mp,
                                 "unrealized_pnl": pnl,
-                                "notional": abs(pos.qty * mp),
+                                "notional": _notional,
                             }
                         )
                     positions.append(pos)
@@ -573,6 +614,19 @@ class PaperAdapter:
         close_qty = abs(pos.qty)
         close_side = Side.SELL if is_long else Side.BUY
 
+        # Apply slippage to stop-loss fills (they execute as aggressive
+        # market orders once the trigger level is breached).  Take-profit
+        # fills are limit-like and get no adverse slippage.
+        if trigger_reason in ("stop_loss", "trailing_stop"):
+            slipped = self._slippage.apply(
+                trigger_price, close_side.value
+            )
+            # Clamp: slippage must not improve on the trigger price.
+            if is_long:
+                trigger_price = min(slipped, trigger_price)
+            else:
+                trigger_price = max(slipped, trigger_price)
+
         logger.info(
             "PaperAdapter %s triggered for %s at %s (pos=%s qty=%s): "
             "closing at %s",
@@ -598,6 +652,8 @@ class PaperAdapter:
         if self._event_bus is not None:
             from agentic_trading.core.events import FillEvent
 
+            _inst = self._instruments.get(symbol)
+            _fee_ccy = _inst.quote if _inst is not None else "USDT"
             fill = FillEvent(
                 fill_id=_uid(),
                 order_id=f"paper_tpsl_{_uid()[:8]}",
@@ -608,19 +664,37 @@ class PaperAdapter:
                 price=trigger_price,
                 qty=close_qty,
                 fee=Decimal("0"),
-                fee_currency="USDT",
+                fee_currency=_fee_ccy,
                 is_maker=False,
                 trace_id=f"tpsl_{trigger_reason}_{symbol}",
             )
 
             import asyncio
 
+            def _on_tpsl_publish_done(
+                task: asyncio.Task[None],
+                _symbol: str = symbol,
+                _fill: FillEvent = fill,
+            ) -> None:
+                exc = task.exception() if not task.cancelled() else None
+                if exc is not None:
+                    logger.error(
+                        "CRITICAL: Failed to publish TP/SL fill for %s "
+                        "(fill_id=%s, trigger=%s): %s. Position may be "
+                        "orphaned — manual reconciliation required.",
+                        _symbol,
+                        _fill.fill_id,
+                        trigger_reason,
+                        exc,
+                    )
+
             try:
                 loop = asyncio.get_running_loop()
-                loop.create_task(
+                task = loop.create_task(
                     self._event_bus.publish("execution.fill", fill),
                     name=f"paper-tpsl-{symbol}",
                 )
+                task.add_done_callback(_on_tpsl_publish_done)
             except RuntimeError:
                 # No running event loop (e.g. in sync tests)
                 logger.debug(
@@ -643,12 +717,19 @@ class PaperAdapter:
         existing = self._positions.get(symbol)
         now = datetime.now(timezone.utc)
 
+        _inst = self._instruments.get(symbol)
+
         if existing is None or existing.qty == Decimal("0"):
             # New position
             pos_side = (
                 PositionSide.LONG if side == Side.BUY else PositionSide.SHORT
             )
             signed_qty = qty if side == Side.BUY else -qty
+            _notional = (
+                _inst.notional_value(abs(signed_qty), fill_price)
+                if _inst is not None
+                else abs(signed_qty * fill_price)
+            )
             self._positions[symbol] = Position(
                 symbol=symbol,
                 exchange=self._exchange,
@@ -657,7 +738,7 @@ class PaperAdapter:
                 entry_price=fill_price,
                 mark_price=fill_price,
                 leverage=leverage or 1,
-                notional=abs(signed_qty * fill_price),
+                notional=_notional,
                 updated_at=now,
             )
         else:
@@ -695,16 +776,27 @@ class PaperAdapter:
                 pos_side = existing.side
 
             realized = Decimal("0")
+            lot_mult = Decimal("1")
+            if _inst is not None:
+                from agentic_trading.core.enums import AssetClass
+                if _inst.asset_class == AssetClass.FX:
+                    lot_mult = _inst.lot_size
+
             if (side == Side.SELL and old_qty > 0) or (
                 side == Side.BUY and old_qty < 0
             ):
                 # Closing portion generates realized PnL
                 close_qty = min(qty, abs(old_qty))
                 if old_qty > 0:
-                    realized = (fill_price - existing.entry_price) * close_qty
+                    realized = (fill_price - existing.entry_price) * close_qty * lot_mult
                 else:
-                    realized = (existing.entry_price - fill_price) * close_qty
+                    realized = (existing.entry_price - fill_price) * close_qty * lot_mult
 
+            _notional = (
+                _inst.notional_value(abs(new_qty), fill_price)
+                if _inst is not None
+                else abs(new_qty * fill_price)
+            )
             self._positions[symbol] = Position(
                 symbol=symbol,
                 exchange=self._exchange,
@@ -715,21 +807,32 @@ class PaperAdapter:
                 realized_pnl=existing.realized_pnl + realized,
                 leverage=leverage or existing.leverage,
                 margin_mode=existing.margin_mode,
-                notional=abs(new_qty * fill_price),
+                notional=_notional,
                 updated_at=now,
             )
 
     @staticmethod
     def _calculate_unrealized_pnl(
-        position: Position, mark_price: Decimal
+        position: Position,
+        mark_price: Decimal,
+        instrument: Instrument | None = None,
     ) -> Decimal:
-        """Calculate unrealized PnL for a position at a given mark price."""
+        """Calculate unrealized PnL for a position at a given mark price.
+
+        For FX instruments, PnL = (mark - entry) * qty * lot_size.
+        """
         if position.qty == Decimal("0"):
             return Decimal("0")
+        from agentic_trading.core.enums import AssetClass
+
+        lot_mult = Decimal("1")
+        if instrument is not None and instrument.asset_class == AssetClass.FX:
+            lot_mult = instrument.lot_size
+
         if position.qty > 0:
-            return (mark_price - position.entry_price) * position.qty
+            return (mark_price - position.entry_price) * position.qty * lot_mult
         else:
-            return (position.entry_price - mark_price) * abs(position.qty)
+            return (position.entry_price - mark_price) * abs(position.qty) * lot_mult
 
     # ------------------------------------------------------------------
     # Instrument management

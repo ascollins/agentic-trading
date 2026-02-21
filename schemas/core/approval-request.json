@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-trading/schemas/core/approval-request.json",
+  "title": "ApprovalRequest",
+  "description": "Human-in-the-loop approval lifecycle. System of record: PostgreSQL (approval_requests — not yet implemented).",
+  "version": 1,
+  "type": "object",
+  "required": ["request_id", "created_at", "expires_at", "strategy_id", "symbol", "action_type", "trigger", "escalation_level", "status"],
+  "properties": {
+    "request_id": { "type": "string", "format": "uuid" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "expires_at": { "type": "string", "format": "date-time" },
+    "ttl_seconds": { "type": "integer", "default": 300 },
+    "strategy_id": { "type": "string" },
+    "symbol": { "type": "string" },
+    "action_type": { "type": "string" },
+    "trigger": {
+      "type": "string",
+      "enum": ["HIGH_IMPACT", "CRITICAL_IMPACT", "POLICY_VIOLATION", "MATURITY_GATE", "MANUAL_HOLD", "STRATEGY_OVERRIDE", "SIZE_THRESHOLD", "NEW_SYMBOL"]
+    },
+    "escalation_level": {
+      "type": "string",
+      "enum": ["L1_AUTO", "L2_OPERATOR", "L3_RISK", "L4_ADMIN"]
+    },
+    "notional_usd": { "type": "string" },
+    "impact_tier": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"] },
+    "sizing_multiplier": { "type": "string" },
+    "context": { "type": "object" },
+    "reason": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["PENDING", "APPROVED", "REJECTED", "EXPIRED", "ESCALATED", "CANCELLED"],
+      "description": "PENDING → APPROVED | REJECTED | EXPIRED | ESCALATED | CANCELLED"
+    },
+    "decided_at": { "type": ["string", "null"], "format": "date-time" },
+    "decided_by": { "type": "string" },
+    "decision_reason": { "type": "string" },
+    "order_intent_data": { "type": "object" },
+    "tenant_id": { "type": "string", "default": "default" }
+  },
+  "additionalProperties": false
+}

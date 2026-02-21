@@ -283,3 +283,37 @@ auto_apply = false
 max_results_kept = 20
 results_dir = "data/optimizer_results"
 initial_delay_minutes = 5.0
+
+# ===================================================================
+# PREDICTION MARKET (Polymarket integration)
+# ===================================================================
+
+[prediction_market]
+enabled = true
+poll_interval_seconds = 300        # 5 min polling
+min_volume_usd = 100000            # Ignore thin markets
+max_confidence_boost = 0.15        # Max ±15% confidence adjustment
+consensus_threshold = 0.3          # Min |consensus| for signal
+shadow_mode = false                # Live mode: PM adjustments affect sizing
+twap_window_hours = 2.0            # TWAP smoothing window
+event_risk_hours = 4.0             # Hours before event to reduce exposure
+event_risk_sizing_multiplier = 0.25 # Reduce sizing to 25% near uncertain events
+keywords = [
+    "bitcoin", "btc", "ethereum", "eth", "solana", "sol",
+    "crypto", "federal reserve", "fed", "interest rate",
+    "inflation", "sec", "regulation", "etf",
+]
+
+# Prediction consensus strategy
+[[strategies]]
+strategy_id = "prediction_consensus"
+enabled = true
+
+[strategies.params]
+consensus_threshold = 0.3
+exit_threshold = 0.15
+min_markets = 2
+min_volume_usd = 100000
+trend_lookback = 3
+min_confidence = 0.3
+signal_cooldown_minutes = 30

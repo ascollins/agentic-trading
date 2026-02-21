@@ -128,6 +128,8 @@ async def test_sell_then_buy_same_qty_nets_to_zero(qty, price):
 async def test_partial_close_leaves_remainder(buy_qty, sell_qty, price):
     """Buying X and selling Y leaves position of X - Y."""
     assume(buy_qty != sell_qty)
+    # Ensure notional + fees fits within the initial balance
+    assume(buy_qty * price < Decimal("5000000"))
 
     adapter = PaperAdapter(
         exchange=Exchange.BINANCE,

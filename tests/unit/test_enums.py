@@ -97,6 +97,8 @@ class TestInstrumentType:
             InstrumentType.SPOT,
             InstrumentType.PERP,
             InstrumentType.FUTURE,
+            InstrumentType.FX_SPOT,
+            InstrumentType.FX_CFD,
         }
 
 
@@ -186,8 +188,15 @@ class TestRiskAlertSeverity:
 
 class TestExchange:
     def test_members(self):
-        assert set(Exchange) == {Exchange.BINANCE, Exchange.BYBIT}
+        assert set(Exchange) == {
+            Exchange.BINANCE,
+            Exchange.BYBIT,
+            Exchange.OANDA,
+            Exchange.LMAX,
+        }
 
     def test_values(self):
         assert Exchange.BINANCE.value == "binance"
         assert Exchange.BYBIT.value == "bybit"
+        assert Exchange.OANDA.value == "oanda"
+        assert Exchange.LMAX.value == "lmax"

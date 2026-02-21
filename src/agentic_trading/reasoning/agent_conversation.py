@@ -12,16 +12,17 @@ Three rendering methods:
 
 from __future__ import annotations
 
-import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel, Field
 
+from agentic_trading.core.ids import new_id as _uuid
+from agentic_trading.core.ids import utc_now as _now
+
 from .agent_message import AgentMessage, AgentRole, MessageType
 from .soteria_trace import SoteriaTrace
-
 
 # ---------------------------------------------------------------------------
 # ConversationOutcome
@@ -37,19 +38,6 @@ class ConversationOutcome(str, Enum):
     VETOED = "vetoed"
     ERROR = "error"
     DEBRIEF = "debrief"
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _uuid() -> str:
-    return str(uuid.uuid4())
-
-
-def _now() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 # ---------------------------------------------------------------------------

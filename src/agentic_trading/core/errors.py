@@ -125,3 +125,20 @@ class ControlPlaneError(TradingError):
 
 class ControlPlaneUnavailable(ControlPlaneError):
     """A critical control plane component is unavailable (audit, policy, etc)."""
+
+
+# --- LLM ---
+class LLMError(TradingError):
+    """Base for all LLM envelope errors."""
+
+
+class EnvelopeValidationError(LLMError):
+    """Envelope fails pre-call validation (missing instructions, bad schema, etc.)."""
+
+
+class LLMBudgetExhaustedError(LLMError):
+    """API call budget or cost ceiling exceeded."""
+
+
+class LLMResponseValidationError(LLMError):
+    """LLM output failed validation against expected_output_schema."""

@@ -165,6 +165,61 @@ class TestMyComponent:
 - Private: `_leading_underscore`
 - Protocols: `I` prefix (`IEventBus`, `IStrategy`, `IExchangeAdapter`)
 
+## Data Framework
+
+### ID Standards
+
+All ID and timestamp factories live in `core/ids.py`. No module should define its own `_uuid()` or `_now()`.
+
+| Category | Format | Generator | Example fields |
+|----------|--------|-----------|----------------|
+| Internal entity ID | UUID v4 string | `core.ids.new_id()` | event_id, trade_id, trace_id, request_id |
+| External ID | Opaque string | Exchange adapter | order_id, fill_id |
+| Content-derived ID | SHA256[:16] hex | `core.ids.content_hash()` | dedupe_key, script_id |
+| Dict-derived hash | SHA256[:16] hex | `core.ids.payload_hash()` | request_hash, snapshot_hash |
+| Correlation ID | UUID v4 string | `core.ids.new_id()` | trace_id (inherited through event chain) |
+
+### Timestamp Standards
+
+- Always `datetime` with `tzinfo=timezone.utc` — never naive
+- Factory: `core.ids.utc_now()`
+- PostgreSQL: `DateTime(timezone=True)`, `server_default=func.now()`
+- Parquet: `pa.timestamp("us", tz="UTC")`
+- Serialization: ISO 8601 (Pydantic handles automatically)
+
+### Source of Truth Map
+
+| Entity | Authoritative Store | Hot Path |
+|--------|-------------------|----------|
+| Order lifecycle | PostgreSQL (`orders`) | Redis (`trading:open_orders:*`) |
+| Fills | PostgreSQL (`fills`) | — |
+| Positions | PostgreSQL (`position_snapshots`) | Redis (`trading:position:*`) |
+| Balances | PostgreSQL (`balance_snapshots`) | Redis (`trading:balance:*`) |
+| Trade records | PostgreSQL (on close) | In-memory journal |
+| Candle history | Parquet (`data/historical/`) | In-memory ring buffer |
+| Decision audit | PostgreSQL (`decision_audits`) | — |
+| Governance log | PostgreSQL (`governance_logs`) | — |
+| Agent conversations | PostgreSQL + JSONL | — |
+| Policy sets | File (JSON via PolicyStore) | In-memory PolicyEngine |
+| Narration items | JSONL (`data/narration_history.jsonl`) | In-memory ring buffer |
+| Memory entries | JSONL (`data/memory_store.jsonl`) | In-memory MemoryStore |
+| Kill switch | Redis (`trading:kill_switch`) | — |
+| Dedup tokens | Redis (`trading:dedupe:*`, TTL) | — |
+
+### Event Log Format
+
+Every event inherits `BaseEvent` with these mandatory fields:
+- `event_id` — unique UUID per event instance
+- `timestamp` — UTC creation time
+- `trace_id` — correlation ID linking the full decision chain
+- `source_module` — which module created the event
+- `schema_version` — integer version (bump on breaking changes)
+- `causation_id` — event_id of the direct cause (forms event DAG)
+
+Trace ID chain: Signal → OrderIntent → OrderAck → FillEvent → TradeRecord → DecisionAudit
+
+28 topics registered in `bus/schemas.py` with `SCHEMA_VERSIONS` dict for forward compatibility.
+
 ## Known Issues
 
 - Redis consumer loop silently swallows exceptions at `redis_streams.py` line 151

@@ -132,7 +132,10 @@ async def run_standalone(
         heartbeat_seconds=60.0,
         dedupe_window_seconds=0,  # Allow all samples through
     )
-    store = NarrationStore(max_items=200)
+    store = NarrationStore(
+        max_items=200,
+        persistence_path="data/narration_history.jsonl",
+    )
 
     # Seed with sample data
     _seed_store(store, service)

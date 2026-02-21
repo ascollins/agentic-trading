@@ -107,6 +107,17 @@ KILL_SWITCH_ACTIVE = Gauge(
     "Kill switch status (1=active, 0=inactive)",
 )
 
+DEAD_LETTERS_TOTAL = Counter(
+    "trading_dead_letters_total",
+    "Total messages sent to dead-letter queue",
+    ["topic"],
+)
+
+LLM_CIRCUIT_BREAKER_OPEN = Gauge(
+    "trading_llm_circuit_breaker_open",
+    "LLM circuit breaker status (1=open, 0=closed)",
+)
+
 # ---------------------------------------------------------------------------
 # Latency metrics
 # ---------------------------------------------------------------------------
@@ -261,6 +272,16 @@ def update_daily_pnl(value: float) -> None:
 def update_kill_switch(active: bool) -> None:
     """Update the kill switch gauge."""
     KILL_SWITCH_ACTIVE.set(1 if active else 0)
+
+
+def record_dead_letter(topic: str) -> None:
+    """Record a message sent to the dead-letter queue."""
+    DEAD_LETTERS_TOTAL.labels(topic=topic).inc()
+
+
+def update_llm_circuit_breaker(is_open: bool) -> None:
+    """Update the LLM circuit breaker gauge."""
+    LLM_CIRCUIT_BREAKER_OPEN.set(1 if is_open else 0)
 
 
 def record_candle_processed(symbol: str, timeframe: str) -> None:

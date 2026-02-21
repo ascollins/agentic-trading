@@ -85,6 +85,32 @@ class RiskConfig(BaseModel):
     max_daily_entries: int = 10  # Max new entries per calendar day
     portfolio_cooldown_seconds: int = 3600  # Min seconds between any new entry
 
+    # Pre-trade controls (institutional spec §4.5)
+    price_collar_bps: float = 200.0  # Max deviation from ref price in bps (2%)
+    max_messages_per_minute_per_strategy: int = 60  # Message throttle per strategy
+    max_messages_per_minute_per_symbol: int = 30  # Message throttle per symbol
+
+
+class FXRiskConfig(BaseModel):
+    """FX-specific risk configuration."""
+
+    max_leverage: int = 50
+    max_notional_per_order_usd: float = 1_000_000.0
+    max_spread_pips: float = 5.0
+    max_daily_rollover_cost_usd: float = 500.0
+    max_slippage_pips: float = 3.0
+    allowed_sessions: list[str] = Field(
+        default_factory=lambda: ["london", "new_york", "tokyo"]
+    )
+    block_weekend_orders: bool = True
+    major_pairs_only: bool = True
+    allowed_pairs: list[str] = Field(
+        default_factory=lambda: [
+            "EUR/USD", "GBP/USD", "USD/JPY", "USD/CHF",
+            "AUD/USD", "USD/CAD", "NZD/USD",
+        ]
+    )
+
 
 class ExitConfig(BaseModel):
     """Server-side TP/SL defaults when strategy doesn't provide explicit levels."""
@@ -295,6 +321,31 @@ class CMTConfig(BaseModel):
     )
 
 
+class PredictionMarketConfig(BaseModel):
+    """Prediction market integration configuration."""
+
+    enabled: bool = False
+    poll_interval_seconds: float = 300.0  # 5 minutes
+    min_volume_usd: float = 100_000.0  # Ignore markets below this
+    max_confidence_boost: float = 0.15  # Max confidence adjustment +/-
+    max_sizing_multiplier: float = 1.5  # Max sizing boost from PM data
+    min_sizing_multiplier: float = 0.5  # Min sizing reduction from PM data
+    twap_window_hours: float = 2.0  # Time-weighted average window
+    consensus_threshold: float = 0.3  # Min |consensus| to act
+    event_risk_hours: float = 4.0  # Hours before event to reduce exposure
+    event_risk_uncertainty_range: list[float] = Field(
+        default_factory=lambda: [0.35, 0.65]
+    )  # PM probability range considered "uncertain"
+    event_risk_sizing_multiplier: float = 0.25  # Sizing during uncertain events
+    keywords: list[str] = Field(
+        default_factory=lambda: [
+            "bitcoin", "btc", "ethereum", "eth", "crypto",
+            "fed", "rate", "inflation", "sec", "regulation",
+        ]
+    )
+    shadow_mode: bool = True  # Log PM signals without affecting trades
+
+
 class UIConfig(BaseModel):
     """Supervision dashboard configuration."""
 
@@ -351,7 +402,11 @@ class Settings(BaseSettings):
     )
     ui: UIConfig = Field(default_factory=UIConfig)
     cmt: CMTConfig = Field(default_factory=CMTConfig)
+    prediction_market: PredictionMarketConfig = Field(
+        default_factory=PredictionMarketConfig
+    )
     context: ContextConfig = Field(default_factory=ContextConfig)
+    fx_risk: FXRiskConfig = Field(default_factory=FXRiskConfig)
 
     # Infrastructure
     redis_url: str = "redis://localhost:6379/0"

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-trading/schemas/core/audit-entry.json",
+  "title": "AuditEntry",
+  "description": "Control plane tool call record. System of record: PostgreSQL (audit_entries — not yet implemented, currently in-memory).",
+  "version": 1,
+  "type": "object",
+  "required": ["entry_id", "timestamp", "correlation_id", "event_type", "tool_name", "action_id", "payload", "payload_hash"],
+  "properties": {
+    "entry_id": { "type": "string", "format": "uuid" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "correlation_id": { "type": "string", "format": "uuid", "description": "Control plane action chain" },
+    "causation_id": { "type": "string", "default": "", "description": "ProposedAction.action_id" },
+    "event_type": { "type": "string", "description": "E.g. order_submitted, policy_blocked" },
+    "tool_name": {
+      "type": "string",
+      "enum": [
+        "SUBMIT_ORDER", "CANCEL_ORDER", "CANCEL_ALL_ORDERS", "AMEND_ORDER",
+        "BATCH_SUBMIT_ORDERS", "SET_TRADING_STOP", "SET_LEVERAGE", "SET_POSITION_MODE",
+        "GET_POSITIONS", "GET_BALANCES", "GET_OPEN_ORDERS", "GET_INSTRUMENT",
+        "GET_FUNDING_RATE", "GET_CLOSED_PNL"
+      ]
+    },
+    "action_id": { "type": "string", "description": "Links to ProposedAction" },
+    "payload": { "type": "object", "description": "Full event context" },
+    "payload_hash": { "type": "string", "description": "SHA256[:16] integrity check" },
+    "tenant_id": { "type": "string", "default": "default" }
+  },
+  "additionalProperties": false
+}

@@ -16,7 +16,6 @@ Enforces:
 
 from __future__ import annotations
 
-import hashlib
 import inspect
 import logging
 import time
@@ -24,14 +23,15 @@ from typing import Any, Protocol, runtime_checkable
 
 from agentic_trading.core.errors import ControlPlaneUnavailable
 from agentic_trading.core.events import OrderIntent, SystemHealth
+from agentic_trading.core.ids import content_hash
 
 from .action_types import (
+    MUTATING_TOOLS,
     ActionScope,
     ApprovalDecision,
     ApprovalTier,
     AuditEntry,
     CPPolicyDecision,
-    MUTATING_TOOLS,
     ProposedAction,
     ToolCallResult,
     ToolName,
@@ -176,6 +176,30 @@ class ToolGateway:
 
         is_mutating = proposed.tool_name in MUTATING_TOOLS
 
+        # 2.5. Information barrier: role check (spec §7.2)
+        if proposed.required_role and proposed.scope.actor_role:
+            if proposed.scope.actor_role != proposed.required_role:
+                logger.warning(
+                    "Information barrier: actor_role=%s lacks required_role=%s "
+                    "for action %s",
+                    proposed.scope.actor_role,
+                    proposed.required_role,
+                    proposed.action_id,
+                )
+                await self._audit_event(
+                    proposed, "information_barrier_blocked",
+                    {
+                        "actor_role": proposed.scope.actor_role,
+                        "required_role": proposed.required_role,
+                    },
+                )
+                return self._reject(
+                    proposed,
+                    f"information_barrier: role '{proposed.scope.actor_role}' "
+                    f"cannot perform action requiring '{proposed.required_role}'",
+                    t0,
+                )
+
         # 3. Policy evaluation (mutating only)
         policy_decision: CPPolicyDecision | None = None
         if is_mutating:
@@ -275,9 +299,7 @@ class ToolGateway:
         try:
             response = await self._dispatch(proposed)
             elapsed_ms = (time.monotonic() - t0) * 1000
-            response_hash = hashlib.sha256(
-                str(response).encode()
-            ).hexdigest()[:16]
+            response_hash = content_hash(str(response))
 
             result = ToolCallResult(
                 action_id=proposed.action_id,

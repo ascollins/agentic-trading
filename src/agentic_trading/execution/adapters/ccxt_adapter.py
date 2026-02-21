@@ -244,63 +244,78 @@ class CCXTAdapter:
             avg_fill_price = result.get("average") or result.get("price")
 
             # Bybit market orders often return status=None in the create
-            # response.  Fetch the order to get the real status and fill
-            # price so downstream consumers (journal, narration) see a
-            # proper FILLED ack.
+            # response.  Fetch the order with retry+backoff to get the real
+            # status and fill price.
             if raw_status is None and order_id and ccxt_type == "market":
-                try:
-                    # Bybit requires fetchClosedOrder for filled market
-                    # orders (fetchOrder only works for recent open orders).
-                    if (
-                        self._exchange_name == "bybit"
-                        and hasattr(self._ccxt, "fetch_closed_order")
-                    ):
-                        fetched = await self._ccxt.fetch_closed_order(
-                            order_id, ccxt_symbol
+                import asyncio as _asyncio
+
+                _fetch_attempts = 3
+                _fetch_backoff = 0.5  # seconds, doubles each retry
+                for _fetch_i in range(1, _fetch_attempts + 1):
+                    try:
+                        # Bybit requires fetchClosedOrder for filled market
+                        # orders (fetchOrder only works for recent open orders).
+                        if (
+                            self._exchange_name == "bybit"
+                            and hasattr(self._ccxt, "fetch_closed_order")
+                        ):
+                            fetched = await self._ccxt.fetch_closed_order(
+                                order_id, ccxt_symbol
+                            )
+                        else:
+                            fetched = await self._ccxt.fetch_order(
+                                order_id, ccxt_symbol
+                            )
+                        raw_status = fetched.get("status")
+                        avg_fill_price = (
+                            fetched.get("average")
+                            or fetched.get("price")
+                            or avg_fill_price
                         )
-                    else:
-                        fetched = await self._ccxt.fetch_order(
-                            order_id, ccxt_symbol
-                        )
-                    raw_status = fetched.get("status")
-                    avg_fill_price = (
-                        fetched.get("average")
-                        or fetched.get("price")
-                        or avg_fill_price
-                    )
-                    logger.info(
-                        "Fetched order %s for status resolution: status=%s avg=%s",
-                        order_id, raw_status, avg_fill_price,
-                    )
-                except Exception as fetch_exc:
-                    # Market orders on Bybit almost always fill instantly;
-                    # if we can't fetch it, assume filled.
-                    if ccxt_type == "market":
-                        raw_status = "closed"
-                        # Try to get last price from ticker for the fill
-                        if avg_fill_price is None:
-                            try:
-                                ticker = await self._ccxt.fetch_ticker(ccxt_symbol)
-                                avg_fill_price = ticker.get("last")
-                            except Exception:
-                                pass
                         logger.info(
-                            "Could not fetch market order %s (%s); "
-                            "assuming filled at %s",
-                            order_id, fetch_exc, avg_fill_price,
+                            "Fetched order %s (attempt %d/%d): status=%s avg=%s",
+                            order_id, _fetch_i, _fetch_attempts,
+                            raw_status, avg_fill_price,
                         )
-                    else:
-                        logger.warning(
-                            "Could not fetch order %s for status: %s",
-                            order_id, fetch_exc,
-                        )
+                        break
+                    except Exception as fetch_exc:
+                        if _fetch_i < _fetch_attempts:
+                            logger.debug(
+                                "Fetch attempt %d/%d failed for order %s: %s "
+                                "— retrying in %.1fs",
+                                _fetch_i, _fetch_attempts, order_id,
+                                fetch_exc, _fetch_backoff,
+                            )
+                            await _asyncio.sleep(_fetch_backoff)
+                            _fetch_backoff *= 2
+                        else:
+                            # All fetch retries exhausted.  Do NOT assume
+                            # filled — leave status as None so downstream
+                            # maps it to OPEN, not FILLED.  This prevents
+                            # false fills with wrong prices from corrupting
+                            # PnL and journal data.
+                            logger.warning(
+                                "Could not fetch market order %s after %d "
+                                "attempts (last error: %s). NOT assuming "
+                                "filled — status will be OPEN. The order may "
+                                "have filled on-exchange; reconciliation will "
+                                "detect and resolve the mismatch.",
+                                order_id, _fetch_attempts, fetch_exc,
+                            )
 
             status = _map_status(str(raw_status or "open"))
 
-            # Store avg fill price so engine can read it for FillEvent
-            self._last_fill_price: Decimal | None = (
+            # Store avg fill price per order_id so engine can read it for
+            # FillEvent.  Keyed by order_id to prevent cross-symbol
+            # contamination when multiple orders are submitted rapidly.
+            _fill_price_val: Decimal | None = (
                 Decimal(str(avg_fill_price)) if avg_fill_price else None
             )
+            if not hasattr(self, "_fill_prices"):
+                self._fill_prices: dict[str, Decimal | None] = {}
+            self._fill_prices[order_id] = _fill_price_val
+            # Keep backward-compatible attribute for engine fallback
+            self._last_fill_price = _fill_price_val
 
             logger.info(
                 "CCXT order created: id=%s client_id=%s symbol=%s "

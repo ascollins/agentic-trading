@@ -436,7 +436,18 @@ class TestEmitSignal:
         bus = AsyncMock()
         agent = _make_agent(bus=bus)
         response = _make_response()
-        response.trade_plan.direction = "SHORT"
+        # Build a valid SHORT plan (stop above entry, target below entry)
+        response.trade_plan = CMTTradePlan(
+            direction="SHORT",
+            entry_price=100_000.0,
+            entry_trigger="Break below 100k support",
+            stop_loss=103_000.0,
+            stop_reasoning="Above swing high",
+            targets=[CMTTarget(price=95_000.0, pct=100.0, source="sr_level")],
+            rr_ratio=1.67,
+            blended_rr=1.5,
+            position_size_pct=2.0,
+        )
         await agent._emit_signal("ETH/USDT", response)
 
         signal = bus.publish.call_args[0][1]

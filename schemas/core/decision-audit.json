@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-trading/schemas/core/decision-audit.json",
+  "title": "DecisionAudit",
+  "description": "Full decision chain snapshot: features → signal → risk → intent → fill. System of record: PostgreSQL (decision_audits).",
+  "version": 1,
+  "type": "object",
+  "required": ["trace_id", "strategy_id", "symbol", "exchange", "decision_at"],
+  "properties": {
+    "id": { "type": "string", "format": "uuid" },
+    "trace_id": { "type": "string", "description": "Links to full decision chain" },
+    "strategy_id": { "type": "string" },
+    "symbol": { "type": "string" },
+    "exchange": { "type": "string" },
+    "feature_vector": { "type": "object", "description": "Serialized FeatureVector" },
+    "signal": { "type": "object", "description": "Serialized Signal" },
+    "risk_check": { "type": "object", "description": "Serialized RiskCheckResult" },
+    "order_intent": { "type": "object", "description": "Serialized OrderIntent" },
+    "order_result": { "type": "object", "description": "Serialized OrderAck" },
+    "fill_result": { "type": "object", "description": "Serialized FillEvent" },
+    "signal_direction": { "type": "string", "description": "Denormalized for queries" },
+    "signal_confidence": { "type": "string" },
+    "risk_passed": { "type": "boolean" },
+    "final_status": { "type": "string" },
+    "decision_at": { "type": "string", "format": "date-time" },
+    "tenant_id": { "type": "string", "default": "default" }
+  },
+  "additionalProperties": false
+}

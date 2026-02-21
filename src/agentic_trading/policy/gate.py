@@ -33,13 +33,14 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from agentic_trading.core.config import GovernanceConfig, RiskConfig
+from agentic_trading.core.config import FXRiskConfig, GovernanceConfig, RiskConfig
 from agentic_trading.core.enums import GovernanceAction
 from agentic_trading.core.events import GovernanceDecision
 
 from .approval_manager import ApprovalManager
 from .approval_models import ApprovalRule
 from .default_policies import (
+    build_fx_policies,
     build_post_trade_policies,
     build_pre_trade_policies,
     build_strategy_constraint_policies,
@@ -95,6 +96,7 @@ class PolicyGate:
         auto_approve_l1: bool = True,
         policy_persist_dir: str | None = None,
         policy_mode: PolicyMode = PolicyMode.ENFORCED,
+        fx_risk_config: FXRiskConfig | None = None,
     ) -> PolicyGate:
         """Construct a fully-wired PolicyGate from configuration.
 
@@ -133,6 +135,12 @@ class PolicyGate:
         for ps in (pre_trade, post_trade, strategy_constraints):
             policy_engine.register(ps)
             policy_store.save(ps)
+
+        # Register FX policies if FX risk config is provided
+        if fx_risk_config is not None:
+            fx_ps = build_fx_policies(fx_risk_config, mode=policy_mode)
+            policy_engine.register(fx_ps)
+            policy_store.save(fx_ps)
 
         # Load any persisted policies (may override defaults)
         if policy_persist_dir is not None:

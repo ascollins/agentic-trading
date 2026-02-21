@@ -11,11 +11,12 @@ Responsibilities:
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import time
 from enum import Enum
 from typing import Any
+
+from agentic_trading.core.ids import content_hash as _content_hash
 
 from .presenter import BloombergPresenter, OutputFormat
 from .schema import DecisionExplanation, NarrationItem
@@ -152,9 +153,9 @@ class NarrationService:
             script = self._scrub_jargon(script)
 
         # Build stable script_id
-        script_id = hashlib.sha256(
-            f"{content_hash}:{explanation.timestamp.isoformat()}".encode()
-        ).hexdigest()[:16]
+        script_id = _content_hash(
+            str(content_hash), explanation.timestamp.isoformat()
+        )
 
         item = NarrationItem(
             script_id=script_id,

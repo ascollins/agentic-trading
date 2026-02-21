@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-trading/schemas/validation/claim-annotation.json",
+  "title": "ClaimAnnotation",
+  "description": "Links a factual claim in agent output to its evidence basis. Used by the evidence validator to detect uncited claims (hallucination markers).",
+  "version": 1,
+  "type": "object",
+  "required": ["claim_id", "field_path", "claim_text", "claim_type"],
+  "additionalProperties": false,
+  "properties": {
+    "claim_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier for this claim annotation."
+    },
+    "field_path": {
+      "type": "string",
+      "description": "Dot-path to the output field containing the claim."
+    },
+    "claim_text": {
+      "type": "string",
+      "description": "The actual claim content (truncated to 500 chars)."
+    },
+    "claim_type": {
+      "type": "string",
+      "enum": ["cited", "assumption", "uncited", "derived"],
+      "description": "Classification: cited (evidence-backed), assumption (explicitly marked), uncited (violation), derived (computed)."
+    },
+    "evidence_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": [],
+      "description": "References to EvidenceItem.source IDs that back this claim."
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "default": 1.0,
+      "description": "Agent's stated confidence in this claim."
+    },
+    "validator_confidence": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "default": 0.0,
+      "description": "Validator's assessed confidence in this claim."
+    }
+  }
+}

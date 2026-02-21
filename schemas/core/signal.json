@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-trading/schemas/core/signal.json",
+  "title": "Signal",
+  "description": "Trading signal from a strategy. Origin of trace_id chain. System of record: event log (strategy.signal topic).",
+  "version": 1,
+  "type": "object",
+  "required": ["event_id", "timestamp", "trace_id", "schema_version", "strategy_id", "symbol", "direction", "confidence", "rationale"],
+  "properties": {
+    "event_id": { "type": "string", "format": "uuid" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "trace_id": { "type": "string", "format": "uuid", "description": "Origin of decision chain trace" },
+    "causation_id": { "type": "string", "default": "" },
+    "source_module": { "type": "string", "default": "" },
+    "schema_version": { "type": "integer", "minimum": 1, "default": 1 },
+    "strategy_id": { "type": "string" },
+    "symbol": { "type": "string" },
+    "direction": { "type": "string", "enum": ["LONG", "SHORT", "FLAT"] },
+    "confidence": { "type": "string", "description": "Decimal 0.0-1.0" },
+    "rationale": { "type": "string" },
+    "features_used": { "type": "array", "items": { "type": "string" } },
+    "timeframe": { "type": "string" },
+    "take_profit": { "type": "string" },
+    "stop_loss": { "type": "string" },
+    "trailing_stop": { "type": "string" },
+    "risk_constraints": { "type": "object" },
+    "tenant_id": { "type": "string", "default": "default" }
+  },
+  "additionalProperties": false
+}

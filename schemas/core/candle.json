@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-trading/schemas/core/candle.json",
+  "title": "Candle",
+  "description": "OHLCV bar for one symbol/timeframe/period. System of record: Parquet files.",
+  "version": 1,
+  "type": "object",
+  "required": ["symbol", "exchange", "timeframe", "timestamp", "open", "high", "low", "close", "volume", "is_closed"],
+  "properties": {
+    "symbol": { "type": "string" },
+    "exchange": { "type": "string" },
+    "timeframe": { "type": "string", "enum": ["1m", "5m", "15m", "1h", "4h", "1d"] },
+    "timestamp": { "type": "string", "format": "date-time", "description": "Candle open time, UTC" },
+    "open": { "type": "string", "description": "Decimal string" },
+    "high": { "type": "string" },
+    "low": { "type": "string" },
+    "close": { "type": "string" },
+    "volume": { "type": "string", "description": "Base currency volume" },
+    "quote_volume": { "type": "string" },
+    "trades": { "type": "integer", "minimum": 0 },
+    "is_closed": { "type": "boolean" },
+    "tenant_id": { "type": "string", "default": "default" }
+  },
+  "additionalProperties": false
+}

@@ -14,7 +14,8 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+
+from agentic_trading.core.file_io import safe_append_line
 
 from .pipeline_result import PipelineResult
 
@@ -128,10 +129,8 @@ class PipelineLog:
         """Store result in memory and append to JSONL file."""
         self._inner.save(result)
 
-        self._path.parent.mkdir(parents=True, exist_ok=True)
         try:
-            with open(self._path, "a") as f:
-                f.write(result.model_dump_json() + "\n")
+            safe_append_line(self._path, result.model_dump_json())
         except Exception:
             logger.exception(
                 "Failed to persist pipeline result to %s", self._path
