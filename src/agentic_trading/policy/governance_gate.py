@@ -73,6 +73,8 @@ class GovernanceGate:
 
         # Ring buffer for recent decisions (used by UI dashboard)
         self._recent_decisions: deque[GovernanceDecision] = deque(maxlen=50)
+        # Ring buffer for recent signals (used by Activity timeline)
+        self._recent_signals: deque = deque(maxlen=100)
 
     # ------------------------------------------------------------------
     # Main evaluation
@@ -449,6 +451,15 @@ class GovernanceGate:
     def recent_decisions(self) -> list[GovernanceDecision]:
         """Return recent governance decisions for dashboard display."""
         return list(self._recent_decisions)
+
+    @property
+    def recent_signals(self) -> list:
+        """Return recent signals for Activity timeline display."""
+        return list(self._recent_signals)
+
+    def record_signal(self, signal: Any) -> None:
+        """Record a signal for Activity timeline display."""
+        self._recent_signals.append(signal)
 
     def get_sizing_multiplier(self, strategy_id: str) -> float:
         """Get the combined sizing multiplier for a strategy.

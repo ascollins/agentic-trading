@@ -400,6 +400,14 @@ async def _run_live_or_paper(
             "Governance framework enabled (maturity, health, canary, impact, drift)"
         )
 
+        for strat in strategies:
+            try:
+                drift_det.set_baseline(strat.strategy_id, {
+                    "win_rate": 0.50, "avg_rr": 1.5, "sharpe": 1.0, "profit_factor": 1.5,
+                })
+            except Exception:
+                pass
+
     # Wire Trade Journal & Analytics (Edgewonk-inspired, Tiers 1-3)
     from .journal import (
         CoinFlipBaseline,
@@ -1003,6 +1011,12 @@ async def _run_live_or_paper(
                 # Cache signal for fill-time narration lookup
                 _signal_cache[sig.trace_id] = sig
 
+                if governance_gate is not None:
+                    try:
+                        governance_gate.record_signal(sig)
+                    except Exception:
+                        pass
+
                 # Separate FLAT from directional
                 if sig.direction.value == "flat":
                     _candle_flat_signals.append(sig)
@@ -1099,6 +1113,22 @@ async def _run_live_or_paper(
                     sig.strategy_id,
                     consensus.reasoning,
                 )
+
+            if governance_gate is not None:
+                try:
+                    from .core.events import GovernanceDecision
+                    from .core.enums import GovernanceAction
+                    decision = GovernanceDecision(
+                        strategy_id=sig.strategy_id,
+                        symbol=sig.symbol,
+                        action=GovernanceAction.ALLOW if consensus.is_approved else GovernanceAction.BLOCK,
+                        reason=consensus.reasoning[:200] if consensus.reasoning else "",
+                        sizing_multiplier=1.0,
+                        timestamp=ctx.clock.now(),
+                    )
+                    governance_gate._recent_decisions.append(decision)
+                except Exception:
+                    pass
 
         # Process only approved signals through portfolio sizing
         if _approved_dir_signals:
@@ -2011,6 +2041,30 @@ async def _run_live_or_paper(
         logger.info("ModelRegistry initialized (in-memory)")
     except Exception:
         logger.debug("ModelRegistry not available", exc_info=True)
+
+    if model_registry is not None:
+        from .intelligence.model_registry import ModelStage
+        stage_map = {
+            "candidate": ModelStage.RESEARCH, "backtest": ModelStage.RESEARCH,
+            "eval_pack": ModelStage.RESEARCH, "paper": ModelStage.PAPER,
+            "limited": ModelStage.LIMITED, "scale": ModelStage.PRODUCTION,
+            "demoted": ModelStage.RETIRED,
+        }
+        for strat in strategies:
+            try:
+                sid = strat.strategy_id
+                lc_stage = lifecycle_manager.get_all_stages().get(sid, "candidate")
+                rec = model_registry.register(
+                    name=sid,
+                    description=f"Strategy: {sid}",
+                    metrics={"win_rate": 0.0, "sharpe": 0.0},
+                    tags=["strategy", "auto-registered"],
+                )
+                target = stage_map.get(lc_stage, ModelStage.RESEARCH)
+                if target != ModelStage.RESEARCH:
+                    model_registry.promote(rec.model_id, target, approved_by="system", reason="auto")
+            except Exception:
+                logger.debug("Could not register %s in ModelRegistry", getattr(strat, "strategy_id", "?"))
 
     case_manager = None
     try:

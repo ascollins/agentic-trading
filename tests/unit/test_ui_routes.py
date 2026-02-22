@@ -236,10 +236,10 @@ class TestCircuitBreakersRoute:
         assert resp.status_code == 200
         assert "text/html" in resp.headers["content-type"]
 
-    def test_circuit_breakers_shows_empty_state(self):
+    def test_circuit_breakers_shows_armed_defaults(self):
         client = TestClient(_make_app())
         resp = client.get("/partials/risk/circuit-breakers")
-        assert "NO BREAKERS" in resp.text
+        assert "Daily Loss" in resp.text
 
 
 # ------------------------------------------------------------------
