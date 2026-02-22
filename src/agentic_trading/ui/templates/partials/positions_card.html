@@ -18,6 +18,7 @@
         <th>ENTRY</th>
         <th>MARK</th>
         <th>P&amp;L</th>
+        <th>LEV</th>
         <th>STRATEGY</th>
         <th></th>
       </tr>
@@ -34,6 +35,9 @@
         <td>${{ pos.mark_price }}</td>
         <td class="{{ 'side-long' if pos.pnl_positive else 'side-short' }}">
           {{ pos.unrealized_pnl }}
+        </td>
+        <td style="font-family:'JetBrains Mono',monospace; color:{{ 'var(--color-warning)' if pos.leverage | default(1) > 10 else 'var(--text-muted)' }};">
+          {{ pos.leverage | default(1) }}x
         </td>
         <td style="color:var(--text-muted);">{{ pos.strategy }}</td>
         <td>

@@ -40,10 +40,16 @@
     <div style="padding:6px; background:var(--bg-elevated); border-radius:4px;">
       <div style="font-size:8px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">LEVERAGE</div>
       {% set lev = risk_pnl.leverage | default(0) %}
+      {% set pos_lev = risk_pnl.max_position_leverage | default(0) %}
       <div style="font-size:14px; font-weight:700; font-family:'JetBrains Mono',monospace;
                   color:{{ 'var(--color-negative)' if lev > 5 else ('var(--color-warning)' if lev > 3 else 'var(--text-primary)') }};">
-        {{ "%.1f" | format(lev) }}x
+        {% if lev >= 1 %}{{ "%.1f" | format(lev) }}x{% else %}{{ "%.2f" | format(lev) }}x{% endif %}
       </div>
+      {% if pos_lev > 1 %}
+      <div style="font-size:8px; color:var(--text-muted); margin-top:1px;">
+        POS: {{ pos_lev }}x
+      </div>
+      {% endif %}
     </div>
     <div style="padding:6px; background:var(--bg-elevated); border-radius:4px;">
       <div style="font-size:8px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">VaR (1D)</div>

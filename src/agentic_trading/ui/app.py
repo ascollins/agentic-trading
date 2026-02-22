@@ -242,7 +242,7 @@ def create_ui_app(
 
     @app.get("/partials/risk/gauges", response_class=HTMLResponse)
     async def partial_risk_gauges(request: Request) -> HTMLResponse:
-        data = _build_risk_gauges_data(app)
+        data = await _build_risk_gauges_data(app)
         return templates.TemplateResponse(
             "partials/risk_gauges.html", _ctx(request, **data),
         )
@@ -988,8 +988,8 @@ async def _build_portfolio_data(app: FastAPI) -> dict[str, Any]:
     for p in positions:
         total_equity += float(p.unrealized_pnl)
 
-    # Count open positions with non-zero qty
-    open_count = sum(1 for p in positions if float(p.qty) > 0)
+    # Count open positions with non-zero qty (abs for short positions)
+    open_count = sum(1 for p in positions if float(p.qty) != 0)
 
     # Compute P&L from journal closed trades across multiple periods
     pnl_today = 0.0
@@ -1059,6 +1059,7 @@ async def _build_positions_data(app: FastAPI) -> dict[str, Any]:
     positions_raw, _ = await _fetch_exchange_state(app)
 
     # Build journal index for strategy cross-reference
+    # Try open trades first, then fall back to most recent closed trade per symbol
     journal_map: dict[str, str] = {}  # symbol -> strategy_id
     journal = app.state.journal
     if journal is not None:
@@ -1067,6 +1068,13 @@ async def _build_positions_data(app: FastAPI) -> dict[str, Any]:
                 journal_map[t.symbol] = t.strategy_id
         except Exception:
             pass
+        # Backfill from closed trades (oldest first so most recent wins)
+        if not journal_map:
+            try:
+                for t in journal.get_closed_trades():
+                    journal_map[t.symbol] = t.strategy_id
+            except Exception:
+                pass
 
     positions: list[dict[str, Any]] = []
     for p in positions_raw:
@@ -1084,6 +1092,9 @@ async def _build_positions_data(app: FastAPI) -> dict[str, Any]:
         if not strat:
             strat = journal_map.get(p.symbol, "")
 
+        # Per-position leverage from exchange
+        pos_leverage = int(getattr(p, "leverage", 1) or 1)
+
         positions.append({
             "symbol": display_sym,
             "side": side_val.upper(),
@@ -1093,6 +1104,7 @@ async def _build_positions_data(app: FastAPI) -> dict[str, Any]:
             "unrealized_pnl": f"{'+' if upnl >= 0 else ''}${upnl:,.2f}",
             "pnl_positive": upnl >= 0,
             "strategy": strat,
+            "leverage": pos_leverage,
         })
 
     # Fallback: journal open trades if adapter returned nothing
@@ -1108,6 +1120,7 @@ async def _build_positions_data(app: FastAPI) -> dict[str, Any]:
                     "unrealized_pnl": "$0.00",
                     "pnl_positive": True,
                     "strategy": t.strategy_id,
+                    "leverage": 1,
                 })
         except Exception:
             pass
@@ -1812,11 +1825,11 @@ async def _build_risk_controls_data(app: FastAPI) -> dict[str, Any]:
         "shadow_mode": shadow_mode,
         "pending_approvals": pending_approvals,
     }
-    gauges = _build_risk_gauges_data(app)
+    gauges = await _build_risk_gauges_data(app)
     return {"risk_controls": risk_controls, **gauges}
 
 
-def _build_risk_gauges_data(app: FastAPI) -> dict[str, Any]:
+async def _build_risk_gauges_data(app: FastAPI) -> dict[str, Any]:
     """Build risk utilisation gauge data."""
     settings = app.state.settings
     risk_mgr = app.state.risk_manager
@@ -1847,6 +1860,26 @@ def _build_risk_gauges_data(app: FastAPI) -> dict[str, Any]:
                 drawdown_current = float(getattr(dm, "peak_drawdown", 0))
         except Exception:
             pass
+
+    # Compute largest position as % of equity from live exchange data
+    adapter = app.state.adapter
+    if adapter is not None:
+        try:
+            positions, balances = await _fetch_exchange_state(app)
+            total_equity = sum(float(b.total) for b in balances) if balances else 0
+            if total_equity > 0 and positions:
+                max_notional = 0.0
+                for p in positions:
+                    if float(p.qty) == 0:
+                        continue
+                    notional = float(getattr(p, "notional", 0) or 0)
+                    if notional == 0:
+                        notional = abs(float(p.qty) * float(p.mark_price))
+                    if notional > max_notional:
+                        max_notional = notional
+                largest_position_pct = max_notional / total_equity
+        except Exception:
+            logger.debug("Risk gauges: failed to compute position size", exc_info=True)
 
     # Calculate utilisation percentages (as 0-100 scale)
     def pct_used(current: float, limit: float) -> float:
@@ -1958,6 +1991,7 @@ async def _build_risk_pnl_data(app: FastAPI) -> dict[str, Any]:
     pnl_by_strategy: list[dict[str, Any]] = []
     exposure = 0.0
     leverage = 0.0
+    max_pos_leverage = 0
     var_1d = 0.0
     drawdown_pct = 0.0
     drawdown_limit = 0.15
@@ -1979,7 +2013,7 @@ async def _build_risk_pnl_data(app: FastAPI) -> dict[str, Any]:
                         "pnl_pct": round(stats.get("return_pct", 0) * 100, 2),
                     })
         except Exception:
-            pass
+            logger.debug("Risk PnL: failed to read journal stats", exc_info=True)
 
     # Exposure/leverage from adapter
     adapter = app.state.adapter
@@ -1988,11 +2022,26 @@ async def _build_risk_pnl_data(app: FastAPI) -> dict[str, Any]:
             positions = await adapter.get_positions()
             balances = await adapter.get_balances()
             total_equity = sum(float(b.total) for b in balances) if balances else 0
-            gross = sum(abs(float(p.qty) * float(p.mark_price)) for p in positions if float(p.qty) > 0)
+
+            # Use Position.notional if available, else compute from qty × mark_price
+            # Include ALL non-zero positions (both long and short)
+            gross = 0.0
+            for p in positions:
+                if float(p.qty) == 0:
+                    continue
+                notional = float(getattr(p, "notional", 0) or 0)
+                if notional == 0:
+                    notional = abs(float(p.qty) * float(p.mark_price))
+                gross += notional
+                # Track per-position leverage
+                pos_lev = int(getattr(p, "leverage", 1) or 1)
+                if pos_lev > max_pos_leverage:
+                    max_pos_leverage = pos_lev
+
             exposure = round(gross, 2)
             leverage = round(gross / total_equity, 2) if total_equity > 0 else 0.0
         except Exception:
-            pass
+            logger.warning("Risk PnL: failed to compute exposure/leverage", exc_info=True)
 
     # Risk limits and drawdown from risk manager / settings
     if risk_mgr is not None:
@@ -2005,7 +2054,7 @@ async def _build_risk_pnl_data(app: FastAPI) -> dict[str, Any]:
             if rm is not None:
                 var_1d = float(getattr(rm, "var_95", 0))
         except Exception:
-            pass
+            logger.debug("Risk PnL: failed to read risk metrics", exc_info=True)
 
     if settings is not None:
         try:
@@ -2022,6 +2071,7 @@ async def _build_risk_pnl_data(app: FastAPI) -> dict[str, Any]:
             "pnl_by_strategy": pnl_by_strategy,
             "exposure": exposure,
             "leverage": leverage,
+            "max_position_leverage": max_pos_leverage,
             "var_1d": round(var_1d, 2),
             "drawdown_pct": round(drawdown_pct * 100, 2),
             "drawdown_limit": round(drawdown_limit * 100, 1),

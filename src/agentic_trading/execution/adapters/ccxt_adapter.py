@@ -1047,7 +1047,18 @@ class CCXTAdapter:
         liq_price = Decimal(str(liq)) if liq else None
         unrealized = Decimal(str(raw.get("unrealizedPnl", 0) or 0))
         notional = Decimal(str(raw.get("notional", 0) or 0))
-        leverage = int(raw.get("leverage", 1) or 1)
+
+        # Extract leverage: CCXT unified field, then raw exchange response
+        raw_leverage = raw.get("leverage")
+        info_leverage = raw.get("info", {}).get("leverage")
+        logger.debug(
+            "Position %s leverage — ccxt: %r, info: %r",
+            raw.get("symbol"), raw_leverage, info_leverage,
+        )
+        if raw_leverage is None or raw_leverage == 0:
+            # Fallback to raw exchange info (Bybit V5 returns as string)
+            raw_leverage = info_leverage
+        leverage = int(float(raw_leverage)) if raw_leverage else 1
 
         ts = raw.get("timestamp")
         updated_at = (
