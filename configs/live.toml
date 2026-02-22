@@ -10,7 +10,7 @@
 # ===================================================================
 
 mode = "live"
-read_only = true    # Observe only — see real positions, no new orders
+read_only = false   # Orders flow to Bybit Demo
 
 [[exchanges]]
 name = "bybit"
@@ -275,6 +275,13 @@ enabled = true
 backfill_days = 7
 default_market_type = "futures"
 rate_limit_rpm = 1200
+
+# ===================================================================
+# GOVERNANCE (policy engine + maturity/health/canary/impact/drift)
+# ===================================================================
+
+[governance]
+enabled = true
 
 # ===================================================================
 # OBSERVABILITY

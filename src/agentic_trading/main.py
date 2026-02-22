@@ -367,11 +367,26 @@ async def _run_live_or_paper(
         from .governance.maturity import MaturityManager
         from .governance.tokens import TokenManager
 
+        from .policy.default_policies import (
+            build_pre_trade_policies,
+            build_post_trade_policies,
+            build_strategy_constraint_policies,
+        )
+        from .policy.engine import PolicyEngine
+        from .policy.models import PolicyMode
+
         maturity_mgr = MaturityManager(settings.governance.maturity)
         health_tracker = HealthTracker(settings.governance.health_score)
         impact_clf = ImpactClassifier(settings.governance.impact_classifier)
         drift_det = DriftDetector(settings.governance.drift_detector)
         token_mgr = TokenManager(settings.governance.execution_tokens)
+
+        policy_engine = PolicyEngine()
+        pre_trade_ps = build_pre_trade_policies(settings.risk, mode=PolicyMode.ENFORCED)
+        post_trade_ps = build_post_trade_policies(mode=PolicyMode.ENFORCED)
+        strategy_ps = build_strategy_constraint_policies(mode=PolicyMode.ENFORCED)
+        for ps in (pre_trade_ps, post_trade_ps, strategy_ps):
+            policy_engine.register(ps)
 
         governance_gate = GovernanceGate(
             config=settings.governance,
@@ -385,28 +400,12 @@ async def _run_live_or_paper(
                 else None
             ),
             event_bus=ctx.event_bus,
+            policy_engine=policy_engine,
         )
 
-        # Start canary watchdog (B17 FIX: wire kill_switch_fn)
-        governance_canary = GovernanceCanary(
-            settings.governance.canary,
-            kill_switch_fn=risk_manager.kill_switch.activate,
-            event_bus=ctx.event_bus,
-        )
-        await governance_canary.start_periodic(
-            settings.governance.canary.check_interval_seconds
-        )
         logger.info(
-            "Governance framework enabled (maturity, health, canary, impact, drift)"
+            "Governance framework enabled (maturity, health, canary, impact, drift, policy_engine)"
         )
-
-        for strat in strategies:
-            try:
-                drift_det.set_baseline(strat.strategy_id, {
-                    "win_rate": 0.50, "avg_rr": 1.5, "sharpe": 1.0, "profit_factor": 1.5,
-                })
-            except Exception:
-                pass
 
     # Wire Trade Journal & Analytics (Edgewonk-inspired, Tiers 1-3)
     from .journal import (
@@ -848,6 +847,28 @@ async def _run_live_or_paper(
         tool_gateway=tool_gateway,
     )
     await execution_engine.start()
+
+    # Start governance canary (deferred — needs risk_manager)
+    if settings.governance.enabled and governance_gate is not None:
+        from .governance.canary import GovernanceCanary
+
+        governance_canary = GovernanceCanary(
+            settings.governance.canary,
+            kill_switch_fn=risk_manager.kill_switch.activate,
+            event_bus=ctx.event_bus,
+        )
+        await governance_canary.start_periodic(
+            settings.governance.canary.check_interval_seconds
+        )
+
+        drift_det = governance_gate._drift
+        for strat in strategies:
+            try:
+                drift_det.set_baseline(strat.strategy_id, {
+                    "win_rate": 0.50, "avg_rr": 1.5, "sharpe": 1.0, "profit_factor": 1.5,
+                })
+            except Exception:
+                pass
 
     # Signal cache — maps trace_id → Signal for fill-time narration
     _signal_cache: dict[str, Any] = {}
