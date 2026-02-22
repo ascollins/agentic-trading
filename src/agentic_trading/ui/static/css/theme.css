@@ -15,30 +15,35 @@
 
 :root {
   /* Surfaces — deep indigo-black */
-  --bg-primary: #0a0a14;
-  --bg-secondary: #0e0e1a;
-  --bg-card: #111125;
-  --bg-card-hover: #161630;
-  --bg-elevated: #1a1a2e;
+  --bg-primary: #070711;
+  --bg-secondary: #0c0c19;
+  --bg-card: #121228;
+  --bg-card-hover: #181833;
+  --bg-elevated: #1e1e3a;
   --bg-input: #0a0a14;
 
   /* Borders */
-  --border-subtle: rgba(255, 255, 255, 0.04);
-  --border-card: rgba(255, 255, 255, 0.08);
-  --border-interactive: rgba(0, 255, 136, 0.3);
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-card: rgba(255, 255, 255, 0.14);
+  --border-interactive: rgba(34, 230, 230, 0.45);
 
   /* Text */
-  --text-primary: #e0e0e8;
-  --text-secondary: #7a7a8e;
-  --text-muted: #4a4a5e;
-  --text-inverse: #0a0a14;
+  --text-primary: #f1f1f7;
+  --text-secondary: #b4b4c7;
+  --text-muted: #8686a4;
+  --text-inverse: #070711;
 
   /* Accent */
   --accent-primary: #00ff88;
-  --accent-primary-dim: rgba(0, 255, 136, 0.10);
-  --accent-cyan: #00d2d3;
-  --accent-cyan-dim: rgba(0, 210, 211, 0.12);
-  --accent-blue: #3b82f6;
+  --accent-primary-dim: rgba(0, 255, 136, 0.12);
+  --accent-cyan: #22e6e6;
+  --accent-cyan-dim: rgba(34, 230, 230, 0.14);
+  --accent-blue: #4ea1ff;
+
+  /* Chart tokens */
+  --chart-grid: rgba(255,255,255,0.10);
+  --chart-axis: rgba(255,255,255,0.18);
+  --chart-label: rgba(241,241,247,0.75);
 
   /* Semantic */
   --color-positive: #00ff88;
@@ -185,8 +190,9 @@ body {
 
 .command-bar-nav a:hover,
 .command-bar-nav a.active {
-  color: var(--accent-primary);
-  background: var(--accent-primary-dim);
+  color: var(--accent-cyan);
+  background: var(--accent-cyan-dim);
+  border: 1px solid rgba(34,230,230,0.25);
 }
 
 .command-bar-clock {
@@ -254,7 +260,7 @@ body {
   align-items: center;
   gap: 8px;
   padding: 4px 10px;
-  background: var(--bg-secondary);
+  background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));
   border: 1px solid var(--border-card);
   border-radius: var(--radius-sm);
   margin-bottom: var(--grid-gap);
@@ -505,12 +511,13 @@ body {
 .positions-table th {
   font-size: 9px;
   font-weight: 700;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   text-align: left;
   padding: 3px 6px;
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-card);
+  background: rgba(255,255,255,0.02);
 }
 
 .positions-table td {
@@ -1312,12 +1319,13 @@ body {
 .agent-detail-table th {
   font-size: 9px;
   font-weight: 700;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   text-align: left;
   padding: 2px 4px;
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-card);
+  background: rgba(255,255,255,0.02);
 }
 
 .agent-detail-table td {
@@ -1533,4 +1541,18 @@ body {
   .check-grid { grid-template-columns:repeat(3,1fr); }
   .edge-tables { grid-template-columns:1fr; }
   .risk-posture-grid { grid-template-columns:1fr; }
+}
+
+/* ===== Contrast/readability overrides (Mission Control) ===== */
+
+/* Table row hover highlight */
+.positions-table tr:hover td,
+.agent-detail-table tr:hover td {
+  background: rgba(34, 230, 230, 0.05);
+}
+
+/* Focus-visible outlines */
+*:focus-visible {
+  outline: 2px solid rgba(34,230,230,0.35);
+  outline-offset: 2px;
 }

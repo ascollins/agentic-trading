@@ -112,6 +112,7 @@ def create_ui_app(
     # Track startup time for equity curve baseline
     app.state.start_time = time.time()
     # Cache for equity snapshots: list of (timestamp, equity) tuples
+    # Retained for 7 days (~20160 points at 30s intervals)
     app.state.equity_snapshots: list[tuple[float, float]] = []
     # Backtest jobs: job_id → {status, lines, started_at, finished_at}
     app.state.backtest_jobs: dict[str, dict[str, Any]] = {}
@@ -715,9 +716,13 @@ def create_ui_app(
     # ------------------------------------------------------------------
 
     @app.get("/api/equity-curve")
-    async def api_equity_curve() -> list[dict[str, Any]]:
-        """Return equity curve data points for Chart.js."""
-        return _build_equity_curve(app)
+    async def api_equity_curve(range: str = "8h") -> list[dict[str, Any]]:
+        """Return equity curve data points for Chart.js.
+
+        Query params:
+            range: "4h", "8h", "1d", "1w" (default "8h")
+        """
+        return _build_equity_curve(app, time_range=range)
 
     # ------------------------------------------------------------------
     # Health endpoint
@@ -1030,8 +1035,8 @@ async def _build_portfolio_data(app: FastAPI) -> dict[str, Any]:
         # Only add a new snapshot every 30 seconds
         if not snaps or (now - snaps[-1][0]) >= 30:
             snaps.append((now, total_equity))
-            # Keep last 8 hours of snapshots (~960 points at 30s intervals)
-            max_snaps = 960
+            # Keep last 7 days of snapshots (~20160 points at 30s intervals)
+            max_snaps = 20_160
             if len(snaps) > max_snaps:
                 app.state.equity_snapshots = snaps[-max_snaps:]
 
@@ -1650,11 +1655,35 @@ def _build_settings_data(app: FastAPI) -> dict[str, Any]:
     return data
 
 
-def _build_equity_curve(app: FastAPI) -> list[dict[str, Any]]:
+_EQUITY_RANGE_SECONDS = {
+    "4h": 4 * 3600,
+    "8h": 8 * 3600,
+    "1d": 24 * 3600,
+    "1w": 7 * 24 * 3600,
+}
+
+# Bucket sizes tuned per range so the chart stays readable
+_EQUITY_BUCKET_SECONDS = {
+    "4h": 120,     # 2-min buckets → ~120 points
+    "8h": 300,     # 5-min buckets → ~96 points
+    "1d": 600,     # 10-min buckets → ~144 points
+    "1w": 3600,    # 1-hour buckets → ~168 points
+}
+
+
+def _build_equity_curve(
+    app: FastAPI,
+    time_range: str = "8h",
+) -> list[dict[str, Any]]:
     """Build equity curve from recorded snapshots.
 
     Each HTMX portfolio poll records a snapshot.  The equity curve
     endpoint returns these for Chart.js rendering.
+
+    Parameters
+    ----------
+    time_range:
+        One of ``"4h"``, ``"8h"``, ``"1d"``, ``"1w"``.
     """
     snaps = app.state.equity_snapshots
     if not snaps:
@@ -1667,9 +1696,19 @@ def _build_equity_curve(app: FastAPI) -> list[dict[str, Any]]:
                 pass
         return []
 
-    bucket_seconds = 300
+    now = time.time()
+    window = _EQUITY_RANGE_SECONDS.get(time_range, 8 * 3600)
+    cutoff = now - window
+
+    bucket_seconds = _EQUITY_BUCKET_SECONDS.get(time_range, 300)
+
+    # Show date when range spans multiple days
+    show_date = time_range in ("1d", "1w")
+
     buckets: dict[int, tuple[float, float]] = {}
     for ts, eq in snaps:
+        if ts < cutoff:
+            continue
         key = int(ts) // bucket_seconds
         buckets[key] = (ts, eq)
 
@@ -1677,7 +1716,8 @@ def _build_equity_curve(app: FastAPI) -> list[dict[str, Any]]:
     for key in sorted(buckets):
         ts, eq = buckets[key]
         dt = datetime.fromtimestamp(ts, tz=timezone.utc)
-        points.append({"time": dt.strftime("%H:%M"), "equity": round(eq)})
+        fmt = "%b %d %H:%M" if show_date else "%H:%M"
+        points.append({"time": dt.strftime(fmt), "equity": round(eq)})
     return points
 
 
@@ -2185,17 +2225,16 @@ def _build_model_scorecard_data(app: FastAPI) -> dict[str, Any]:
         try:
             for rec in registry.list_all():
                 stage = rec.stage.value if hasattr(rec.stage, "value") else str(rec.stage)
-                metrics_summary = ""
+                metrics_dict: dict[str, Any] = {}
                 if rec.metrics:
-                    # Show top 2 metrics
-                    parts = [f"{k}: {v:.3f}" for k, v in list(rec.metrics.items())[:2]]
-                    metrics_summary = ", ".join(parts)
+                    for k, v in list(rec.metrics.items())[:2]:
+                        metrics_dict[k] = f"{v:.3f}" if isinstance(v, float) else str(v)
                 models.append({
                     "name": rec.name,
                     "version": rec.version,
                     "stage": stage,
                     "model_id": rec.model_id[:8],
-                    "metrics": metrics_summary,
+                    "metrics": metrics_dict,
                 })
         except Exception:
             pass
