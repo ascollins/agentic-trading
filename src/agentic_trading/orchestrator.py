@@ -219,6 +219,7 @@ class Orchestrator:
                 settings.exchanges if settings.exchanges else None
             )
             intel_kwargs["symbols"] = settings.symbols.symbols or None
+            intel_kwargs["bootstrap_config"] = settings.historical_bootstrap
 
         intelligence = IntelligenceManager.from_config(**intel_kwargs)
 
@@ -374,7 +375,9 @@ class Orchestrator:
         if self._fact_sync is not None:
             await self._fact_sync.start()
 
-        await self._intelligence.start()
+        await self._intelligence.start(
+            symbols=self._settings.symbols.symbols or None,
+        )
 
         if self._execution is not None:
             await self._execution.start()

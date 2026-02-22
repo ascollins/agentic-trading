@@ -83,6 +83,7 @@ class RiskManager:
             max_portfolio_leverage=self._config.max_portfolio_leverage,
             max_gross_exposure_pct=self._config.max_portfolio_leverage,
             instruments=self._instruments,
+            min_rr_ratio=self._config.min_rr_ratio,
         )
         self.post_trade = PostTradeChecker(
             max_unexpected_loss_pct=self._config.max_daily_loss_pct,

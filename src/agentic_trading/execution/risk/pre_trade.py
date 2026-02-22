@@ -56,6 +56,7 @@ class PreTradeChecker:
         price_collar_bps: float = 200.0,
         max_messages_per_minute_per_strategy: int = 60,
         max_messages_per_minute_per_symbol: int = 30,
+        min_rr_ratio: float = 0.0,
     ) -> None:
         self.max_position_pct = max_position_pct
         self.max_notional = Decimal(str(max_notional))
@@ -68,6 +69,7 @@ class PreTradeChecker:
         self.price_collar_bps = price_collar_bps
         self.max_messages_per_minute_per_strategy = max_messages_per_minute_per_strategy
         self.max_messages_per_minute_per_symbol = max_messages_per_minute_per_symbol
+        self.min_rr_ratio = min_rr_ratio
 
         # Stateful tracking for rate-limiting
         self._daily_entry_count: dict[str, int] = {}  # date_str → count
@@ -110,6 +112,7 @@ class PreTradeChecker:
             self._check_price_collar(intent, portfolio),
             self._check_self_match(intent, open_orders),
             self._check_message_throttle(intent),
+            self._check_min_rr_ratio(intent),
             self._check_max_position_size(intent, portfolio),
             self._check_max_notional(intent),
             self._check_max_leverage(intent, portfolio),
@@ -470,6 +473,66 @@ class PreTradeChecker:
         return self._pass("message_throttle", intent, {
             "strategy_rate": len(strategy_times),
             "symbol_rate": len(symbol_times),
+        })
+
+    def _check_min_rr_ratio(
+        self,
+        intent: OrderIntent,
+    ) -> RiskCheckResult:
+        """Block entries whose reward:risk ratio is below the minimum.
+
+        Requires both ``take_profit`` and ``stop_loss`` on the intent.
+        Orders without explicit TP/SL are passed (TP/SL will be applied
+        server-side from ExitConfig defaults which already enforce R:R).
+        Reduce-only (exit) orders are exempt.
+        """
+        if self.min_rr_ratio <= 0:
+            return self._pass("min_rr_ratio", intent, {"reason": "disabled"})
+
+        if getattr(intent, "reduce_only", False):
+            return self._pass("min_rr_ratio", intent, {"reason": "reduce_only_exempt"})
+
+        tp = intent.take_profit
+        sl = intent.stop_loss
+        if tp is None or sl is None:
+            return self._pass("min_rr_ratio", intent, {"reason": "no_explicit_tp_sl"})
+
+        entry = intent.price
+        if entry is None or entry <= 0:
+            return self._pass("min_rr_ratio", intent, {"reason": "no_entry_price"})
+
+        risk = abs(float(entry - sl))
+        reward = abs(float(tp - entry))
+
+        if risk <= 0:
+            return self._fail(
+                "min_rr_ratio",
+                intent,
+                "Stop loss equals entry price — zero risk distance",
+                {"risk": 0, "reward": reward},
+            )
+
+        rr = reward / risk
+        if rr < self.min_rr_ratio:
+            return self._fail(
+                "min_rr_ratio",
+                intent,
+                f"R:R {rr:.2f} below minimum {self.min_rr_ratio:.1f} "
+                f"(reward={reward:.4f}, risk={risk:.4f})",
+                {
+                    "rr_ratio": round(rr, 4),
+                    "min_rr_ratio": self.min_rr_ratio,
+                    "reward": reward,
+                    "risk": risk,
+                    "entry": float(entry),
+                    "take_profit": float(tp),
+                    "stop_loss": float(sl),
+                },
+            )
+        return self._pass("min_rr_ratio", intent, {
+            "rr_ratio": round(rr, 4),
+            "reward": reward,
+            "risk": risk,
         })
 
     def record_entry(self) -> None:

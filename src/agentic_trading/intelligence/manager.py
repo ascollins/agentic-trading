@@ -30,7 +30,7 @@ Usage::
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -77,6 +77,8 @@ class IntelligenceManager:
         open_interest_engine: Any | None = None,
         orderbook_engine: Any | None = None,
         correlation_tracker: Any | None = None,
+        kline_provider: Any | None = None,
+        bootstrap_config: Any | None = None,
     ) -> None:
         self._feature_engine = feature_engine
         self._candle_builder = candle_builder
@@ -89,6 +91,8 @@ class IntelligenceManager:
         self._open_interest_engine = open_interest_engine
         self._orderbook_engine = orderbook_engine
         self._correlation_tracker = correlation_tracker
+        self._kline_provider = kline_provider
+        self._bootstrap_config = bootstrap_config
 
     # ------------------------------------------------------------------
     # Factory
@@ -108,6 +112,7 @@ class IntelligenceManager:
         htf_trend_ema_fast: int = 21,
         htf_trend_ema_slow: int = 50,
         htf_adx_threshold: float = 25.0,
+        bootstrap_config: Any | None = None,
     ) -> IntelligenceManager:
         """Build a fully wired IntelligenceManager from configuration.
 
@@ -222,6 +227,24 @@ class IntelligenceManager:
             orderbook_engine = OrderbookEngine(event_bus=event_bus)
             correlation_tracker = LiveCorrelationTracker(event_bus=event_bus)
 
+        # --- REST kline provider (bootstrap only, non-backtest) ---
+        kline_provider = None
+        if bootstrap_config is not None and bootstrap_config.enabled:
+            from agentic_trading.intelligence.rest_kline_provider import (
+                BinanceKlineProvider,
+                MarketType,
+            )
+
+            mt = MarketType(bootstrap_config.default_market_type)
+            kline_provider = BinanceKlineProvider(
+                market_type=mt,
+                max_limit=bootstrap_config.rest_limit,
+                rate_limit_rpm=bootstrap_config.rate_limit_rpm,
+                max_retries=bootstrap_config.max_retries,
+                base_backoff=bootstrap_config.base_backoff,
+                timeout=bootstrap_config.timeout,
+            )
+
         return cls(
             feature_engine=feature_engine,
             candle_builder=candle_builder,
@@ -234,16 +257,33 @@ class IntelligenceManager:
             open_interest_engine=open_interest_engine,
             orderbook_engine=orderbook_engine,
             correlation_tracker=correlation_tracker,
+            kline_provider=kline_provider,
+            bootstrap_config=bootstrap_config,
         )
 
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
 
-    async def start(self) -> None:
-        """Start event-driven components (feature engine, feed manager)."""
+    async def start(self, *, symbols: list[str] | None = None) -> None:
+        """Start event-driven components (feature engine, feed manager).
+
+        If a bootstrap config is present, seeds FeatureEngine buffers
+        from Binance REST klines **after** FeatureEngine starts but
+        **before** FeedManager starts live streaming.
+
+        Parameters
+        ----------
+        symbols:
+            Symbols to bootstrap.  When ``None``, bootstrap is skipped.
+        """
         if self._feature_engine is not None:
             await self._feature_engine.start()
+
+        # Bootstrap FeatureEngine buffers before live feed starts
+        if symbols and self._kline_provider is not None:
+            await self.bootstrap(symbols)
+
         if self._open_interest_engine is not None:
             await self._open_interest_engine.start()
         if self._orderbook_engine is not None:
@@ -253,6 +293,87 @@ class IntelligenceManager:
         if self._feed_manager is not None:
             await self._feed_manager.start()
         logger.info("IntelligenceManager started")
+
+    async def bootstrap(self, symbols: list[str]) -> None:
+        """Seed FeatureEngine ring buffers from Binance REST klines.
+
+        For each symbol and each timeframe (M1 through D1), fetches
+        ``backfill_days`` worth of historical candles and feeds them
+        into the feature engine.  Runs gap detection for data quality
+        logging.
+
+        Parameters
+        ----------
+        symbols:
+            List of unified symbols (e.g. ``["BTC/USDT", "ETH/USDT"]``).
+        """
+        if self._kline_provider is None or self._bootstrap_config is None:
+            return
+
+        from agentic_trading.core.enums import Timeframe
+        from agentic_trading.intelligence.rest_kline_provider import MarketType
+
+        config = self._bootstrap_config
+        timeframes = [
+            Timeframe.M1, Timeframe.M5, Timeframe.M15,
+            Timeframe.H1, Timeframe.H4, Timeframe.D1,
+        ]
+        end_time = datetime.now(timezone.utc)
+        start_time = end_time - timedelta(days=config.backfill_days)
+
+        total_candles = 0
+        total_feeds = 0
+
+        try:
+            await self._kline_provider.open()
+
+            for symbol in symbols:
+                # Per-symbol market type override
+                mt_str = config.symbol_market_types.get(
+                    symbol, config.default_market_type
+                )
+                mt = MarketType(mt_str)
+
+                for tf in timeframes:
+                    try:
+                        candles = await self._kline_provider.fetch_historical(
+                            symbol, tf,
+                            start_time=start_time,
+                            end_time=end_time,
+                            market_type=mt,
+                        )
+
+                        # Data quality check (log warnings only)
+                        if candles and self._data_qa is not None:
+                            issues = self._data_qa.check_gaps(candles, tf)
+                            for issue in issues:
+                                logger.warning(
+                                    "Bootstrap data gap: %s:%s — %s",
+                                    symbol, tf.value, issue,
+                                )
+
+                        # Feed into FeatureEngine
+                        for candle in candles:
+                            self._feature_engine.add_candle(candle)
+
+                        total_candles += len(candles)
+                        total_feeds += 1
+                        logger.info(
+                            "Bootstrap: loaded %d candles for %s:%s",
+                            len(candles), symbol, tf.value,
+                        )
+                    except Exception:
+                        logger.exception(
+                            "Bootstrap failed for %s:%s — skipping",
+                            symbol, tf.value,
+                        )
+        finally:
+            await self._kline_provider.close()
+
+        logger.info(
+            "Bootstrap complete: %d total candles across %d feeds",
+            total_candles, total_feeds,
+        )
 
     async def stop(self) -> None:
         """Stop event-driven components."""

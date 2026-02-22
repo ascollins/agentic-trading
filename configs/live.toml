@@ -10,6 +10,7 @@
 # ===================================================================
 
 mode = "live"
+read_only = true    # Observe only — see real positions, no new orders
 
 [[exchanges]]
 name = "bybit"
@@ -256,6 +257,7 @@ max_single_position_pct = 0.05
 max_daily_loss_pct = 0.03
 max_drawdown_pct = 0.10
 reconciliation_interval_seconds = 15
+min_rr_ratio = 2.0
 
 # Safe mode for initial live deployment
 [safe_mode]
@@ -263,6 +265,16 @@ enabled = true
 max_symbols = 12
 max_leverage = 2
 position_size_multiplier = 0.25
+
+# ===================================================================
+# HISTORICAL BOOTSTRAP (seed FeatureEngine from Binance REST on startup)
+# ===================================================================
+
+[historical_bootstrap]
+enabled = true
+backfill_days = 7
+default_market_type = "futures"
+rate_limit_rpm = 1200
 
 # ===================================================================
 # OBSERVABILITY

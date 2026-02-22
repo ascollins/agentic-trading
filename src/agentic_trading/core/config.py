@@ -89,6 +89,7 @@ class RiskConfig(BaseModel):
     price_collar_bps: float = 200.0  # Max deviation from ref price in bps (2%)
     max_messages_per_minute_per_strategy: int = 60  # Message throttle per strategy
     max_messages_per_minute_per_symbol: int = 30  # Message throttle per symbol
+    min_rr_ratio: float = 0.0  # Minimum reward:risk ratio per trade (0 = disabled)
 
 
 class FXRiskConfig(BaseModel):
@@ -354,6 +355,20 @@ class UIConfig(BaseModel):
     port: int = 8080  # HTTP port for the supervision UI
 
 
+class HistoricalBootstrapConfig(BaseModel):
+    """REST kline bootstrap configuration for seeding FeatureEngine on startup."""
+
+    enabled: bool = True
+    backfill_days: int = 7
+    rest_limit: int = 1500
+    default_market_type: str = "futures"  # "spot" or "futures"
+    rate_limit_rpm: float = 1200
+    max_retries: int = 5
+    base_backoff: float = 1.0
+    timeout: float = 30.0
+    symbol_market_types: dict[str, str] = Field(default_factory=dict)
+
+
 class ContextConfig(BaseModel):
     """Context manager configuration."""
 
@@ -406,6 +421,9 @@ class Settings(BaseSettings):
         default_factory=PredictionMarketConfig
     )
     context: ContextConfig = Field(default_factory=ContextConfig)
+    historical_bootstrap: HistoricalBootstrapConfig = Field(
+        default_factory=HistoricalBootstrapConfig
+    )
     fx_risk: FXRiskConfig = Field(default_factory=FXRiskConfig)
 
     # Infrastructure
