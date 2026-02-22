@@ -44,6 +44,11 @@ class PortfolioManager:
         self._pm_max_boost: float = 0.15  # Max confidence adjustment
         self._pm_shadow_mode: bool = True  # Log only, don't affect sizing
         self._pending_signals: list[Signal] = []
+        self._current_bounds: Any = None  # PortfolioBounds set before sizing
+
+    def set_bounds(self, bounds: Any) -> None:
+        """Inject pre-computed :class:`PortfolioBounds` for the next sizing cycle."""
+        self._current_bounds = bounds
 
     def on_signal(self, signal: Signal) -> None:
         """Collect signals for aggregation."""
@@ -354,6 +359,26 @@ class PortfolioManager:
         if self._governance_sizing_fn is not None:
             gov_mult = self._governance_sizing_fn(best_signal.strategy_id)
             qty = Decimal(str(float(qty) * gov_mult))
+
+        # Clamp to pre-computed position bounds (deterministic cap)
+        if self._current_bounds is not None:
+            sym_bounds = self._current_bounds.get(best_signal.symbol)
+            if sym_bounds is not None:
+                direction = best_signal.direction
+                if direction == SignalDirection.LONG:
+                    if qty > sym_bounds.max_buy_qty:
+                        logger.info(
+                            "Bounds clamp %s: buy qty %s → %s",
+                            best_signal.symbol, qty, sym_bounds.max_buy_qty,
+                        )
+                        qty = sym_bounds.max_buy_qty
+                elif direction == SignalDirection.SHORT:
+                    if qty > sym_bounds.max_sell_qty:
+                        logger.info(
+                            "Bounds clamp %s: sell qty %s → %s",
+                            best_signal.symbol, qty, sym_bounds.max_sell_qty,
+                        )
+                        qty = sym_bounds.max_sell_qty
 
         if instrument:
             qty = instrument.round_qty(qty)

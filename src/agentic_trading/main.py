@@ -625,6 +625,38 @@ async def _run_live_or_paper(
     if _journal_repo is not None:
         journal._on_trade_closed = _on_trade_closed_with_persistence
 
+    # Wire Episodic Memory: TradeOutcomeRecorder + ReflectionAgent
+    _outcome_recorder = None
+    _reflection_agent = None
+    if orch.context_manager is not None:
+        from .context.trade_outcome_recorder import TradeOutcomeRecorder
+        from .context.reflection import ReflectionAgent
+
+        _memory_store = orch.context_manager.memory
+        _outcome_recorder = TradeOutcomeRecorder(
+            memory_store=_memory_store, ttl_hours=168.0,
+        )
+        _reflection_agent = ReflectionAgent(
+            memory_store=_memory_store, trigger_every_n=5, ttl_hours=48.0,
+        )
+
+        _prev_callback = journal._on_trade_closed
+
+        def _on_trade_closed_with_episodic(trade, _prev=_prev_callback):
+            """Extend callback with episodic memory recording + reflection."""
+            _prev(trade)
+            try:
+                _outcome_recorder.on_trade_closed(trade)
+                _reflection_agent.on_trade_closed(trade)
+            except Exception:
+                logger.debug("Episodic memory callback failed", exc_info=True)
+
+        journal._on_trade_closed = _on_trade_closed_with_episodic
+        logger.info(
+            "Episodic memory wired: TradeOutcomeRecorder + ReflectionAgent "
+            "(trigger_every=5, outcome_ttl=168h, reflection_ttl=48h)"
+        )
+
     # Wire Avatar Narration (if enabled)
     narration_service = None
     narration_store = None
@@ -987,6 +1019,15 @@ async def _run_live_or_paper(
         candle_buffer = feature_engine.get_buffer(event.symbol, event.timeframe)
         if not candle_buffer:
             return
+
+        # Pre-compute position bounds for this cycle
+        _close_price = event.features.get("close", 0)
+        if _close_price and _signal_mgr.bounds_calculator is not None:
+            _prices = {event.symbol: float(_close_price)}
+            _bounds = _signal_mgr.compute_bounds(ctx, _capital, prices=_prices)
+            if _bounds is not None:
+                ctx.position_bounds = _bounds
+                _signal_mgr.portfolio_manager.set_bounds(_bounds)
 
         # Alias indicator keys for strategy compatibility
         from .signal.manager import SignalManager as _SM

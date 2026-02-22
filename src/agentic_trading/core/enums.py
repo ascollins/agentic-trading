@@ -313,6 +313,8 @@ class MemoryEntryType(str, Enum):
     SIGNAL = "signal"
     RISK_EVENT = "risk_event"
     REASONING_TRACE = "reasoning_trace"
+    TRADE_OUTCOME = "trade_outcome"
+    REFLECTION = "reflection"
 
 
 class ReasoningPhase(str, Enum):

@@ -492,8 +492,8 @@ class PreTradeChecker:
         if getattr(intent, "reduce_only", False):
             return self._pass("min_rr_ratio", intent, {"reason": "reduce_only_exempt"})
 
-        tp = intent.take_profit
-        sl = intent.stop_loss
+        tp = getattr(intent, "take_profit", None)
+        sl = getattr(intent, "stop_loss", None)
         if tp is None or sl is None:
             return self._pass("min_rr_ratio", intent, {"reason": "no_explicit_tp_sl"})
 

@@ -73,6 +73,15 @@ class IMemoryStore(Protocol):
         min_relevance: float = 0.1,
     ) -> list[MemoryEntry]: ...
 
+    def search_similar(
+        self,
+        query_text: str,
+        *,
+        entry_type: MemoryEntryType | None = None,
+        symbol: str | None = None,
+        limit: int = 5,
+    ) -> list[MemoryEntry]: ...
+
     def clear(self) -> None: ...
 
 
@@ -120,6 +129,56 @@ def _matches_query(
     if since is not None and entry.timestamp < since:
         return False
     return True
+
+
+# ---------------------------------------------------------------------------
+# BM25 text scoring
+# ---------------------------------------------------------------------------
+
+
+def _tokenize(text: str) -> list[str]:
+    """Lower-case split, strip punctuation, remove 1-char tokens."""
+    import re
+    return [t for t in re.split(r"[\s/\-_:,.|()]+", text.lower()) if len(t) > 1]
+
+
+def _bm25_score(
+    query_tokens: list[str],
+    doc_tokens: list[str],
+    avg_dl: float,
+    df: dict[str, int],
+    n_docs: int,
+    k1: float = 1.2,
+    b: float = 0.75,
+) -> float:
+    """Okapi BM25 score for a single document against query tokens."""
+    if not doc_tokens or not query_tokens or n_docs == 0:
+        return 0.0
+    dl = len(doc_tokens)
+    score = 0.0
+    tf_map: dict[str, int] = {}
+    for t in doc_tokens:
+        tf_map[t] = tf_map.get(t, 0) + 1
+
+    for qt in query_tokens:
+        if qt not in tf_map:
+            continue
+        tf = tf_map[qt]
+        d = df.get(qt, 0)
+        idf = math.log((n_docs - d + 0.5) / (d + 0.5) + 1.0)
+        tf_norm = (tf * (k1 + 1)) / (tf + k1 * (1 - b + b * dl / max(avg_dl, 1)))
+        score += idf * tf_norm
+    return score
+
+
+def _entry_tokens(entry: MemoryEntry) -> list[str]:
+    """Tokenize an entry's summary + tags for BM25 search."""
+    text = entry.summary + " " + " ".join(entry.tags)
+    if entry.symbol:
+        text += " " + entry.symbol
+    if entry.strategy_id:
+        text += " " + entry.strategy_id
+    return _tokenize(text)
 
 
 # ---------------------------------------------------------------------------
@@ -177,6 +236,63 @@ class InMemoryMemoryStore:
         # Sort by decayed relevance descending
         results.sort(key=lambda x: x[0], reverse=True)
         return [entry for _, entry in results[:limit]]
+
+    def search_similar(
+        self,
+        query_text: str,
+        *,
+        entry_type: MemoryEntryType | None = None,
+        symbol: str | None = None,
+        limit: int = 5,
+    ) -> list[MemoryEntry]:
+        """BM25 text-similarity search over entry summaries and tags.
+
+        Returns entries ranked by combined BM25 score and time decay.
+        """
+        if not self._entries or not query_text.strip():
+            return []
+
+        now = _now()
+        query_tokens = _tokenize(query_text)
+        if not query_tokens:
+            return []
+
+        # Pre-filter by type and symbol
+        candidates = self._entries
+        if entry_type is not None:
+            candidates = [e for e in candidates if e.entry_type == entry_type]
+        if symbol is not None:
+            candidates = [e for e in candidates if e.symbol == symbol]
+
+        if not candidates:
+            return []
+
+        # Build doc tokens and DF
+        all_doc_tokens = [_entry_tokens(e) for e in candidates]
+        df: dict[str, int] = {}
+        total_len = 0
+        for dt in all_doc_tokens:
+            seen: set[str] = set()
+            total_len += len(dt)
+            for t in dt:
+                if t not in seen:
+                    df[t] = df.get(t, 0) + 1
+                    seen.add(t)
+        avg_dl = total_len / len(candidates) if candidates else 1.0
+
+        # Score and rank
+        scored: list[tuple[float, MemoryEntry]] = []
+        for entry, doc_tokens in zip(candidates, all_doc_tokens):
+            bm25 = _bm25_score(
+                query_tokens, doc_tokens, avg_dl, df, len(candidates),
+            )
+            if bm25 <= 0:
+                continue
+            decay = _compute_decayed_relevance(entry, now)
+            scored.append((bm25 * decay, entry))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return [entry for _, entry in scored[:limit]]
 
     def clear(self) -> None:
         """Clear all entries."""
@@ -267,6 +383,19 @@ class JsonFileMemoryStore:
             since=since,
             limit=limit,
             min_relevance=min_relevance,
+        )
+
+    def search_similar(
+        self,
+        query_text: str,
+        *,
+        entry_type: MemoryEntryType | None = None,
+        symbol: str | None = None,
+        limit: int = 5,
+    ) -> list[MemoryEntry]:
+        """BM25 text-similarity search (delegates to in-memory store)."""
+        return self._inner.search_similar(
+            query_text, entry_type=entry_type, symbol=symbol, limit=limit,
         )
 
     def clear(self) -> None:

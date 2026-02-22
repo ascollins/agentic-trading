@@ -242,6 +242,9 @@ class Orchestrator:
             "max_position_pct": settings.risk.max_single_position_pct,
             "sizing_multiplier": sizing_multiplier,
             "governance_sizing_fn": governance_sizing_fn,
+            "max_concurrent_positions": settings.risk.max_concurrent_positions,
+            "max_daily_entries": settings.risk.max_daily_entries,
+            "max_leverage": settings.risk.max_portfolio_leverage,
         }
         if mode != Mode.BACKTEST:
             signal_kwargs["feature_engine"] = intelligence.feature_engine

@@ -264,6 +264,7 @@ class TradingContext:
         regime: RegimeState | None = None,
         portfolio_state: PortfolioState | None = None,
         risk_limits: dict[str, Any] | None = None,
+        position_bounds: Any | None = None,
     ) -> None:
         self.clock = clock
         self.event_bus = event_bus
@@ -271,6 +272,7 @@ class TradingContext:
         self.regime = regime or RegimeState(symbol="*")
         self.portfolio_state = portfolio_state or PortfolioState()
         self.risk_limits = risk_limits or {}
+        self.position_bounds = position_bounds
 
     def get_instrument(self, symbol: str) -> Instrument | None:
         return self.instruments.get(symbol)

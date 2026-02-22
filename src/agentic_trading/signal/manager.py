@@ -94,11 +94,13 @@ class SignalManager:
         portfolio_manager: Any,
         allocator: Any | None = None,
         correlation_analyzer: Any | None = None,
+        bounds_calculator: Any | None = None,
     ) -> None:
         self._runner = runner
         self._portfolio_manager = portfolio_manager
         self._allocator = allocator
         self._correlation_analyzer = correlation_analyzer
+        self._bounds_calculator = bounds_calculator
 
     # ------------------------------------------------------------------
     # Factory
@@ -121,6 +123,9 @@ class SignalManager:
         max_correlated_exposure_pct: float = 0.25,
         correlation_lookback: int = 60,
         correlation_threshold: float = 0.7,
+        max_concurrent_positions: int = 8,
+        max_daily_entries: int = 10,
+        max_leverage: float = 3.0,
     ) -> SignalManager:
         """Build a fully wired SignalManager from configuration.
 
@@ -214,11 +219,25 @@ class SignalManager:
             correlation_threshold=correlation_threshold,
         )
 
+        # --- Position bounds calculator ---
+        from agentic_trading.signal.portfolio.bounds import (
+            PositionBoundsCalculator,
+        )
+
+        bounds_calculator = PositionBoundsCalculator(
+            max_single_position_pct=max_single_position_pct,
+            max_concurrent_positions=max_concurrent_positions,
+            max_daily_entries=max_daily_entries,
+            max_leverage=max_leverage,
+            max_correlated_exposure_pct=max_correlated_exposure_pct,
+        )
+
         return cls(
             runner=runner,
             portfolio_manager=portfolio_manager,
             allocator=allocator,
             correlation_analyzer=correlation_analyzer,
+            bounds_calculator=bounds_calculator,
         )
 
     # ------------------------------------------------------------------
@@ -274,6 +293,42 @@ class SignalManager:
         if self._runner is not None:
             return self._runner.signal_count
         return 0
+
+    @property
+    def bounds_calculator(self):
+        """The position bounds calculator (or ``None``)."""
+        return self._bounds_calculator
+
+    def compute_bounds(self, ctx: Any, capital: float, prices: dict | None = None) -> Any:
+        """Pre-compute position bounds for all symbols in context.
+
+        Delegates to ``PositionBoundsCalculator.compute()``.
+        Returns ``None`` if no calculator is configured.
+        """
+        if self._bounds_calculator is None:
+            return None
+
+        symbols = list(ctx.instruments.keys()) if hasattr(ctx, "instruments") else []
+        if not symbols:
+            return None
+
+        portfolio = ctx.portfolio_state if hasattr(ctx, "portfolio_state") else None
+        if portfolio is None:
+            from agentic_trading.core.interfaces import PortfolioState
+            portfolio = PortfolioState()
+
+        clusters = None
+        if self._correlation_analyzer is not None:
+            clusters = self._correlation_analyzer.find_clusters()
+
+        return self._bounds_calculator.compute(
+            symbols=symbols,
+            portfolio=portfolio,
+            capital=capital,
+            instruments=ctx.instruments if hasattr(ctx, "instruments") else None,
+            prices=prices or {},
+            correlation_clusters=clusters,
+        )
 
     # ------------------------------------------------------------------
     # Delegated operations — signal collection
